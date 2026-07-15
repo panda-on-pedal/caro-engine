@@ -50,7 +50,6 @@ function withOverrides(
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- consumed starting in Task 4
 function cellKey(move: Move): string {
   return `${move.row},${move.col}`;
 }
@@ -147,12 +146,66 @@ function findFives(
     }));
 }
 
+function groupByStoneSet(
+  windows: WindowInfo[],
+): Map<string, { cells: Move[]; gains: Map<string, Move> }> {
+  const groups = new Map<string, { cells: Move[]; gains: Map<string, Move> }>();
+  for (const w of windows) {
+    const key = w.stones.map(cellKey).sort().join("|");
+    const group = groups.get(key) ?? {
+      cells: w.stones,
+      gains: new Map<string, Move>(),
+    };
+    for (const gap of w.gaps) {
+      group.gains.set(cellKey(gap), gap);
+    }
+    groups.set(key, group);
+  }
+  return groups;
+}
+
+function findFours(
+  read: CellReader,
+  size: number,
+  dRow: number,
+  dCol: number,
+  player: Player,
+): PatternInstance[] {
+  const windows = viableWindowsInDirection(
+    read,
+    size,
+    dRow,
+    dCol,
+    player,
+  ).filter((w) => w.stones.length === 4);
+  const groups = groupByStoneSet(windows);
+
+  const instances: PatternInstance[] = [];
+  for (const group of groups.values()) {
+    const gains = [...group.gains.values()];
+    if (gains.length === 0) {
+      continue;
+    }
+    instances.push({
+      type: gains.length >= 2 ? "open-four" : "four",
+      player,
+      cells: group.cells,
+      gains,
+      // Any gain completes a five, so every gain is critical.
+      criticalGains: gains,
+      direction: [dRow, dCol],
+    });
+  }
+  return instances;
+}
+
 export function findPatterns(board: Board, player: Player): PatternInstance[] {
   const read = boardReader(board);
   const size = board.length;
   const instances: PatternInstance[] = [];
   for (const [dRow, dCol] of DIRECTIONS) {
     instances.push(...findFives(read, size, dRow, dCol, player));
+    instances.push(...findFours(read, size, dRow, dCol, player));
   }
   return instances;
 }

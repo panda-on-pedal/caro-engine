@@ -42,3 +42,30 @@ describe("findPatterns — five", () => {
     expect(findPatterns(board, 2)).toEqual([]);
   });
 });
+
+describe("findPatterns — four / open-four", () => {
+  it("classifies a four with two open ends as open-four", () => {
+    const board = parseBoard(".XXXX.");
+    const patterns = findPatterns(board, 1);
+    const fours = patterns.filter((p) => p.type === "open-four");
+    expect(fours).toHaveLength(1);
+    expect(fours[0].gains.map((g) => g.col).sort()).toEqual([0, 5]);
+    expect(fours[0].criticalGains).toEqual(fours[0].gains);
+  });
+
+  it("classifies a four blocked at one end as a plain four with one win square", () => {
+    const board = parseBoard("OXXXX.");
+    const patterns = findPatterns(board, 1);
+    const fours = patterns.filter((p) => p.type === "four");
+    expect(fours).toHaveLength(1);
+    expect(fours[0].gains.map((g) => g.col)).toEqual([5]);
+  });
+
+  it("reports no four when blocked at both ends", () => {
+    const board = parseBoard("OXXXXO");
+    const patterns = findPatterns(board, 1);
+    expect(
+      patterns.filter((p) => p.type === "four" || p.type === "open-four"),
+    ).toHaveLength(0);
+  });
+});
