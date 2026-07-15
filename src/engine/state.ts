@@ -1,4 +1,5 @@
-import { checkWin, createEmptyBoard, isFull, isLegalMove, placeMove, type Board, type Player } from './board.ts';
+import { createEmptyBoard, isFull, isLegalMove, placeMove, type Board, type Player } from './board.ts';
+import { checkCaroWin } from './rules.ts';
 
 export interface Move {
   row: number;
@@ -36,7 +37,7 @@ export function applyMove(state: GameState, move: Move, player: Player): GameSta
   }
 
   const board = placeMove(state.board, move.row, move.col, player);
-  const won = checkWin(board, move.row, move.col, player);
+  const won = checkCaroWin(board, move.row, move.col, player);
   const winner: Winner = won ? player : isFull(board) ? 'draw' : null;
 
   return {

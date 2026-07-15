@@ -42,6 +42,21 @@ describe('applyMove', () => {
     expect(state.winner).toBe(1);
     expect(() => applyMove(state, { row: 2, col: 2 }, 2)).toThrow();
   });
+
+  it('does not declare a winner when the five is blocked at both ends (Caro rule)', () => {
+    let state = newGame();
+    state = applyMove(state, { row: 6, col: 1 }, 1);
+    state = applyMove(state, { row: 6, col: 0 }, 2); // O blocks left end
+    state = applyMove(state, { row: 6, col: 2 }, 1);
+    state = applyMove(state, { row: 9, col: 0 }, 2); // filler, off row 6
+    state = applyMove(state, { row: 6, col: 3 }, 1);
+    state = applyMove(state, { row: 9, col: 1 }, 2); // filler, off row 6
+    state = applyMove(state, { row: 6, col: 4 }, 1);
+    state = applyMove(state, { row: 6, col: 6 }, 2); // O blocks right end
+    state = applyMove(state, { row: 6, col: 5 }, 1); // completes X at cols 1-5, row 6
+
+    expect(state.winner).toBeNull();
+  });
 });
 
 describe('serializeState / deserializeState', () => {
