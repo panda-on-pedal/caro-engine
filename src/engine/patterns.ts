@@ -246,6 +246,54 @@ function findThrees(
   return instances;
 }
 
+function findTwos(
+  read: CellReader,
+  size: number,
+  dRow: number,
+  dCol: number,
+  player: Player,
+): PatternInstance[] {
+  const windows = viableWindowsInDirection(
+    read,
+    size,
+    dRow,
+    dCol,
+    player,
+  ).filter((w) => w.stones.length === 2);
+  const groups = groupByStoneSet(windows);
+
+  const instances: PatternInstance[] = [];
+  for (const group of groups.values()) {
+    const gains = [...group.gains.values()];
+    if (gains.length === 0) {
+      continue;
+    }
+
+    const criticalGains = gains.filter((gain) => {
+      const hypothetical = withOverrides(
+        read,
+        new Map([[cellKey(gain), player]]),
+      );
+      const threes = findThrees(hypothetical, size, dRow, dCol, player);
+      return threes.some(
+        (three) =>
+          three.type === "open-three" &&
+          three.cells.some((c) => cellKey(c) === cellKey(gain)),
+      );
+    });
+
+    instances.push({
+      type: criticalGains.length > 0 ? "open-two" : "two",
+      player,
+      cells: group.cells,
+      gains,
+      criticalGains,
+      direction: [dRow, dCol],
+    });
+  }
+  return instances;
+}
+
 export function findPatterns(board: Board, player: Player): PatternInstance[] {
   const read = boardReader(board);
   const size = board.length;
@@ -254,6 +302,7 @@ export function findPatterns(board: Board, player: Player): PatternInstance[] {
     instances.push(...findFives(read, size, dRow, dCol, player));
     instances.push(...findFours(read, size, dRow, dCol, player));
     instances.push(...findThrees(read, size, dRow, dCol, player));
+    instances.push(...findTwos(read, size, dRow, dCol, player));
   }
   return instances;
 }

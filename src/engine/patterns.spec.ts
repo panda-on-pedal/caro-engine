@@ -111,3 +111,24 @@ describe("findPatterns — three / open-three (design doc worked examples)", () 
     ).toHaveLength(0);
   });
 });
+
+describe("findPatterns — two / open-two", () => {
+  it("classifies an isolated two with room to grow as open-two", () => {
+    const board = parseBoard("..XX...");
+    const patterns = findPatterns(board, 1);
+    const opens = patterns.filter((p) => p.type === "open-two");
+    expect(opens.length).toBeGreaterThanOrEqual(1);
+    expect(opens[0].criticalGains.length).toBeGreaterThan(0);
+  });
+
+  it("classifies a two boxed in on one side as a plain two, not open-two", () => {
+    // "OXX.." (5 cols) has exactly one window and it contains the O, so
+    // nothing would be found - same width trap as Task 5. Widen by one.
+    const board = parseBoard("OXX...");
+    const patterns = findPatterns(board, 1);
+    const opens = patterns.filter((p) => p.type === "open-two");
+    expect(opens).toHaveLength(0);
+    const twos = patterns.filter((p) => p.type === "two");
+    expect(twos.length).toBeGreaterThanOrEqual(1);
+  });
+});
