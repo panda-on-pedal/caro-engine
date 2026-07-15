@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Caro</title>
+  <style>
+    :root {
+      --paper: #f6f1e4;
+      --cell-paper: #fbf8f0;
+      --rule-blue: #b9cfe8;
+      --pen-red: #c4433f;
+      --ink-blue: #2f5d9c;
+      --graphite: #33312e;
+      --muted: #6b6a63;
+      --highlighter: #f6d65a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 40px 24px 56px 72px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+      color: var(--graphite);
+      background-color: var(--paper);
+      background-image:
+        linear-gradient(to right, transparent 0 55px, var(--pen-red) 55px 57px, transparent 57px),
+        linear-gradient(to right, var(--rule-blue) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--rule-blue) 1px, transparent 1px);
+      background-size:
+        100% 100%,
+        var(--cell-size, 28px) var(--cell-size, 28px),
+        var(--cell-size, 28px) var(--cell-size, 28px);
+    }
+
+    .titlebar {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+
+    #title {
+      position: relative;
+      margin: 0;
+      font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive;
+      font-size: 3rem;
+      font-weight: 400;
+      color: var(--ink-blue);
+      transform: rotate(-2deg);
+    }
+
+    #title::after {
+      content: "";
+      position: absolute;
+      left: 2px;
+      right: 8px;
+      bottom: -2px;
+      height: 10px;
+      border-bottom: 3px solid var(--pen-red);
+      border-radius: 50%;
+      opacity: 0.75;
+      transform: rotate(-1deg);
+    }
+
+    .subtitle {
+      margin: 0;
+      font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
+      font-size: 0.7rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    #status {
+      font-size: 1.05rem;
+      min-height: 1.4em;
+      margin: 0;
+    }
+
+    #status[data-done] {
+      font-weight: 600;
+      padding: 0 4px;
+      background-image: linear-gradient(180deg, transparent 60%, var(--highlighter) 60%);
+    }
+
+    #board {
+      display: grid;
+      gap: 0;
+      background-color: var(--paper);
+      background-image:
+        linear-gradient(to right, var(--rule-blue) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--rule-blue) 1px, transparent 1px);
+      background-size: var(--cell-size, 28px) var(--cell-size, 28px);
+      border: 2px solid var(--graphite);
+      box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.08);
+    }
+
+    .cell {
+      width: var(--cell-size, 28px);
+      height: var(--cell-size, 28px);
+      padding: 0;
+      background: transparent;
+      border: none;
+      color: inherit;
+      font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive;
+      font-size: 19px;
+      line-height: var(--cell-size, 28px);
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+    }
+
+    .cell:not(:disabled):hover {
+      background: rgba(47, 93, 156, 0.14);
+    }
+
+    .cell:disabled {
+      cursor: default;
+    }
+
+    .cell[data-player="1"] {
+      color: var(--ink-blue);
+    }
+
+    .cell[data-player="2"] {
+      color: var(--pen-red);
+    }
+
+    .cell:focus {
+      outline: none;
+    }
+
+    .cell:focus-visible {
+      outline: 2px solid var(--ink-blue);
+      outline-offset: -2px;
+    }
+
+    #new-game {
+      padding: 10px 20px;
+      font-family: inherit;
+      font-size: 1rem;
+      color: var(--graphite);
+      background: var(--cell-paper);
+      border: 2px solid var(--graphite);
+      border-radius: 3px 3px 0 0;
+      box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.1);
+      cursor: pointer;
+    }
+
+    #new-game:hover {
+      background: #f1ead8;
+    }
+
+    #new-game:active {
+      box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.1);
+      transform: translate(2px, 2px);
+    }
+
+    #new-game:focus-visible {
+      outline: 2px solid var(--ink-blue);
+      outline-offset: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="titlebar">
+    <h1 id="title">Caro</h1>
+    <p class="subtitle">Five in a row</p>
+  </div>
+  <p id="status">Loading&hellip;</p>
+  <div id="board"></div>
+  <button id="new-game" type="button">New Game</button>
+  <script src="main.js"></script>
+</body>
+</html>
