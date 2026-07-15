@@ -39,7 +39,6 @@ function boardReader(board: Board): CellReader {
   return (row, col) => (isInBounds(board, row, col) ? board[row][col] : null);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- consumed starting in Task 4
 function withOverrides(
   reader: CellReader,
   overrides: ReadonlyMap<string, Player>,
@@ -199,6 +198,54 @@ function findFours(
   return instances;
 }
 
+function findThrees(
+  read: CellReader,
+  size: number,
+  dRow: number,
+  dCol: number,
+  player: Player,
+): PatternInstance[] {
+  const windows = viableWindowsInDirection(
+    read,
+    size,
+    dRow,
+    dCol,
+    player,
+  ).filter((w) => w.stones.length === 3);
+  const groups = groupByStoneSet(windows);
+
+  const instances: PatternInstance[] = [];
+  for (const group of groups.values()) {
+    const gains = [...group.gains.values()];
+    if (gains.length === 0) {
+      continue;
+    }
+
+    const criticalGains = gains.filter((gain) => {
+      const hypothetical = withOverrides(
+        read,
+        new Map([[cellKey(gain), player]]),
+      );
+      const fours = findFours(hypothetical, size, dRow, dCol, player);
+      return fours.some(
+        (four) =>
+          four.type === "open-four" &&
+          four.cells.some((c) => cellKey(c) === cellKey(gain)),
+      );
+    });
+
+    instances.push({
+      type: criticalGains.length > 0 ? "open-three" : "three",
+      player,
+      cells: group.cells,
+      gains,
+      criticalGains,
+      direction: [dRow, dCol],
+    });
+  }
+  return instances;
+}
+
 export function findPatterns(board: Board, player: Player): PatternInstance[] {
   const read = boardReader(board);
   const size = board.length;
@@ -206,6 +253,7 @@ export function findPatterns(board: Board, player: Player): PatternInstance[] {
   for (const [dRow, dCol] of DIRECTIONS) {
     instances.push(...findFives(read, size, dRow, dCol, player));
     instances.push(...findFours(read, size, dRow, dCol, player));
+    instances.push(...findThrees(read, size, dRow, dCol, player));
   }
   return instances;
 }

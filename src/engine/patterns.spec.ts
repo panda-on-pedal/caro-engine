@@ -69,3 +69,45 @@ describe("findPatterns — four / open-four", () => {
     ).toHaveLength(0);
   });
 });
+
+describe("findPatterns — three / open-three (design doc worked examples)", () => {
+  it("OXXX. classifies as three: only simple fours are reachable", () => {
+    // Width matters here: with WIN_LENGTH=5, "OXXX." (5 cols) has exactly one
+    // sliding window and it contains the O, so nothing would be found at all.
+    // The extra trailing "." gives a second window that excludes the O.
+    const board = parseBoard("OXXX..");
+    const patterns = findPatterns(board, 1);
+    const threes = patterns.filter((p) => p.type === "three");
+    expect(threes).toHaveLength(1);
+    const opens = patterns.filter((p) => p.type === "open-three");
+    expect(opens).toHaveLength(0);
+  });
+
+  it("O.XXX. classifies as open-three: the right end yields two win squares", () => {
+    // Same width issue as above: "O.XXX." (6 cols) has only one O-free
+    // window, which caps the reachable four at one open end (blocked by the
+    // board edge on the other) — never open-four. The extra trailing "."
+    // gives col 5's gain room to open on both flanks.
+    const board = parseBoard("O.XXX..");
+    const patterns = findPatterns(board, 1);
+    const opens = patterns.filter((p) => p.type === "open-three");
+    expect(opens).toHaveLength(1);
+    // Filling col 1 only yields a blocked four (O is beyond it); only col 5 opens up to open-four.
+    expect(opens[0].criticalGains.map((g) => g.col)).toEqual([5]);
+  });
+
+  it("O..XXX. classifies as open-three through the gaps", () => {
+    const board = parseBoard("O..XXX.");
+    const patterns = findPatterns(board, 1);
+    const opens = patterns.filter((p) => p.type === "open-three");
+    expect(opens).toHaveLength(1);
+  });
+
+  it("O.XXXO reports no three: no viable window exists", () => {
+    const board = parseBoard("O.XXXO");
+    const patterns = findPatterns(board, 1);
+    expect(
+      patterns.filter((p) => p.type === "three" || p.type === "open-three"),
+    ).toHaveLength(0);
+  });
+});
