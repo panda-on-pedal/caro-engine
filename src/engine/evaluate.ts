@@ -41,6 +41,20 @@ export function evaluate(board: Board, playerToMove: Player): number {
     return -WIN_SCORE;
   }
 
+  // A "four" or "open-four" for the mover is an unstoppable win: the mover
+  // gets to act right now and simply plays the completing cell before the
+  // opponent gets a turn, regardless of how much material the opponent has
+  // built up. Without this short-circuit, a large opponent open-four
+  // (scored flat at PATTERN_SCORES["open-four"], no tempo discount) could
+  // outweigh the mover's own tempo-multiplied four in the net sum below,
+  // making the search blind to the fact that the opponent's threat never
+  // gets a chance to materialize because the mover already won.
+  if (
+    moverPatterns.some((p) => p.type === "four" || p.type === "open-four")
+  ) {
+    return WIN_SCORE;
+  }
+
   return (
     scorePatterns(moverPatterns, true) - scorePatterns(opponentPatterns, false)
   );
