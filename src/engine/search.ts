@@ -97,13 +97,21 @@ export function orderMoves(
   return [...moves].sort((a, b) => scoreOf(b) - scoreOf(a));
 }
 
+interface NodeCounter {
+  count: number;
+}
+
 function negamax(
   board: Board,
   player: Player,
   depth: number,
   alpha: number,
   beta: number,
+  deadline: number | null,
+  nodeCounter: NodeCounter,
 ): SearchNode {
+  nodeCounter.count += 1;
+
   if (depth === 0) {
     return { score: evaluate(board, player), principalVariation: [] };
   }
@@ -124,6 +132,10 @@ function negamax(
   let currentAlpha = alpha;
 
   for (const move of moves) {
+    if (deadline !== null && Date.now() > deadline) {
+      break;
+    }
+
     const next = placeMove(board, move.row, move.col, player);
     const isWin = checkCaroWin(next, move.row, move.col, player);
 
@@ -136,6 +148,8 @@ function negamax(
             depth - 1,
             -beta,
             -currentAlpha,
+            deadline,
+            nodeCounter,
           );
           return {
             score: -child.score,
@@ -155,6 +169,16 @@ function negamax(
     }
   }
 
+  // If the deadline fired before any move in this node was evaluated,
+  // `best` is still the -Infinity sentinel. A parent frame negates a
+  // child's score (`-child.score`) to fold it into its own comparison,
+  // which would turn an un-evaluated -Infinity into a bogus +Infinity —
+  // a false "forced win" signal. Fall back to a finite static evaluation
+  // instead, matching what a depth-0 leaf would report.
+  if (best.score === -Infinity) {
+    return { score: evaluate(board, player), principalVariation: [] };
+  }
+
   return best;
 }
 
@@ -163,5 +187,77 @@ export function negamaxSearch(
   player: Player,
   depth: number,
 ): SearchNode {
-  return negamax(board, player, depth, -Infinity, Infinity);
+  return negamax(board, player, depth, -Infinity, Infinity, null, {
+    count: 0,
+  });
+}
+
+export interface SearchResult {
+  move: Move;
+  score: number;
+  depth: number;
+  principalVariation: Move[];
+  nodesVisited: number;
+}
+
+export interface SearchConfig {
+  maxDepth: number;
+  timeBudgetMs?: number;
+}
+
+export function search(
+  board: Board,
+  player: Player,
+  config: SearchConfig,
+): SearchResult {
+  const deadline =
+    config.timeBudgetMs !== undefined
+      ? Date.now() + config.timeBudgetMs
+      : null;
+  const nodeCounter: NodeCounter = { count: 0 };
+
+  let bestNode: SearchNode | null = null;
+  let depthReached = 0;
+
+  for (let depth = 1; depth <= config.maxDepth; depth += 1) {
+    if (deadline !== null && Date.now() > deadline) {
+      break;
+    }
+    const result = negamax(
+      board,
+      player,
+      depth,
+      -Infinity,
+      Infinity,
+      deadline,
+      nodeCounter,
+    );
+    if (result.principalVariation.length === 0) {
+      break;
+    }
+    bestNode = result;
+    depthReached = depth;
+    if (Math.abs(result.score) >= WIN_SCORE) {
+      break;
+    }
+  }
+
+  if (bestNode === null) {
+    const fallbackMoves = findCandidateMoves(board);
+    return {
+      move: fallbackMoves[0],
+      score: 0,
+      depth: 0,
+      principalVariation: [],
+      nodesVisited: nodeCounter.count,
+    };
+  }
+
+  return {
+    move: bestNode.principalVariation[0],
+    score: bestNode.score,
+    depth: depthReached,
+    principalVariation: bestNode.principalVariation,
+    nodesVisited: nodeCounter.count,
+  };
 }
