@@ -1,10 +1,14 @@
 // src/engine/narrow.ts
 import {
   findForkPoints,
+  findPatterns,
   type ForkPoint,
   type PatternInstance,
   type PatternType,
 } from "./patterns.ts";
+import type { Board, Player } from "./board.ts";
+import type { Move } from "./state.ts";
+import type { DecayConfig } from "./randomize.ts";
 
 export type ForkPatternName =
   | "double-three-trap"
@@ -93,4 +97,49 @@ export function recognizedForkPoints(
   return allForkPoints.filter((forkPoint) =>
     activeDefs.some((def) => def.matches(forkPoint)),
   );
+}
+
+function otherPlayer(player: Player): Player {
+  return player === 1 ? 2 : 1;
+}
+
+export interface NarrowConfig {
+  recognizedForkPatterns: ReadonlySet<ForkPatternName>;
+  decay: DecayConfig;
+  rng?: () => number;
+}
+
+/**
+ * Selects a small, tactically relevant set of candidate moves instead of
+ * the full raw radius-2 neighborhood, using the pattern catalog that is
+ * already computed once per position. See docs/superpowers/specs/
+ * 2026-07-17-pattern-driven-search-design.md for the full rationale.
+ */
+export function narrowCandidates(
+  board: Board,
+  player: Player,
+  moveCount: number,
+  config: NarrowConfig,
+): Move[] {
+  const opponent = otherPlayer(player);
+  const ownPatterns = findPatterns(board, player);
+  const oppPatterns = findPatterns(board, opponent);
+
+  // Step 1: I can win now.
+  const ownFour = ownPatterns.find(
+    (p) => p.type === "four" || p.type === "open-four",
+  );
+  if (ownFour) {
+    return ownFour.gains;
+  }
+
+  // Step 2: I must block now.
+  const oppFour = oppPatterns.find(
+    (p) => p.type === "four" || p.type === "open-four",
+  );
+  if (oppFour) {
+    return oppFour.gains;
+  }
+
+  return [];
 }

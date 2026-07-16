@@ -3,7 +3,9 @@ import { findForkPoints, findPatterns } from "./patterns.ts";
 import {
   ALL_FORK_PATTERN_NAMES,
   FORK_PATTERNS,
+  narrowCandidates,
   recognizedForkPoints,
+  type NarrowConfig,
 } from "./narrow.ts";
 import { parseBoard } from "./test-helpers/parse-board.ts";
 
@@ -123,5 +125,48 @@ describe("recognizedForkPoints", () => {
       new Set(["double-four-trap"]),
     );
     expect(result).toEqual([]);
+  });
+});
+
+const BASE_CONFIG: NarrowConfig = {
+  recognizedForkPatterns: new Set(),
+  decay: { startDecay: 0.8, minDecay: 0.15, stepDown: 0.05 },
+};
+
+describe("narrowCandidates — forced win/block", () => {
+  it("returns only the gain when the mover already has a completable four", () => {
+    const board = parseBoard("OXXXX.");
+    const result = narrowCandidates(board, 1, 4, BASE_CONFIG);
+    expect(result).toEqual([{ row: 0, col: 5 }]);
+  });
+
+  it("returns only the gain when the mover already has an open four", () => {
+    const board = parseBoard(".XXXX..");
+    const result = narrowCandidates(board, 1, 4, BASE_CONFIG);
+    expect(result.map((m) => `${m.row},${m.col}`).sort()).toEqual(
+      ["0,0", "0,5"].sort(),
+    );
+  });
+
+  it("returns only the blocking gain when the opponent has a completable four", () => {
+    const board = parseBoard("XOOOO.");
+    const result = narrowCandidates(board, 1, 4, BASE_CONFIG);
+    expect(result).toEqual([{ row: 0, col: 5 }]);
+  });
+
+  it("prioritizes the mover's own win over blocking the opponent's four", () => {
+    const board = parseBoard(`
+      .XXXX....
+      .........
+      .OOOO....
+    `);
+    const result = narrowCandidates(board, 1, 6, BASE_CONFIG);
+    // X's own open-four (both ends open) has two gains, (0,0) and (0,5);
+    // only those are returned — the opponent's four at row 2 is
+    // irrelevant once the mover can win immediately, so neither of its
+    // blocking cells appears here.
+    expect(result.map((m) => `${m.row},${m.col}`).sort()).toEqual(
+      ["0,0", "0,5"].sort(),
+    );
   });
 });
