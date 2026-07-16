@@ -143,4 +143,36 @@ describe("orderMoves", () => {
     const ordered = orderMoves(moves, ownPatterns, oppPatterns, forkPoints);
     expect(ordered[0]).toEqual({ row: 0, col: 5 });
   });
+
+  it("prioritizes completing an own four (into a five) over blocking an opponent's four (regression: dead five-tier bug)", () => {
+    // X has an own open four in row 0 (gains at col 0 and col 5); O has an
+    // unrelated open four in row 2 (gains at col 0 and col 5). Both a
+    // move that completes X's own five and a move that blocks O's four
+    // are candidates, at different cells. The move that completes X's own
+    // win must be ranked strictly first: a "five" PatternInstance always
+    // has an empty gains list (see findFives in patterns.ts), so the move
+    // that actually completes an own five shows up as a gain of X's
+    // "four"/"open-four" pattern, not as a gain of a "five" pattern. The
+    // buggy tier order ranked "own five" (a check that can never fire)
+    // above "block opponent four", which meant the real own-four-completion
+    // gain landed in a lower tier than the opponent-block tier and thus
+    // sorted after it.
+    const board = parseBoard(`
+      .XXXX....
+      .........
+      .OOOO....
+    `);
+    const ownPatterns = findPatterns(board, 1);
+    const oppPatterns = findPatterns(board, 2);
+    const forkPoints = new Set(
+      findForkPoints(ownPatterns).map((f) => `${f.move.row},${f.move.col}`),
+    );
+    const moves = [
+      { row: 2, col: 0 }, // blocks O's four
+      { row: 0, col: 0 }, // completes X's own four into a five
+    ];
+
+    const ordered = orderMoves(moves, ownPatterns, oppPatterns, forkPoints);
+    expect(ordered[0]).toEqual({ row: 0, col: 0 });
+  });
 });

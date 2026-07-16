@@ -73,18 +73,15 @@ export function orderMoves(
   const scoreOf = (move: Move): number => {
     const key = `${move.row},${move.col}`;
 
-    if (movesGaining(ownPatterns, "five", key)) {
-      return 6;
-    }
     if (
-      movesGaining(oppPatterns, "four", key) ||
-      movesGaining(oppPatterns, "open-four", key)
+      movesGaining(ownPatterns, "four", key) ||
+      movesGaining(ownPatterns, "open-four", key)
     ) {
       return 5;
     }
     if (
-      movesGaining(ownPatterns, "four", key) ||
-      movesGaining(ownPatterns, "open-four", key)
+      movesGaining(oppPatterns, "four", key) ||
+      movesGaining(oppPatterns, "open-four", key)
     ) {
       return 4;
     }
