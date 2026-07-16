@@ -1,6 +1,12 @@
 import { isLegalMove, placeMove, type Board, type Player } from "./board.ts";
 import { checkCaroWin } from "./rules.ts";
 import { evaluate, WIN_SCORE } from "./evaluate.ts";
+import {
+  findForkPoints,
+  findPatterns,
+  type PatternInstance,
+  type PatternType,
+} from "./patterns.ts";
 import type { Move } from "./state.ts";
 
 const CANDIDATE_RADIUS = 2;
@@ -48,6 +54,52 @@ function otherPlayer(player: Player): Player {
   return player === 1 ? 2 : 1;
 }
 
+function movesGaining(
+  patterns: PatternInstance[],
+  type: PatternType,
+  key: string,
+): boolean {
+  return patterns.some(
+    (p) => p.type === type && p.gains.some((g) => `${g.row},${g.col}` === key),
+  );
+}
+
+export function orderMoves(
+  moves: Move[],
+  ownPatterns: PatternInstance[],
+  oppPatterns: PatternInstance[],
+  forkPoints: ReadonlySet<string>,
+): Move[] {
+  const scoreOf = (move: Move): number => {
+    const key = `${move.row},${move.col}`;
+
+    if (movesGaining(ownPatterns, "five", key)) {
+      return 6;
+    }
+    if (
+      movesGaining(oppPatterns, "four", key) ||
+      movesGaining(oppPatterns, "open-four", key)
+    ) {
+      return 5;
+    }
+    if (
+      movesGaining(ownPatterns, "four", key) ||
+      movesGaining(ownPatterns, "open-four", key)
+    ) {
+      return 4;
+    }
+    if (forkPoints.has(key)) {
+      return 3;
+    }
+    if (movesGaining(ownPatterns, "open-three", key)) {
+      return 2;
+    }
+    return 1;
+  };
+
+  return [...moves].sort((a, b) => scoreOf(b) - scoreOf(a));
+}
+
 function negamax(
   board: Board,
   player: Player,
@@ -59,10 +111,17 @@ function negamax(
     return { score: evaluate(board, player), principalVariation: [] };
   }
 
-  const moves = findCandidateMoves(board);
-  if (moves.length === 0) {
+  const rawMoves = findCandidateMoves(board);
+  if (rawMoves.length === 0) {
     return { score: 0, principalVariation: [] };
   }
+
+  const ownPatterns = findPatterns(board, player);
+  const oppPatterns = findPatterns(board, otherPlayer(player));
+  const forkPoints = new Set(
+    findForkPoints(ownPatterns).map((f) => `${f.move.row},${f.move.col}`),
+  );
+  const moves = orderMoves(rawMoves, ownPatterns, oppPatterns, forkPoints);
 
   let best: SearchNode = { score: -Infinity, principalVariation: [] };
   let currentAlpha = alpha;

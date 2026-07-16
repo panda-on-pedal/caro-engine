@@ -1,4 +1,5 @@
-import { findCandidateMoves, negamaxSearch } from "./search.ts";
+import { findForkPoints, findPatterns } from "./patterns.ts";
+import { findCandidateMoves, negamaxSearch, orderMoves } from "./search.ts";
 import { WIN_SCORE } from "./evaluate.ts";
 import { parseBoard } from "./test-helpers/parse-board.ts";
 
@@ -102,5 +103,44 @@ describe("negamaxSearch", () => {
     const result = negamaxSearch(board, 1, 1);
     expect(Number.isFinite(result.score)).toBe(true);
     expect(result.principalVariation).toHaveLength(1);
+  });
+});
+
+describe("orderMoves", () => {
+  it("puts the move that completes a five first", () => {
+    const board = parseBoard(".XXXX....");
+    const ownPatterns = findPatterns(board, 1);
+    const oppPatterns = findPatterns(board, 2);
+    const forkPoints = new Set(
+      findForkPoints(ownPatterns).map((f) => `${f.move.row},${f.move.col}`),
+    );
+    const moves = [
+      { row: 0, col: 8 },
+      { row: 0, col: 5 },
+      { row: 0, col: 0 },
+    ];
+
+    const ordered = orderMoves(moves, ownPatterns, oppPatterns, forkPoints);
+    expect(ordered[0]).toEqual({ row: 0, col: 5 });
+  });
+
+  it("prioritizes blocking an opponent four over developing an own open-three", () => {
+    const board = parseBoard(`
+      .OOOO....
+      .........
+      .XXX.....
+    `);
+    const ownPatterns = findPatterns(board, 1);
+    const oppPatterns = findPatterns(board, 2);
+    const forkPoints = new Set(
+      findForkPoints(ownPatterns).map((f) => `${f.move.row},${f.move.col}`),
+    );
+    const moves = [
+      { row: 2, col: 4 },
+      { row: 0, col: 5 },
+    ];
+
+    const ordered = orderMoves(moves, ownPatterns, oppPatterns, forkPoints);
+    expect(ordered[0]).toEqual({ row: 0, col: 5 });
   });
 });
