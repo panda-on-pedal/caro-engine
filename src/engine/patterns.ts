@@ -306,3 +306,48 @@ export function findPatterns(board: Board, player: Player): PatternInstance[] {
   }
   return instances;
 }
+
+export interface ForkPoint {
+  move: Move;
+  player: Player;
+  patterns: PatternInstance[];
+}
+
+/**
+ * A fork point is an empty cell that appears in the `criticalGains` of two
+ * or more of the player's patterns in different directions — i.e. a single
+ * move that promotes two separate lines to a more severe tier at once.
+ * `criticalGains` already encodes what "more severe" means per type (four/
+ * open-four completes a five; three/open-three promotes to open-four; two/
+ * open-two promotes to open-three), and is empty for plain two/three
+ * patterns by construction, so no type allow-list is needed here — every
+ * pattern's criticalGains can be scanned uniformly.
+ */
+export function findForkPoints(patterns: PatternInstance[]): ForkPoint[] {
+  const byGain = new Map<string, PatternInstance[]>();
+  for (const pattern of patterns) {
+    for (const gain of pattern.criticalGains) {
+      const key = cellKey(gain);
+      const list = byGain.get(key) ?? [];
+      list.push(pattern);
+      byGain.set(key, list);
+    }
+  }
+
+  const forkPoints: ForkPoint[] = [];
+  for (const [key, list] of byGain) {
+    const directions = new Set(
+      list.map((p) => `${p.direction[0]},${p.direction[1]}`),
+    );
+    if (directions.size < 2) {
+      continue;
+    }
+    const [rowStr, colStr] = key.split(",");
+    forkPoints.push({
+      move: { row: Number(rowStr), col: Number(colStr) },
+      player: list[0].player,
+      patterns: list,
+    });
+  }
+  return forkPoints;
+}

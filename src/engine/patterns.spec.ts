@@ -1,4 +1,4 @@
-import { findPatterns } from "./patterns.ts";
+import { findForkPoints, findPatterns } from "./patterns.ts";
 import { parseBoard } from "./test-helpers/parse-board.ts";
 
 describe("findPatterns — five", () => {
@@ -130,5 +130,81 @@ describe("findPatterns — two / open-two", () => {
     expect(opens).toHaveLength(0);
     const twos = patterns.filter((p) => p.type === "two");
     expect(twos.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("findForkPoints", () => {
+  it("finds a fork point where an open-three and a four (different directions) share a gain", () => {
+    // Horizontal open-three centered so its right-side gain is (2, 5);
+    // vertical four whose single gain is also (2, 5).
+    const board = parseBoard(`
+      .......
+      .......
+      O.XXX..
+      .....X.
+      .....X.
+      .....X.
+      .......
+    `);
+    const patterns = findPatterns(board, 1);
+    const forkPoints = findForkPoints(patterns);
+    const atTarget = forkPoints.filter(
+      (f) => f.move.row === 2 && f.move.col === 5,
+    );
+    expect(atTarget).toHaveLength(1);
+    const directions = new Set(
+      atTarget[0].patterns.map((p) => `${p.direction[0]},${p.direction[1]}`),
+    );
+    expect(directions.size).toBeGreaterThanOrEqual(2);
+  });
+
+  it("finds a double-three fork: two open-twos that each promote to open-three from the same move", () => {
+    // Horizontal open-two at row 2 (cols 3-4) promotes to open-three by
+    // filling (2, 5); vertical open-two at col 5 (rows 1 and 3, split by a
+    // gap) promotes to open-three by filling that same gap at (2, 5).
+    // Neither line is severe yet on its own — this is exactly the shape the
+    // original SEVERE_TYPES-only definition missed.
+    const board = parseBoard(`
+      .......
+      .....X.
+      ...XX..
+      .....X.
+      .......
+    `);
+    const patterns = findPatterns(board, 1);
+    const forkPoints = findForkPoints(patterns);
+    const atTarget = forkPoints.filter(
+      (f) => f.move.row === 2 && f.move.col === 5,
+    );
+    expect(atTarget).toHaveLength(1);
+    expect(atTarget[0].patterns.every((p) => p.type === "open-two")).toBe(
+      true,
+    );
+    const directions = new Set(
+      atTarget[0].patterns.map((p) => `${p.direction[0]},${p.direction[1]}`),
+    );
+    expect(directions.size).toBeGreaterThanOrEqual(2);
+  });
+
+  it("does not report a fork point for a single severe pattern in one direction", () => {
+    const board = parseBoard(".XXXX.");
+    const patterns = findPatterns(board, 1);
+    expect(findForkPoints(patterns)).toEqual([]);
+  });
+
+  it("does not report a fork for a single open-two even though it will promote to open-three", () => {
+    const board = parseBoard("..XX...");
+    const patterns = findPatterns(board, 1);
+    expect(findForkPoints(patterns)).toEqual([]);
+  });
+
+  it("ignores plain two/three patterns when looking for forks", () => {
+    const board = parseBoard(`
+      ..XX...
+      .......
+      ..XX...
+    `);
+    const patterns = findPatterns(board, 1);
+    expect(findForkPoints(patterns)).toEqual([]);
   });
 });
