@@ -1,5 +1,5 @@
 import { BOARD_SIZE } from '../engine/board.ts';
-import { chooseMove } from '../engine/engine.ts';
+import { chooseMove, type Difficulty } from '../engine/engine.ts';
 import { applyMove, deserializeState, newGame, serializeState, type GameState } from '../engine/state.ts';
 
 const STATE_URL = '/api/state';
@@ -9,11 +9,16 @@ const CELL_SIZE_PX = 28;
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
 const boardEl = document.getElementById('board') as HTMLDivElement;
 const newGameButton = document.getElementById('new-game') as HTMLButtonElement;
+const difficultyEl = document.getElementById('difficulty') as HTMLSelectElement;
 
 let state: GameState = newGame();
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function currentDifficulty(): Difficulty {
+  return difficultyEl.value as Difficulty;
 }
 
 async function fetchState(): Promise<GameState> {
@@ -112,7 +117,11 @@ async function handleCellClick(event: MouseEvent): Promise<void> {
 
   if (state.winner === null) {
     await delay(AI_THINK_DELAY_MS);
-    state = applyMove(state, chooseMove(state), 2);
+    state = applyMove(
+      state,
+      chooseMove(state, { difficulty: currentDifficulty() }).move,
+      2,
+    );
   }
   render();
 
