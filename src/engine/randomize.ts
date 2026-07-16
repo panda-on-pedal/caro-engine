@@ -35,3 +35,56 @@ export function decayRateForMoveCount(
     config.startDecay - config.stepDown * moveCount,
   );
 }
+
+/**
+ * Weighted random selection. `rng` defaults to Math.random but is
+ * injectable so callers (tests, replay tooling) can get deterministic
+ * picks from a fixed sequence.
+ */
+export function weightedPick<T>(
+  items: readonly T[],
+  weights: readonly number[],
+  rng: () => number = Math.random,
+): T {
+  if (items.length !== weights.length) {
+    throw new Error("items and weights must have the same length");
+  }
+  if (items.length === 0) {
+    throw new Error("cannot pick from an empty list");
+  }
+
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  let target = rng() * total;
+  for (let i = 0; i < items.length; i += 1) {
+    target -= weights[i];
+    if (target <= 0) {
+      return items[i];
+    }
+  }
+  return items[items.length - 1];
+}
+
+/**
+ * Samples up to `count` distinct items via repeated weighted picks,
+ * removing each picked item (and its weight) before the next draw.
+ */
+export function sampleWithoutReplacement<T>(
+  items: readonly T[],
+  weights: readonly number[],
+  count: number,
+  rng: () => number = Math.random,
+): T[] {
+  const remainingItems = [...items];
+  const remainingWeights = [...weights];
+  const picked: T[] = [];
+
+  while (picked.length < count && remainingItems.length > 0) {
+    const choice = weightedPick(remainingItems, remainingWeights, rng);
+    picked.push(choice);
+    const index = remainingItems.indexOf(choice);
+    remainingItems.splice(index, 1);
+    remainingWeights.splice(index, 1);
+  }
+
+  return picked;
+}
