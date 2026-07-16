@@ -1,5 +1,6 @@
 import { BOARD_SIZE } from '../engine/board.ts';
 import { chooseMove, type Difficulty } from '../engine/engine.ts';
+import { findPatterns } from '../engine/patterns.ts';
 import { applyMove, deserializeState, newGame, serializeState, type GameState } from '../engine/state.ts';
 
 const STATE_URL = '/api/state';
@@ -8,6 +9,8 @@ const CELL_SIZE_PX = 28;
 
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
 const boardEl = document.getElementById('board') as HTMLDivElement;
+const colHeadersEl = document.getElementById('col-headers') as HTMLDivElement;
+const rowHeadersEl = document.getElementById('row-headers') as HTMLDivElement;
 const newGameButton = document.getElementById('new-game') as HTMLButtonElement;
 const difficultyEl = document.getElementById('difficulty') as HTMLSelectElement;
 
@@ -38,6 +41,13 @@ async function saveState(next: GameState): Promise<void> {
 function inkTiltDegrees(row: number, col: number): number {
   const seed = (row * 928371 + col * 129871) % 7;
   return (seed - 3) * 2.5;
+}
+
+/** Debug aid: dumps both players' recognized patterns (win-square counting
+ * over sliding 5-windows) for the current board to the browser console. */
+function logPatterns(current: GameState): void {
+  console.log('[patterns] player 1 (X):', findPatterns(current.board, 1));
+  console.log('[patterns] player 2 (O):', findPatterns(current.board, 2));
 }
 
 function statusText(current: GameState): string {
@@ -79,6 +89,23 @@ function render(): void {
   }
 }
 
+function buildHeaderStrip(container: HTMLDivElement, axis: 'row' | 'col'): void {
+  container.innerHTML = '';
+  if (axis === 'col') {
+    container.style.gridTemplateColumns = `repeat(${BOARD_SIZE}, var(--cell-size))`;
+  } else {
+    container.style.gridTemplateRows = `repeat(${BOARD_SIZE}, var(--cell-size))`;
+  }
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < BOARD_SIZE; i += 1) {
+    const label = document.createElement('div');
+    label.className = 'header-cell';
+    label.textContent = String(i);
+    fragment.appendChild(label);
+  }
+  container.appendChild(fragment);
+}
+
 function buildBoard(): void {
   document.documentElement.style.setProperty('--cell-size', `${CELL_SIZE_PX}px`);
 
@@ -97,6 +124,9 @@ function buildBoard(): void {
     }
   }
   boardEl.appendChild(fragment);
+
+  buildHeaderStrip(colHeadersEl, 'col');
+  buildHeaderStrip(rowHeadersEl, 'row');
 }
 
 async function handleCellClick(event: MouseEvent): Promise<void> {
@@ -114,6 +144,7 @@ async function handleCellClick(event: MouseEvent): Promise<void> {
 
   state = applyMove(state, { row, col }, 1);
   render();
+  logPatterns(state);
 
   if (state.winner === null) {
     await delay(AI_THINK_DELAY_MS);

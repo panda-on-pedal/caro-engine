@@ -91,6 +91,31 @@
       background-image: linear-gradient(180deg, transparent 60%, var(--highlighter) 60%);
     }
 
+    #board-grid {
+      display: grid;
+      grid-template-columns: auto auto;
+      grid-template-rows: auto auto;
+    }
+
+    #board-corner {
+      width: var(--cell-size, 28px);
+      height: var(--cell-size, 28px);
+    }
+
+    #col-headers,
+    #row-headers {
+      display: grid;
+    }
+
+    .header-cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
+      font-size: 9px;
+      color: var(--muted);
+    }
+
     #board {
       display: grid;
       gap: 0;
@@ -191,7 +216,12 @@
     <p class="subtitle">Five in a row</p>
   </div>
   <p id="status">Loading&hellip;</p>
-  <div id="board"></div>
+  <div id="board-grid">
+    <div id="board-corner"></div>
+    <div id="col-headers"></div>
+    <div id="row-headers"></div>
+    <div id="board"></div>
+  </div>
   <div class="controls">
     <select id="difficulty">
       <option value="easy">Easy</option>

@@ -145,6 +145,10 @@ function negamax(
       break;
     }
 
+    console.log(
+      `[search] probe #${nodeCounter.count} depth=${depth} player=${player} cell={row:${move.row}, col:${move.col}}`,
+    );
+
     const next = placeMove(board, move.row, move.col, player);
     const isWin = checkCaroWin(next, move.row, move.col, player);
 
@@ -228,6 +232,12 @@ export function search(
   let bestNode: SearchNode | null = null;
   let depthReached = 0;
 
+  console.log('search', {
+    config,
+    board,
+    player
+  })
+
   for (let depth = 1; depth <= config.maxDepth; depth += 1) {
     if (deadline !== null && Date.now() > deadline) {
       break;
@@ -241,6 +251,7 @@ export function search(
       deadline,
       nodeCounter,
     );
+    console.log('RESULT', result);
     if (result.principalVariation.length === 0) {
       break;
     }
@@ -250,6 +261,8 @@ export function search(
       break;
     }
   }
+
+  console.log('best node', bestNode);
 
   if (bestNode === null) {
     const fallbackMoves = findCandidateMoves(board);
