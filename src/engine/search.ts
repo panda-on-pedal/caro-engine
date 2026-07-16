@@ -116,6 +116,15 @@ function negamax(
     return { score: evaluate(board, player), principalVariation: [] };
   }
 
+  // Check before paying for findCandidateMoves/findPatterns/findForkPoints —
+  // those are expensive per node, so checking only inside the move loop
+  // below lets an already-expired deadline still pay for one full node's
+  // pattern computation before noticing. This bounds the overrun to
+  // whatever's already in flight, not an entire subtree.
+  if (deadline !== null && Date.now() > deadline) {
+    return { score: evaluate(board, player), principalVariation: [] };
+  }
+
   const rawMoves = findCandidateMoves(board);
   if (rawMoves.length === 0) {
     return { score: 0, principalVariation: [] };
