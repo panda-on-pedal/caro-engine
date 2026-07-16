@@ -6,9 +6,50 @@ import {
   type PatternInstance,
   type PatternType,
 } from "./patterns.ts";
-import type { Board, Player } from "./board.ts";
+import { isLegalMove, type Board, type Player } from "./board.ts";
 import type { Move } from "./state.ts";
-import type { DecayConfig } from "./randomize.ts";
+import {
+  decayRateForMoveCount,
+  distanceWeight,
+  sampleWithoutReplacement,
+  type DecayConfig,
+} from "./randomize.ts";
+
+const CANDIDATE_RADIUS = 2;
+
+export function findCandidateMoves(board: Board): Move[] {
+  const candidates = new Map<string, Move>();
+  let hasStone = false;
+
+  for (let row = 0; row < board.length; row += 1) {
+    for (let col = 0; col < board.length; col += 1) {
+      if (board[row][col] === 0) {
+        continue;
+      }
+      hasStone = true;
+      for (let dRow = -CANDIDATE_RADIUS; dRow <= CANDIDATE_RADIUS; dRow += 1) {
+        for (
+          let dCol = -CANDIDATE_RADIUS;
+          dCol <= CANDIDATE_RADIUS;
+          dCol += 1
+        ) {
+          const r = row + dRow;
+          const c = col + dCol;
+          if (isLegalMove(board, r, c)) {
+            candidates.set(`${r},${c}`, { row: r, col: c });
+          }
+        }
+      }
+    }
+  }
+
+  if (!hasStone) {
+    const center = Math.floor(board.length / 2);
+    return [{ row: center, col: center }];
+  }
+
+  return [...candidates.values()];
+}
 
 export type ForkPatternName =
   | "double-three-trap"
@@ -109,6 +150,49 @@ export interface NarrowConfig {
   rng?: () => number;
 }
 
+const QUIET_FALLBACK_SAMPLE_SIZE = 8;
+
+function chebyshevDistance(a: Move, b: Move): number {
+  return Math.max(Math.abs(a.row - b.row), Math.abs(a.col - b.col));
+}
+
+function nearestStoneDistance(board: Board, move: Move): number {
+  let nearest = Infinity;
+  for (let row = 0; row < board.length; row += 1) {
+    for (let col = 0; col < board.length; col += 1) {
+      if (board[row][col] === 0) {
+        continue;
+      }
+      const distance = chebyshevDistance(move, { row, col });
+      if (distance < nearest) {
+        nearest = distance;
+      }
+    }
+  }
+  return nearest;
+}
+
+/** Reorders `moves` via the same weighted-random mechanism used for the
+ * quiet fallback (a full shuffle, since count === moves.length), so a
+ * downstream consumer that takes "the first candidate" (patternOnlyStrategy)
+ * sees variety instead of a fixed Map-insertion-order pick when multiple
+ * moves tie for the same tactical priority. */
+function weightedReorder(
+  board: Board,
+  moves: Move[],
+  moveCount: number,
+  config: NarrowConfig,
+): Move[] {
+  if (moves.length <= 1) {
+    return moves;
+  }
+  const decayRate = decayRateForMoveCount(moveCount, config.decay);
+  const weights = moves.map((move) =>
+    distanceWeight(nearestStoneDistance(board, move), decayRate),
+  );
+  return sampleWithoutReplacement(moves, weights, moves.length, config.rng);
+}
+
 /**
  * Selects a small, tactically relevant set of candidate moves instead of
  * the full raw radius-2 neighborhood, using the pattern catalog that is
@@ -188,8 +272,32 @@ export function narrowCandidates(
   }
 
   if (tacticalMoves.size > 0) {
-    return [...tacticalMoves.values()];
+    return weightedReorder(
+      board,
+      [...tacticalMoves.values()],
+      moveCount,
+      config,
+    );
   }
 
-  return [];
+  // Step 4: quiet fallback — no tactical pattern exists yet (typical in
+  // the opening). Sample a small, distance-weighted subset of the raw
+  // radius-2 neighborhood instead of returning it all, so quiet positions
+  // stay fast and vary between games instead of always resolving to the
+  // same deterministic scan-order pick.
+  const raw = findCandidateMoves(board);
+  if (raw.length <= QUIET_FALLBACK_SAMPLE_SIZE) {
+    return weightedReorder(board, raw, moveCount, config);
+  }
+
+  const decayRate = decayRateForMoveCount(moveCount, config.decay);
+  const weights = raw.map((move) =>
+    distanceWeight(nearestStoneDistance(board, move), decayRate),
+  );
+  return sampleWithoutReplacement(
+    raw,
+    weights,
+    QUIET_FALLBACK_SAMPLE_SIZE,
+    config.rng,
+  );
 }
