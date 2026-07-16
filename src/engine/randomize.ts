@@ -57,7 +57,7 @@ export function weightedPick<T>(
   let target = rng() * total;
   for (let i = 0; i < items.length; i += 1) {
     target -= weights[i];
-    if (target <= 0) {
+    if (target < 0) {
       return items[i];
     }
   }

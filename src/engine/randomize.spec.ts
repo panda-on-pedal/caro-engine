@@ -72,6 +72,15 @@ describe("weightedPick", () => {
     expect(result).toBe("b");
   });
 
+  it("never picks a leading zero-weight item even at the exact rng()=0 boundary", () => {
+    // Regression: a `target <= 0` check (instead of `target < 0`) lets the
+    // very first item's zero-width interval "catch" target=0, wrongly
+    // selecting a weight-0 item. rng()=0 is squarely inside Math.random()'s
+    // real [0, 1) range, so this must route to the next positive-weight item.
+    const result = weightedPick(["a", "b"], [0, 1], () => 0);
+    expect(result).toBe("b");
+  });
+
   it("throws when items and weights have different lengths", () => {
     expect(() => weightedPick(["a"], [1, 2])).toThrow();
   });
