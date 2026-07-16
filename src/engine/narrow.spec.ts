@@ -170,3 +170,65 @@ describe("narrowCandidates — forced win/block", () => {
     );
   });
 });
+
+describe("narrowCandidates — tactical set", () => {
+  it("includes the own open-three's extension cells", () => {
+    const board = parseBoard("..XXX..");
+    const result = narrowCandidates(board, 1, 3, BASE_CONFIG);
+    const keys = result.map((m) => `${m.row},${m.col}`).sort();
+    expect(keys).toEqual(["0,1", "0,5"].sort());
+  });
+
+  it("includes the opponent's open-three's blocking cells", () => {
+    const board = parseBoard("..OOO..");
+    const result = narrowCandidates(board, 1, 3, BASE_CONFIG);
+    const keys = result.map((m) => `${m.row},${m.col}`).sort();
+    expect(keys).toEqual(["0,1", "0,5"].sort());
+  });
+
+  it("includes a recognized fork point (offense)", () => {
+    const board = parseBoard(`
+      .......
+      .....X.
+      ...XX..
+      .....X.
+      .......
+    `);
+    const config: NarrowConfig = {
+      ...BASE_CONFIG,
+      recognizedForkPatterns: new Set(["double-three-trap"]),
+    };
+    const result = narrowCandidates(board, 1, 4, config);
+    expect(
+      result.some((m) => m.row === 2 && m.col === 5),
+    ).toBe(true);
+  });
+
+  it("does not include an unrecognized fork point", () => {
+    const board = parseBoard(`
+      .......
+      .....X.
+      ...XX..
+      .....X.
+      .......
+    `);
+    const result = narrowCandidates(board, 1, 4, BASE_CONFIG); // empty recognizedForkPatterns
+    expect(result.some((m) => m.row === 2 && m.col === 5)).toBe(false);
+  });
+
+  it("includes a recognized fork point built by the opponent (defense)", () => {
+    const board = parseBoard(`
+      .......
+      .....O.
+      ...OO..
+      .....O.
+      .......
+    `);
+    const config: NarrowConfig = {
+      ...BASE_CONFIG,
+      recognizedForkPatterns: new Set(["double-three-trap"]),
+    };
+    const result = narrowCandidates(board, 1, 4, config);
+    expect(result.some((m) => m.row === 2 && m.col === 5)).toBe(true);
+  });
+});

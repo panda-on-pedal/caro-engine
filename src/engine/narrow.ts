@@ -141,5 +141,55 @@ export function narrowCandidates(
     return oppFour.gains;
   }
 
+  // Step 3: tactical set — fork points (offense and defense) and
+  // open-three extensions/blocks, deduplicated by cell.
+  const tacticalMoves = new Map<string, Move>();
+
+  const addAll = (moves: Move[]) => {
+    for (const move of moves) {
+      tacticalMoves.set(`${move.row},${move.col}`, move);
+    }
+  };
+
+  for (const forkPoint of recognizedForkPoints(
+    ownPatterns,
+    config.recognizedForkPatterns,
+  )) {
+    tacticalMoves.set(
+      `${forkPoint.move.row},${forkPoint.move.col}`,
+      forkPoint.move,
+    );
+  }
+  for (const forkPoint of recognizedForkPoints(
+    oppPatterns,
+    config.recognizedForkPatterns,
+  )) {
+    tacticalMoves.set(
+      `${forkPoint.move.row},${forkPoint.move.col}`,
+      forkPoint.move,
+    );
+  }
+  // Use criticalGains, not gains: an open-three's raw `gains` list includes
+  // every gap cell from every viable 5-window containing its stones — for
+  // a widely-padded three like "..XXX..", that's 4 cells (verified
+  // empirically), not just the 2 that actually extend it toward an
+  // open-four. criticalGains is exactly "the subset that promotes this
+  // line to the next severity tier" (patterns.ts's own definition), which
+  // is what a tactical candidate set should mean here.
+  for (const pattern of ownPatterns) {
+    if (pattern.type === "open-three") {
+      addAll(pattern.criticalGains);
+    }
+  }
+  for (const pattern of oppPatterns) {
+    if (pattern.type === "open-three") {
+      addAll(pattern.criticalGains);
+    }
+  }
+
+  if (tacticalMoves.size > 0) {
+    return [...tacticalMoves.values()];
+  }
+
   return [];
 }
