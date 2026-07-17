@@ -200,3 +200,72 @@ describe("pluggable move-selection strategy", () => {
     expect(result.move).toEqual({ row: 0, col: 5 });
   });
 });
+
+describe("regression: manual playtesting findings (2026-07-16 session)", () => {
+  it("blocks an open three even with nothing better to do", () => {
+    // The exact scenario found during manual play: the opponent has an
+    // open three and the engine has one unrelated stone. Previously the
+    // engine's candidate loop could exhaust its time budget before ever
+    // reaching the blocking cells (scan-order dependent); narrowCandidates
+    // makes blocking part of the tactical set unconditionally.
+    const board = parseBoard(`
+      ....................
+      ....................
+      ....................
+      ...XXX..............
+      ....................
+      ..O.................
+      ....................
+    `);
+    const result = search(board, 2, { maxDepth: 4, timeBudgetMs: 2000 });
+    const blocksLeft = result.move.row === 3 && result.move.col === 2;
+    const blocksRight = result.move.row === 3 && result.move.col === 6;
+    expect(blocksLeft || blocksRight).toBe(true);
+  });
+
+  it("does not always play the same relative first move", () => {
+    const positions: Array<[number, number]> = [
+      [5, 5],
+      [12, 3],
+      [15, 15],
+    ];
+    const offsets = new Set<string>();
+    for (const [row, col] of positions) {
+      const board = createBoardWithSingleStone(row, col);
+      const result = search(board, 2, { maxDepth: 2, timeBudgetMs: 500 });
+      offsets.add(`${result.move.row - row},${result.move.col - col}`);
+    }
+    expect(offsets.size).toBeGreaterThan(1);
+  });
+
+  it("patternOnlyStrategy alone (no negamax) also blocks the same open three", () => {
+    const board = parseBoard(`
+      ....................
+      ....................
+      ....................
+      ...XXX..............
+      ....................
+      ..O.................
+      ....................
+    `);
+    const result = search(
+      board,
+      2,
+      { maxDepth: 4 },
+      patternOnlyStrategy,
+    );
+    expect(result.nodesVisited).toBe(0);
+    const blocksLeft = result.move.row === 3 && result.move.col === 2;
+    const blocksRight = result.move.row === 3 && result.move.col === 6;
+    expect(blocksLeft || blocksRight).toBe(true);
+  });
+});
+
+function createBoardWithSingleStone(row: number, col: number) {
+  const size = 20;
+  const board = Array.from({ length: size }, () =>
+    Array<0 | 1 | 2>(size).fill(0),
+  );
+  board[row][col] = 1;
+  return board;
+}
