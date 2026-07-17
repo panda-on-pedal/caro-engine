@@ -181,11 +181,19 @@ export interface SearchConfig {
   decay?: DecayConfig;
 }
 
-export function search(
+export type MoveSelectionStrategy = (
   board: Board,
   player: Player,
+  candidates: Move[],
   config: SearchConfig,
-): SearchResult {
+) => SearchResult;
+
+export const negamaxStrategy: MoveSelectionStrategy = (
+  board,
+  player,
+  candidates,
+  config,
+) => {
   const deadline =
     config.timeBudgetMs !== undefined
       ? Date.now() + config.timeBudgetMs
@@ -201,6 +209,13 @@ export function search(
     if (deadline !== null && Date.now() > deadline) {
       break;
     }
+    // Reuse negamax's existing loop/pruning logic rather than
+    // reimplementing it here — `candidates` (the exact pre-narrowed set
+    // `search()` computed once) is threaded through as `rootMoves`, so
+    // this call searches precisely those moves instead of recomputing
+    // (and potentially re-rolling a different weighted-random order for)
+    // its own candidate set. Deeper recursive calls inside `negamax` omit
+    // `rootMoves` and narrow normally at every subsequent node.
     const result = negamax(
       board,
       player,
@@ -211,6 +226,7 @@ export function search(
       nodeCounter,
       moveCount,
       narrowConfig,
+      candidates,
     );
     if (result.principalVariation.length === 0) {
       break;
@@ -223,9 +239,8 @@ export function search(
   }
 
   if (bestNode === null) {
-    const fallbackMoves = findCandidateMoves(board);
     return {
-      move: fallbackMoves[0],
+      move: candidates[0],
       score: 0,
       depth: 0,
       principalVariation: [],
@@ -240,4 +255,43 @@ export function search(
     principalVariation: bestNode.principalVariation,
     nodesVisited: nodeCounter.count,
   };
+};
+
+/** Zero-lookahead: takes narrowing's top candidate directly, with no
+ * verification search. For testing narrowCandidates in isolation and as
+ * a template for future alternative strategies. */
+export const patternOnlyStrategy: MoveSelectionStrategy = (
+  _board,
+  _player,
+  candidates,
+) => ({
+  move: candidates[0],
+  score: 0,
+  depth: 0,
+  principalVariation: [candidates[0]],
+  nodesVisited: 0,
+});
+
+export function search(
+  board: Board,
+  player: Player,
+  config: SearchConfig,
+  strategy: MoveSelectionStrategy = negamaxStrategy,
+): SearchResult {
+  const narrowConfig = resolveNarrowConfig(config);
+  const moveCount = countStones(board);
+  const candidates = narrowCandidates(board, player, moveCount, narrowConfig);
+
+  if (candidates.length === 0) {
+    const fallbackMoves = findCandidateMoves(board);
+    return {
+      move: fallbackMoves[0],
+      score: 0,
+      depth: 0,
+      principalVariation: [],
+      nodesVisited: 0,
+    };
+  }
+
+  return strategy(board, player, candidates, config);
 }

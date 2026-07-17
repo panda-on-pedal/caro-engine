@@ -1,4 +1,10 @@
-import { negamaxSearch, search } from "./search.ts";
+import {
+  negamaxSearch,
+  negamaxStrategy,
+  patternOnlyStrategy,
+  search,
+  type MoveSelectionStrategy,
+} from "./search.ts";
 import { WIN_SCORE } from "./evaluate.ts";
 import { parseBoard } from "./test-helpers/parse-board.ts";
 
@@ -141,4 +147,56 @@ describe("search", () => {
     const result = search(board, 1, { maxDepth: 6, timeBudgetMs: 15000 });
     expect(result.score).toBeGreaterThanOrEqual(9_000_000);
   }, 20000);
+});
+
+describe("pluggable move-selection strategy", () => {
+  it("defaults to negamaxStrategy, which explores multiple nodes", () => {
+    const board = parseBoard(`
+      .....
+      .....
+      ..X..
+      .....
+      .....
+    `);
+    const result = search(board, 2, { maxDepth: 2 });
+    expect(result.nodesVisited).toBeGreaterThan(1);
+    expect(typeof negamaxStrategy).toBe("function");
+  });
+
+  it("patternOnlyStrategy takes narrowing's top pick with zero search overhead", () => {
+    const board = parseBoard("OXXXX.");
+    const result = search(
+      board,
+      1,
+      { maxDepth: 4 },
+      patternOnlyStrategy,
+    );
+    expect(result.move).toEqual({ row: 0, col: 5 });
+    expect(result.nodesVisited).toBe(0);
+  });
+
+  it("a custom strategy can be substituted without touching narrowCandidates", () => {
+    const alwaysFirstCandidate: MoveSelectionStrategy = (
+      _board,
+      _player,
+      candidates,
+    ) => ({
+      move: candidates[0],
+      score: 0,
+      depth: 0,
+      principalVariation: [candidates[0]],
+      nodesVisited: 0,
+    });
+    const board = parseBoard("OXXXX.");
+    const result = search(
+      board,
+      1,
+      { maxDepth: 4 },
+      alwaysFirstCandidate,
+    );
+    // Forced-block narrowing still yields exactly one candidate here, so
+    // "always take the first" and "negamax" agree — the point of this
+    // test is that a hand-rolled strategy function works at all.
+    expect(result.move).toEqual({ row: 0, col: 5 });
+  });
 });
