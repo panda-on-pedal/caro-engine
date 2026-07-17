@@ -8,10 +8,19 @@ import {
 } from "./board.ts";
 import { checkCaroWin } from "./rules.ts";
 import { search, type SearchConfig } from "./search.ts";
+import { ALL_FORK_PATTERN_NAMES } from "./narrow.ts";
 
 const SMALL_BOARD_SIZE = 11;
-const EASY_CONFIG: SearchConfig = { maxDepth: 2, timeBudgetMs: 200 };
-const HARD_CONFIG: SearchConfig = { maxDepth: 6, timeBudgetMs: 800 };
+const EASY_CONFIG: SearchConfig = {
+  maxDepth: 2,
+  timeBudgetMs: 200,
+  recognizedForkPatterns: new Set(),
+};
+const HARD_CONFIG: SearchConfig = {
+  maxDepth: 6,
+  timeBudgetMs: 800,
+  recognizedForkPatterns: ALL_FORK_PATTERN_NAMES,
+};
 const MAX_MOVES = SMALL_BOARD_SIZE * SMALL_BOARD_SIZE;
 
 function otherPlayer(player: Player): Player {
