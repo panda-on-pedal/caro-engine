@@ -1,20 +1,22 @@
+// src/engine/search.ts
 import { placeMove, type Board, type Player } from "./board.ts";
 import { checkCaroWin } from "./rules.ts";
 import { evaluate, WIN_SCORE } from "./evaluate.ts";
 import {
-  findForkPoints,
-  findPatterns,
-  type PatternInstance,
-  type PatternType,
-} from "./patterns.ts";
+  ALL_FORK_PATTERN_NAMES,
+  findCandidateMoves,
+  narrowCandidates,
+  type ForkPatternName,
+  type NarrowConfig,
+} from "./narrow.ts";
+import type { DecayConfig } from "./randomize.ts";
 import type { Move } from "./state.ts";
 
-// Temporary bridge: findCandidateMoves moved to narrow.ts (Task 6) so it
-// sits below search.ts in the dependency chain. Re-exported here only to
-// keep search.spec.ts compiling until Task 7 rewrites search.ts to import
-// it directly from narrow.ts.
-export { findCandidateMoves } from "./narrow.ts";
-import { findCandidateMoves } from "./narrow.ts";
+export const DEFAULT_DECAY_CONFIG: DecayConfig = {
+  startDecay: 0.8,
+  minDecay: 0.15,
+  stepDown: 0.05,
+};
 
 interface SearchNode {
   score: number;
@@ -23,49 +25,6 @@ interface SearchNode {
 
 function otherPlayer(player: Player): Player {
   return player === 1 ? 2 : 1;
-}
-
-function movesGaining(
-  patterns: PatternInstance[],
-  type: PatternType,
-  key: string,
-): boolean {
-  return patterns.some(
-    (p) => p.type === type && p.gains.some((g) => `${g.row},${g.col}` === key),
-  );
-}
-
-export function orderMoves(
-  moves: Move[],
-  ownPatterns: PatternInstance[],
-  oppPatterns: PatternInstance[],
-  forkPoints: ReadonlySet<string>,
-): Move[] {
-  const scoreOf = (move: Move): number => {
-    const key = `${move.row},${move.col}`;
-
-    if (
-      movesGaining(ownPatterns, "four", key) ||
-      movesGaining(ownPatterns, "open-four", key)
-    ) {
-      return 5;
-    }
-    if (
-      movesGaining(oppPatterns, "four", key) ||
-      movesGaining(oppPatterns, "open-four", key)
-    ) {
-      return 4;
-    }
-    if (forkPoints.has(key)) {
-      return 3;
-    }
-    if (movesGaining(ownPatterns, "open-three", key)) {
-      return 2;
-    }
-    return 1;
-  };
-
-  return [...moves].sort((a, b) => scoreOf(b) - scoreOf(a));
 }
 
 interface NodeCounter {
@@ -80,6 +39,9 @@ function negamax(
   beta: number,
   deadline: number | null,
   nodeCounter: NodeCounter,
+  moveCount: number,
+  narrowConfig: NarrowConfig,
+  rootMoves?: Move[],
 ): SearchNode {
   nodeCounter.count += 1;
 
@@ -87,26 +49,24 @@ function negamax(
     return { score: evaluate(board, player), principalVariation: [] };
   }
 
-  // Check before paying for findCandidateMoves/findPatterns/findForkPoints —
-  // those are expensive per node, so checking only inside the move loop
-  // below lets an already-expired deadline still pay for one full node's
-  // pattern computation before noticing. This bounds the overrun to
-  // whatever's already in flight, not an entire subtree.
+  // Check before paying for narrowCandidates' pattern computation — see
+  // the deadline-precision note this comment replaces below.
   if (deadline !== null && Date.now() > deadline) {
     return { score: evaluate(board, player), principalVariation: [] };
   }
 
-  const rawMoves = findCandidateMoves(board);
-  if (rawMoves.length === 0) {
+  // `rootMoves`, when provided, is the exact pre-narrowed candidate set a
+  // MoveSelectionStrategy (Task 8) already computed once via
+  // narrowCandidates before invoking this search — reusing it here (rather
+  // than recomputing) avoids both duplicating this loop in the strategy
+  // and silently re-rolling narrowCandidates' weighted-random reordering
+  // into a different order than what the strategy actually received.
+  // Every recursive call omits it, so deeper plies compute their own
+  // candidates as normal.
+  const moves = rootMoves ?? narrowCandidates(board, player, moveCount, narrowConfig);
+  if (moves.length === 0) {
     return { score: 0, principalVariation: [] };
   }
-
-  const ownPatterns = findPatterns(board, player);
-  const oppPatterns = findPatterns(board, otherPlayer(player));
-  const forkPoints = new Set(
-    findForkPoints(ownPatterns).map((f) => `${f.move.row},${f.move.col}`),
-  );
-  const moves = orderMoves(rawMoves, ownPatterns, oppPatterns, forkPoints);
 
   let best: SearchNode = { score: -Infinity, principalVariation: [] };
   let currentAlpha = alpha;
@@ -115,10 +75,6 @@ function negamax(
     if (deadline !== null && Date.now() > deadline) {
       break;
     }
-
-    console.log(
-      `[search] probe #${nodeCounter.count} depth=${depth} player=${player} cell={row:${move.row}, col:${move.col}}`,
-    );
 
     const next = placeMove(board, move.row, move.col, player);
     const isWin = checkCaroWin(next, move.row, move.col, player);
@@ -134,6 +90,8 @@ function negamax(
             -currentAlpha,
             deadline,
             nodeCounter,
+            moveCount + 1,
+            narrowConfig,
           );
           return {
             score: -child.score,
@@ -166,14 +124,46 @@ function negamax(
   return best;
 }
 
+function resolveNarrowConfig(config: SearchConfig): NarrowConfig {
+  return {
+    recognizedForkPatterns:
+      config.recognizedForkPatterns ?? ALL_FORK_PATTERN_NAMES,
+    decay: config.decay ?? DEFAULT_DECAY_CONFIG,
+  };
+}
+
+function countStones(board: Board): number {
+  let count = 0;
+  for (const row of board) {
+    for (const cell of row) {
+      if (cell !== 0) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
 export function negamaxSearch(
   board: Board,
   player: Player,
   depth: number,
 ): SearchNode {
-  return negamax(board, player, depth, -Infinity, Infinity, null, {
-    count: 0,
-  });
+  const narrowConfig: NarrowConfig = {
+    recognizedForkPatterns: ALL_FORK_PATTERN_NAMES,
+    decay: DEFAULT_DECAY_CONFIG,
+  };
+  return negamax(
+    board,
+    player,
+    depth,
+    -Infinity,
+    Infinity,
+    null,
+    { count: 0 },
+    countStones(board),
+    narrowConfig,
+  );
 }
 
 export interface SearchResult {
@@ -187,6 +177,8 @@ export interface SearchResult {
 export interface SearchConfig {
   maxDepth: number;
   timeBudgetMs?: number;
+  recognizedForkPatterns?: ReadonlySet<ForkPatternName>;
+  decay?: DecayConfig;
 }
 
 export function search(
@@ -199,15 +191,11 @@ export function search(
       ? Date.now() + config.timeBudgetMs
       : null;
   const nodeCounter: NodeCounter = { count: 0 };
+  const narrowConfig = resolveNarrowConfig(config);
+  const moveCount = countStones(board);
 
   let bestNode: SearchNode | null = null;
   let depthReached = 0;
-
-  console.log('search', {
-    config,
-    board,
-    player
-  })
 
   for (let depth = 1; depth <= config.maxDepth; depth += 1) {
     if (deadline !== null && Date.now() > deadline) {
@@ -221,8 +209,9 @@ export function search(
       Infinity,
       deadline,
       nodeCounter,
+      moveCount,
+      narrowConfig,
     );
-    console.log('RESULT', result);
     if (result.principalVariation.length === 0) {
       break;
     }
@@ -232,8 +221,6 @@ export function search(
       break;
     }
   }
-
-  console.log('best node', bestNode);
 
   if (bestNode === null) {
     const fallbackMoves = findCandidateMoves(board);
