@@ -11,6 +11,8 @@ export type Difficulty = "easy" | "medium" | "hard";
 export interface EngineConfig {
   difficulty: Difficulty;
   timeBudgetMs?: number;
+  /** Override the difficulty's default root-score jitter (0 disables). */
+  rootScoreJitter?: number;
 }
 
 const DIFFICULTY_DEPTH: Record<Difficulty, number> = {
@@ -43,6 +45,17 @@ const DIFFICULTY_FORK_PATTERNS: Record<
   hard: ALL_FORK_PATTERN_NAMES,
 };
 
+// Root-score jitter per difficulty: near-equal root candidates (search
+// scores within the fraction of each other) become interchangeable, so
+// repeated games don't replay identical lines. Easier levels wobble more
+// (feels more human); hard stays close to its best move. Forced win/loss
+// choices are never affected (see SearchConfig.rootScoreJitter).
+const DIFFICULTY_ROOT_JITTER: Record<Difficulty, number> = {
+  easy: 0.15,
+  medium: 0.1,
+  hard: 0.05,
+};
+
 const DEFAULT_CONFIG: EngineConfig = { difficulty: "medium" };
 
 /**
@@ -62,5 +75,7 @@ export function chooseMove(
     timeBudgetMs,
     recognizedForkPatterns: DIFFICULTY_FORK_PATTERNS[config.difficulty],
     decay: DEFAULT_DECAY_CONFIG,
+    rootScoreJitter:
+      config.rootScoreJitter ?? DIFFICULTY_ROOT_JITTER[config.difficulty],
   });
 }

@@ -10,6 +10,7 @@ import {
   type NarrowConfig,
 } from "./narrow.ts";
 import type { DecayConfig } from "./randomize.ts";
+import { logger } from "../utils/logger.ts";
 import type { Move } from "./state.ts";
 
 export const DEFAULT_DECAY_CONFIG: DecayConfig = {
@@ -42,6 +43,7 @@ function negamax(
   moveCount: number,
   narrowConfig: NarrowConfig,
   rootMoves?: Move[],
+  rootJitter?: (score: number) => number,
 ): SearchNode {
   nodeCounter.count += 1;
 
@@ -63,12 +65,18 @@ function negamax(
   // into a different order than what the strategy actually received.
   // Every recursive call omits it, so deeper plies compute their own
   // candidates as normal.
-  const moves = rootMoves ?? narrowCandidates(board, player, moveCount, narrowConfig);
+  const moves =
+    rootMoves ??
+    narrowCandidates(board, player, moveCount, narrowConfig).moves;
   if (moves.length === 0) {
     return { score: 0, principalVariation: [] };
   }
 
   let best: SearchNode = { score: -Infinity, principalVariation: [] };
+  // Best-move selection can be jittered (root only); alpha-beta and the
+  // reported score always use true scores, so pruning stays sound and
+  // callers see the chosen move's real evaluation.
+  let bestCompare = -Infinity;
   let currentAlpha = alpha;
 
   for (const move of moves) {
@@ -99,7 +107,9 @@ function negamax(
           };
         })();
 
-    if (node.score > best.score) {
+    const compareScore = rootJitter ? rootJitter(node.score) : node.score;
+    if (compareScore > bestCompare) {
+      bestCompare = compareScore;
       best = {
         score: node.score,
         principalVariation: [move, ...node.principalVariation],
@@ -129,6 +139,7 @@ function resolveNarrowConfig(config: SearchConfig): NarrowConfig {
     recognizedForkPatterns:
       config.recognizedForkPatterns ?? ALL_FORK_PATTERN_NAMES,
     decay: config.decay ?? DEFAULT_DECAY_CONFIG,
+    rng: config.rng,
   };
 }
 
@@ -179,6 +190,36 @@ export interface SearchConfig {
   timeBudgetMs?: number;
   recognizedForkPatterns?: ReadonlySet<ForkPatternName>;
   decay?: DecayConfig;
+  /**
+   * Fraction (e.g. 0.1 = ±10%) by which each ROOT candidate's final
+   * search score is randomly perturbed before the best-move comparison,
+   * so near-equal candidates (say 200 vs 190) become interchangeable and
+   * the engine feels dynamic instead of replaying the identical move in
+   * identical positions. Applied only at the root and only to the move
+   * choice — alpha-beta pruning and the reported score use true scores,
+   * and forced win/loss scores (|score| >= WIN_SCORE) are never
+   * perturbed. Default 0 (off).
+   */
+  rootScoreJitter?: number;
+  /** Random stream for jitter and quiet-move sampling. Defaults to
+   * Math.random; inject a seeded stream for deterministic tests. */
+  rng?: () => number;
+}
+
+/**
+ * `score * (1 ± fraction)`, sign-preserving, using one `rng` draw.
+ * Forced outcomes (|score| >= WIN_SCORE) pass through untouched — jitter
+ * must never flip a known win/loss into anything else.
+ */
+export function jitteredScore(
+  score: number,
+  fraction: number,
+  rng: () => number,
+): number {
+  if (fraction <= 0 || Math.abs(score) >= WIN_SCORE) {
+    return score;
+  }
+  return score * (1 + (rng() * 2 - 1) * fraction);
 }
 
 export type MoveSelectionStrategy = (
@@ -201,6 +242,12 @@ export const negamaxStrategy: MoveSelectionStrategy = (
   const nodeCounter: NodeCounter = { count: 0 };
   const narrowConfig = resolveNarrowConfig(config);
   const moveCount = countStones(board);
+  const jitterFraction = config.rootScoreJitter ?? 0;
+  const rng = config.rng ?? Math.random;
+  const rootJitter =
+    jitterFraction > 0
+      ? (score: number) => jitteredScore(score, jitterFraction, rng)
+      : undefined;
 
   let bestNode: SearchNode | null = null;
   let depthReached = 0;
@@ -227,6 +274,7 @@ export const negamaxStrategy: MoveSelectionStrategy = (
       moveCount,
       narrowConfig,
       candidates,
+      rootJitter,
     );
     if (result.principalVariation.length === 0) {
       break;
@@ -276,13 +324,13 @@ export function search(
   board: Board,
   player: Player,
   config: SearchConfig,
-  strategy: MoveSelectionStrategy = negamaxStrategy,
+  strategy?: MoveSelectionStrategy,
 ): SearchResult {
   const narrowConfig = resolveNarrowConfig(config);
   const moveCount = countStones(board);
-  const candidates = narrowCandidates(board, player, moveCount, narrowConfig);
+  const narrowed = narrowCandidates(board, player, moveCount, narrowConfig);
 
-  if (candidates.length === 0) {
+  if (narrowed.moves.length === 0) {
     const fallbackMoves = findCandidateMoves(board);
     return {
       move: fallbackMoves[0],
@@ -293,5 +341,30 @@ export function search(
     };
   }
 
-  return strategy(board, player, candidates, config);
+  // A single candidate (any source — forced, a lone tactical fork point
+  // like catalog #7/#9, or quiet) has nothing to compare against: play it
+  // directly instead of paying for a negamax search whose root loop would
+  // only ever visit one move anyway.
+  const resolvedStrategy =
+    strategy ??
+    (narrowed.moves.length === 1 || narrowed.source === "quiet"
+      ? patternOnlyStrategy
+      : negamaxStrategy);
+
+  // Debug: root (depth-1) candidate set and search order.
+  logger.log("[search] root candidates", {
+    player,
+    moveCount,
+    source: narrowed.source,
+    strategy:
+      resolvedStrategy === patternOnlyStrategy
+        ? "patternOnly"
+        : resolvedStrategy === negamaxStrategy
+          ? "negamax"
+          : "custom",
+    count: narrowed.moves.length,
+    moves: narrowed.moves.map((m) => `${m.row},${m.col}`),
+  });
+
+  return resolvedStrategy(board, player, narrowed.moves, config);
 }

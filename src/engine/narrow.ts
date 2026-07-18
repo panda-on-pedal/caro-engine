@@ -6,7 +6,13 @@ import {
   type PatternInstance,
   type PatternType,
 } from "./patterns.ts";
-import { isLegalMove, type Board, type Player } from "./board.ts";
+import {
+  isLegalMove,
+  placeMove,
+  type Board,
+  type Player,
+} from "./board.ts";
+import { checkCaroWin } from "./rules.ts";
 import type { Move } from "./state.ts";
 import {
   decayRateForMoveCount,
@@ -14,6 +20,11 @@ import {
   sampleWithoutReplacement,
   type DecayConfig,
 } from "./randomize.ts";
+import {
+  DEFAULT_TOP_K,
+  selectTopMoves,
+  selectTopMovesTiered,
+} from "./rankMoves.ts";
 
 const CANDIDATE_RADIUS = 2;
 
@@ -144,10 +155,100 @@ function otherPlayer(player: Player): Player {
   return player === 1 ? 2 : 1;
 }
 
+/**
+ * For a "four" pattern blocked on one end (a single gain completes it),
+ * the cell one step *beyond* that gain — continuing the same run
+ * direction — is an equally valid block: Caro voids a five blocked on
+ * both ends, so occupying this "box" cell now means the eventual five
+ * (if the attacker still plays the gain later) never counts as a win.
+ * patterns.ts's own gain-scanning never surfaces this cell (it only
+ * looks at gaps *inside* viable windows, and this cell sits just
+ * outside the pattern's stones), so it has to be computed here.
+ * Returns null for "open-four" (both ends already open — boxing one
+ * side leaves the other fully live, so it doesn't help) or when the
+ * box cell is off-board/already occupied.
+ */
+function boxCell(pattern: PatternInstance, board: Board): Move | null {
+  if (pattern.type !== "four" || pattern.gains.length !== 1) {
+    return null;
+  }
+  const [dRow, dCol] = pattern.direction;
+  const gain = pattern.gains[0];
+  const first = pattern.cells[0];
+  const last = pattern.cells[pattern.cells.length - 1];
+
+  let box: Move;
+  if (gain.row === first.row - dRow && gain.col === first.col - dCol) {
+    box = { row: gain.row - dRow, col: gain.col - dCol };
+  } else if (gain.row === last.row + dRow && gain.col === last.col + dCol) {
+    box = { row: gain.row + dRow, col: gain.col + dCol };
+  } else {
+    return null;
+  }
+  return isLegalMove(board, box.row, box.col) ? box : null;
+}
+
+/**
+ * True when `attacker` can complete a valid Caro five with a single move —
+ * i.e. some four/open-four gain passes `checkCaroWin` (which already
+ * rejects boxed fives, so a completion whose both ends are blocked does
+ * not count).
+ */
+function hasImmediateWin(board: Board, attacker: Player): boolean {
+  for (const pattern of findPatterns(board, attacker)) {
+    if (pattern.type !== "four" && pattern.type !== "open-four") {
+      continue;
+    }
+    for (const gain of pattern.gains) {
+      const next = placeMove(board, gain.row, gain.col, attacker);
+      if (checkCaroWin(next, gain.row, gain.col, attacker)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Futility filter for the forced block tier: a candidate block only
+ * counts if, after playing it, the attacker no longer has an immediate
+ * winning completion. Blocking one end of a true open four provably
+ * fails (the other completion is a five blocked on at most one end,
+ * which Caro accepts), while a block that boxes or takes the only live
+ * gain survives. Type inspection alone can't decide this — an open four
+ * IS stoppable when an outer cell is already blocked (boxed five, e.g.
+ * catalog #6) — so each candidate is simulated.
+ */
+function survivingBlocks(
+  board: Board,
+  defender: Player,
+  attacker: Player,
+  candidates: Move[],
+): Move[] {
+  return candidates.filter(
+    (block) =>
+      !hasImmediateWin(
+        placeMove(board, block.row, block.col, defender),
+        attacker,
+      ),
+  );
+}
+
 export interface NarrowConfig {
   recognizedForkPatterns: ReadonlySet<ForkPatternName>;
   decay: DecayConfig;
   rng?: () => number;
+  /**
+   * When true (default), a block against the opponent's four/open-four is
+   * only forced if it actually survives (see `survivingBlocks`); a
+   * provably futile block (a true open four) switches Step 2 to an
+   * offense-only candidate set instead of forcing a move that loses
+   * anyway. When false, restores the pre-desperado behavior: the
+   * opponent's four/open-four gains (plus the boxed-five cell) are always
+   * forced, futile or not. Exposed as a toggle for comparing the two
+   * behaviors side by side.
+   */
+  desperado?: boolean;
 }
 
 const QUIET_FALLBACK_SAMPLE_SIZE = 8;
@@ -193,18 +294,50 @@ function weightedReorder(
   return sampleWithoutReplacement(moves, weights, moves.length, config.rng);
 }
 
+export type NarrowSource = "forced" | "tactical" | "quiet";
+
+export type NarrowResult = {
+  moves: Move[];
+  source: NarrowSource;
+};
+
 /**
  * Selects a small, tactically relevant set of candidate moves instead of
  * the full raw radius-2 neighborhood, using the pattern catalog that is
  * already computed once per position. See docs/superpowers/specs/
  * 2026-07-17-pattern-driven-search-design.md for the full rationale.
+ *
+ * Urgency tiers (exclusive forced; urgent+soft always merged):
+ * 1. Forced — own/opp four / open-four gains only. Exempt from top-K:
+ *    typically 1-2 gains already, and short-circuits before scoring.
+ * 2. Urgent ∪ soft — recognized forks, open-three criticalGains, three
+ *    gains, and open-two criticalGains (own + opp), merged with a quiet
+ *    sample when the merged set is small. Urgent (three-tier) threats are
+ *    NOT returned exclusively: a one-sided three is real but not fully
+ *    forced, so a strong counter-attack elsewhere must be able to compete
+ *    on score rather than being filtered out before scoring ever runs
+ *    (see docs/superpowers/plans/2026-07-18-board-state-catalog.md #2,
+ *    where blocking a one-sided three lost to a move that both built an
+ *    open-three and cut the opponent's other line).
+ * 3. Quiet — distance-weighted radius-2 sample when nothing else applies.
+ *
+ * The tactical pool is selected tier-first via `selectTopMovesTiered`:
+ * urgent moves (fork points, three/open-three answers) always precede —
+ * and can never be crowded out of the top `DEFAULT_TOP_K` by — soft gains
+ * and quiet fillers, because a soft move's static score (e.g. growing an
+ * own open-two into an open-three, ~+4900) routinely exceeds an urgent
+ * block's (downgrading the opponent's open-three, ~+4500) even when the
+ * block is the only move that avoids losing. Within each tier, moves sort
+ * by `scoreMove` (own pattern-score gain + opponent pattern-score loss)
+ * descending, so branching stays near-constant at every search node and a
+ * dual-purpose move deterministically outranks a single-purpose one.
  */
 export function narrowCandidates(
   board: Board,
   player: Player,
   moveCount: number,
   config: NarrowConfig,
-): Move[] {
+): NarrowResult {
   const opponent = otherPlayer(player);
   const ownPatterns = findPatterns(board, player);
   const oppPatterns = findPatterns(board, opponent);
@@ -214,24 +347,48 @@ export function narrowCandidates(
     (p) => p.type === "four" || p.type === "open-four",
   );
   if (ownFour) {
-    return ownFour.gains;
+    console.log('OWN FOUR', ownFour);
+    return { moves: ownFour.gains, source: "forced" };
   }
 
-  // Step 2: I must block now.
+  // Step 2: I must block now — but only if a block actually works.
+  // When no candidate survives the futility check (a true open four:
+  // every block still loses to the other completion), the position is
+  // lost against perfect play, so don't force a futile block. Fall
+  // through to the tactical tiers with the blocks kept as urgent backup:
+  // scoring then ranks an own four-maker (+~95000) above a futile block
+  // (+~90000) and a futile block above weaker offense — "maximize one
+  // opponent miss": advance when that converts a missed win into an own
+  // win, block when survival is the best a miss can buy.
+  const desperadoEnabled = config.desperado ?? true;
+  let desperadoBlocks: Move[] | null = null;
   const oppFour = oppPatterns.find(
     (p) => p.type === "four" || p.type === "open-four",
   );
   if (oppFour) {
-    return oppFour.gains;
+    const box = boxCell(oppFour, board);
+    const candidates = box ? [...oppFour.gains, box] : oppFour.gains;
+    if (!desperadoEnabled) {
+      return { moves: candidates, source: "forced" };
+    }
+    const working = survivingBlocks(board, player, opponent, candidates);
+    console.log('OPP FOUR', {
+      oppFour,
+      box,
+      working,
+    });
+    if (working.length > 0) {
+      return { moves: working, source: "forced" };
+    }
+    desperadoBlocks = candidates;
   }
 
-  // Step 3: tactical set — fork points (offense and defense) and
-  // open-three extensions/blocks, deduplicated by cell.
-  const tacticalMoves = new Map<string, Move>();
+  const urgentMoves = new Map<string, Move>();
+  const softMoves = new Map<string, Move>();
 
-  const addAll = (moves: Move[]) => {
+  const addTo = (target: Map<string, Move>, moves: Move[]) => {
     for (const move of moves) {
-      tacticalMoves.set(`${move.row},${move.col}`, move);
+      target.set(`${move.row},${move.col}`, move);
     }
   };
 
@@ -239,52 +396,133 @@ export function narrowCandidates(
     ownPatterns,
     config.recognizedForkPatterns,
   )) {
-    tacticalMoves.set(
+    urgentMoves.set(
       `${forkPoint.move.row},${forkPoint.move.col}`,
       forkPoint.move,
     );
   }
-  for (const forkPoint of recognizedForkPoints(
-    oppPatterns,
-    config.recognizedForkPatterns,
-  )) {
-    tacticalMoves.set(
-      `${forkPoint.move.row},${forkPoint.move.col}`,
-      forkPoint.move,
-    );
+  // Desperado (opponent's four is unstoppable): defense of any kind is
+  // pointless, and negamax's -(WIN_SCORE + depth) loss scoring means a
+  // delaying block in the pool would always beat offense in search — so
+  // collect the player's OWN threats exclusively. Opponent-derived
+  // candidates (fork blocks, three/two answers) and quiet padding are
+  // all skipped.
+  const desperado = desperadoBlocks !== null;
+
+  if (!desperado) {
+    for (const forkPoint of recognizedForkPoints(
+      oppPatterns,
+      config.recognizedForkPatterns,
+    )) {
+      urgentMoves.set(
+        `${forkPoint.move.row},${forkPoint.move.col}`,
+        forkPoint.move,
+      );
+    }
   }
-  // Use criticalGains, not gains: an open-three's raw `gains` list includes
-  // every gap cell from every viable 5-window containing its stones — for
-  // a widely-padded three like "..XXX..", that's 4 cells (verified
-  // empirically), not just the 2 that actually extend it toward an
-  // open-four. criticalGains is exactly "the subset that promotes this
-  // line to the next severity tier" (patterns.ts's own definition), which
-  // is what a tactical candidate set should mean here.
+
+  // Open variants (both ends viable): criticalGains only (raw gains
+  // over-include padded gaps). Blocked variants (one end already closed):
+  // all gains — expand/block toward the next tier (XOOO.., X.OOO., …;
+  // XOO.. for the two-tier equivalent). In desperado mode the open-three
+  // keeps its FULL gains: a plain four is still a forcing threat, and
+  // forcing threats are all a lost position has left.
   for (const pattern of ownPatterns) {
     if (pattern.type === "open-three") {
-      addAll(pattern.criticalGains);
+      addTo(urgentMoves, desperado ? pattern.gains : pattern.criticalGains);
+    } else if (pattern.type === "three") {
+      addTo(urgentMoves, pattern.gains);
+    } else if (pattern.type === "open-two") {
+      addTo(softMoves, pattern.criticalGains);
+    } else if (pattern.type === "two") {
+      addTo(softMoves, pattern.gains);
     }
   }
-  for (const pattern of oppPatterns) {
-    if (pattern.type === "open-three") {
-      addAll(pattern.criticalGains);
+  // Defense reads the opponent's open-threes differently from offense:
+  // every gain — not just the criticalGains that would promote to an
+  // open-four — is a viable block. The one-step-beyond cells (gaps of the
+  // outermost completion windows) neutralize the line via Caro's
+  // boxed-five rule even though they leave the direct extension open.
+  if (!desperado) {
+    for (const pattern of oppPatterns) {
+      if (pattern.type === "open-three") {
+        addTo(urgentMoves, pattern.gains);
+      } else if (pattern.type === "three") {
+        addTo(urgentMoves, pattern.gains);
+      } else if (pattern.type === "open-two") {
+        addTo(softMoves, pattern.criticalGains);
+      } else if (pattern.type === "two") {
+        addTo(softMoves, pattern.gains);
+      }
     }
   }
 
-  if (tacticalMoves.size > 0) {
-    return weightedReorder(
+  if (urgentMoves.size > 0 || softMoves.size > 0) {
+    // Neither tier is forced — fill remaining slots from the quiet
+    // neighborhood so development/racing stays possible, but cap at the
+    // quiet sample size so every-node branching does not explode. Quiet
+    // fillers join the soft tier: they compete with soft gains on score,
+    // but neither can displace an urgent threat-answering move —
+    // selectTopMovesTiered guarantees the urgent tier survives top-K
+    // ahead of any soft/quiet score.
+    const softAndQuiet = new Map(softMoves);
+    let poolSize = new Set([...urgentMoves.keys(), ...softAndQuiet.keys()])
+      .size;
+    if (!desperado && poolSize < QUIET_FALLBACK_SAMPLE_SIZE) {
+      for (const move of sampleQuietMoves(board, moveCount, config)) {
+        if (poolSize >= QUIET_FALLBACK_SAMPLE_SIZE) {
+          break;
+        }
+        const key = `${move.row},${move.col}`;
+        if (!urgentMoves.has(key) && !softAndQuiet.has(key)) {
+          softAndQuiet.set(key, move);
+          poolSize += 1;
+        }
+      }
+    }
+    const selectedMoves = selectTopMovesTiered(
       board,
-      [...tacticalMoves.values()],
-      moveCount,
-      config,
+      player,
+      [[...urgentMoves.values()], [...softAndQuiet.values()]],
+      DEFAULT_TOP_K,
     );
+
+    console.log('MOVES', {
+      selectedMoves,
+      urgentMoves,
+      softMoves: softAndQuiet,
+    });
+
+    return {
+      moves: selectedMoves,
+      source: "tactical",
+    };
   }
 
-  // Step 4: quiet fallback — no tactical pattern exists yet (typical in
-  // the opening). Sample a small, distance-weighted subset of the raw
-  // radius-2 neighborhood instead of returning it all, so quiet positions
-  // stay fast and vary between games instead of always resolving to the
-  // same deterministic scan-order pick.
+  // Desperado with no own threats at all: nothing to attack with, so
+  // block anyway (and hope the opponent misses the win) rather than
+  // playing a random quiet move.
+  if (desperadoBlocks) {
+    return { moves: desperadoBlocks, source: "forced" };
+  }
+
+  return {
+    moves: selectTopMoves(
+      board,
+      player,
+      sampleQuietMoves(board, moveCount, config),
+      DEFAULT_TOP_K,
+    ),
+    source: "quiet",
+  };
+}
+
+/** Distance-weighted quiet sample from the raw radius-2 neighborhood. */
+function sampleQuietMoves(
+  board: Board,
+  moveCount: number,
+  config: NarrowConfig,
+): Move[] {
   const raw = findCandidateMoves(board);
   if (raw.length <= QUIET_FALLBACK_SAMPLE_SIZE) {
     return weightedReorder(board, raw, moveCount, config);

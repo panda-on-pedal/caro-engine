@@ -1,4 +1,5 @@
 import {
+  jitteredScore,
   negamaxSearch,
   negamaxStrategy,
   patternOnlyStrategy,
@@ -6,7 +7,12 @@ import {
   type MoveSelectionStrategy,
 } from "./search.ts";
 import { WIN_SCORE } from "./evaluate.ts";
+import { findPatterns } from "./patterns.ts";
 import { parseBoard } from "./test-helpers/parse-board.ts";
+import { narrowCandidates, ALL_FORK_PATTERN_NAMES } from "./narrow.ts";
+import { DEFAULT_TOP_K } from "./rankMoves.ts";
+import { DEFAULT_DECAY_CONFIG } from "./search.ts";
+import { createEmptyBoard, placeMove } from "./board.ts";
 
 describe("negamaxSearch", () => {
   it("finds the unique winning move when one is available (win-in-1)", () => {
@@ -65,7 +71,7 @@ describe("negamaxSearch", () => {
 });
 
 describe("search", () => {
-  it("reaches the requested depth and returns a legal move with a populated principal variation", () => {
+  it("skips negamax on a quiet single-stone board (depth 0, no nodes)", () => {
     const board = parseBoard(`
       .....
       .....
@@ -73,7 +79,27 @@ describe("search", () => {
       .....
       .....
     `);
-    const result = search(board, 2, { maxDepth: 2 });
+    const result = search(board, 2, { maxDepth: 4 });
+    expect(result.depth).toBe(0);
+    expect(result.nodesVisited).toBe(0);
+    expect(board[result.move.row][result.move.col]).toBe(0);
+    const rowDelta = Math.abs(result.move.row - 2);
+    const colDelta = Math.abs(result.move.col - 2);
+    expect(Math.max(rowDelta, colDelta)).toBeLessThanOrEqual(2);
+  });
+
+  it("searches when an open-two is present", () => {
+    const board = parseBoard("..XX...");
+    const openTwo = findPatterns(board, 1).find((p) => p.type === "open-two")!;
+    const result = search(board, 1, { maxDepth: 2 });
+    expect(result.depth).toBeGreaterThan(0);
+    expect(result.nodesVisited).toBeGreaterThan(0);
+    expect(openTwo.criticalGains).toContainEqual(result.move);
+  });
+
+  it("reaches the requested depth on a tactical board", () => {
+    const board = parseBoard("..XX...");
+    const result = search(board, 1, { maxDepth: 2 });
     expect(result.depth).toBe(2);
     expect(result.principalVariation.length).toBeGreaterThan(0);
     expect(board[result.move.row][result.move.col]).toBe(0);
@@ -82,7 +108,7 @@ describe("search", () => {
   it("stops within the time budget and still returns a valid move", () => {
     const board = parseBoard(`
       ..........
-      ....X.....
+      ....XX....
       ..O.......
       .....X....
       ..........
@@ -149,16 +175,97 @@ describe("search", () => {
   }, 20000);
 });
 
+describe("top-K narrowing bound (scored top-K candidate plan)", () => {
+  it("negamax root branching stays within top-K after narrowing on a busy soft position", () => {
+    // O's 2x2 block gives X (the mover here) several simultaneous
+    // dual-purpose expand/block candidates — a much larger raw soft set
+    // than DEFAULT_TOP_K, matching the fixture in
+    // docs/superpowers/plans/2026-07-18-board-state-catalog.md #5.1
+    // (mirrored: X is the mover instead of O).
+    let board = createEmptyBoard(20);
+    board = placeMove(board, 8, 10, 1);
+    board = placeMove(board, 9, 8, 2);
+    board = placeMove(board, 9, 9, 2);
+    board = placeMove(board, 10, 8, 2);
+    board = placeMove(board, 10, 9, 2);
+    board = placeMove(board, 10, 11, 1);
+    board = placeMove(board, 12, 9, 1);
+
+    const narrowed = narrowCandidates(board, 1, 7, {
+      recognizedForkPatterns: ALL_FORK_PATTERN_NAMES,
+      decay: DEFAULT_DECAY_CONFIG,
+    });
+    expect(narrowed.moves.length).toBeLessThanOrEqual(DEFAULT_TOP_K);
+
+    const result = search(board, 1, { maxDepth: 2, timeBudgetMs: 2000 });
+    expect(result.move).toBeDefined();
+    expect(board[result.move.row][result.move.col]).toBe(0);
+  });
+});
+
+describe("root score jitter (dynamic play among near-equal candidates)", () => {
+  /** Deterministic LCG so each "seed" yields a fixed, replayable stream. */
+  function lcg(seed: number): () => number {
+    let state = seed >>> 0;
+    return () => {
+      state = (state * 1664525 + 1013904223) >>> 0;
+      return state / 4294967296;
+    };
+  }
+
+  // Symmetric pair: extending left or right is strategically identical,
+  // so the two root candidates' true search scores tie exactly.
+  const board = () => parseBoard("...XX.....");
+
+  it("jitteredScore perturbs finite scores within the fraction and preserves sign", () => {
+    expect(jitteredScore(200, 0.1, () => 1)).toBeCloseTo(220);
+    expect(jitteredScore(200, 0.1, () => 0)).toBeCloseTo(180);
+    expect(jitteredScore(-200, 0.1, () => 1)).toBeCloseTo(-220);
+    expect(jitteredScore(150, 0, () => 1)).toBe(150);
+  });
+
+  it("jitteredScore never touches forced win/loss scores", () => {
+    expect(jitteredScore(WIN_SCORE, 0.5, () => 1)).toBe(WIN_SCORE);
+    expect(jitteredScore(WIN_SCORE + 3, 0.5, () => 0)).toBe(WIN_SCORE + 3);
+    expect(jitteredScore(-WIN_SCORE, 0.5, () => 1)).toBe(-WIN_SCORE);
+  });
+
+  it("without jitter the same rng stream always yields the same move", () => {
+    const a = search(board(), 1, { maxDepth: 2, rng: lcg(7) });
+    const b = search(board(), 1, { maxDepth: 2, rng: lcg(7) });
+    expect(a.move).toEqual(b.move);
+  });
+
+  it("with jitter, different rng streams break the tie differently", () => {
+    const chosen = new Set<string>();
+    for (let seed = 1; seed <= 12; seed += 1) {
+      const result = search(board(), 1, {
+        maxDepth: 2,
+        rootScoreJitter: 0.5,
+        rng: lcg(seed),
+      });
+      chosen.add(`${result.move.row},${result.move.col}`);
+    }
+    expect(chosen.size).toBeGreaterThan(1);
+  });
+
+  it("reports the true (unjittered) score of the chosen move", () => {
+    const result = search(board(), 1, {
+      maxDepth: 2,
+      rootScoreJitter: 0.5,
+      rng: lcg(3),
+    });
+    const clean = search(board(), 1, { maxDepth: 2, rng: lcg(3) });
+    // The symmetric position's candidates tie, so whichever one jitter
+    // picks must report the same true score as the deterministic run.
+    expect(result.score).toBe(clean.score);
+  });
+});
+
 describe("pluggable move-selection strategy", () => {
-  it("defaults to negamaxStrategy, which explores multiple nodes", () => {
-    const board = parseBoard(`
-      .....
-      .....
-      ..X..
-      .....
-      .....
-    `);
-    const result = search(board, 2, { maxDepth: 2 });
+  it("defaults to negamax on tactical boards and explores multiple nodes", () => {
+    const board = parseBoard("..XX...");
+    const result = search(board, 1, { maxDepth: 2 });
     expect(result.nodesVisited).toBeGreaterThan(1);
     expect(typeof negamaxStrategy).toBe("function");
   });

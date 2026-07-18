@@ -9,16 +9,18 @@ describe("chooseMove", () => {
     expect(isLegalMove(state.board, result.move.row, result.move.col)).toBe(
       true,
     );
-    expect(result.depth).toBeGreaterThan(0);
+    expect(result.depth).toBe(0);
+    expect(result.nodesVisited).toBe(0);
     expect(Array.isArray(result.principalVariation)).toBe(true);
-    expect(typeof result.nodesVisited).toBe("number");
   });
 
-  it("returns a legal move adjacent to an existing stone once the board is non-empty", () => {
+  it("returns depth 0 on a quiet first-reply board", () => {
     let state = newGame();
     state = applyMove(state, { row: 7, col: 7 }, 1);
 
     const result = chooseMove(state, { difficulty: "easy" });
+    expect(result.depth).toBe(0);
+    expect(result.nodesVisited).toBe(0);
     expect(isLegalMove(state.board, result.move.row, result.move.col)).toBe(
       true,
     );
@@ -51,13 +53,17 @@ describe("chooseMove", () => {
     );
   });
 
-  it("searches deeper at hard than at easy for the same position", () => {
+  it("searches deeper at hard than at easy for the same tactical position", () => {
     let state = newGame();
+    // Open-two for X so the position is tactical (not quiet random).
     state = applyMove(state, { row: 10, col: 10 }, 1);
-    state = applyMove(state, { row: 3, col: 3 }, 2);
+    state = applyMove(state, { row: 0, col: 0 }, 2);
+    state = applyMove(state, { row: 10, col: 11 }, 1);
+    state = applyMove(state, { row: 0, col: 2 }, 2);
 
     const easy = chooseMove(state, { difficulty: "easy" });
     const hard = chooseMove(state, { difficulty: "hard", timeBudgetMs: 2000 });
+    expect(easy.depth).toBeGreaterThan(0);
     expect(hard.depth).toBeGreaterThanOrEqual(easy.depth);
   });
 });

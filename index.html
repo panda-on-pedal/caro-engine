@@ -167,7 +167,10 @@
       outline-offset: -2px;
     }
 
-    #new-game {
+    #new-game,
+    #undo,
+    #redo,
+    #ascii-toggle {
       padding: 10px 20px;
       font-family: inherit;
       font-size: 1rem;
@@ -179,18 +182,34 @@
       cursor: pointer;
     }
 
-    #new-game:hover {
+    #new-game:hover,
+    #undo:hover:not(:disabled),
+    #redo:hover:not(:disabled),
+    #ascii-toggle:hover {
       background: #f1ead8;
     }
 
-    #new-game:active {
+    #new-game:active,
+    #undo:active:not(:disabled),
+    #redo:active:not(:disabled),
+    #ascii-toggle:active {
       box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.1);
       transform: translate(2px, 2px);
     }
 
-    #new-game:focus-visible {
+    #new-game:focus-visible,
+    #undo:focus-visible,
+    #redo:focus-visible,
+    #ascii-toggle:focus-visible {
       outline: 2px solid var(--ink-blue);
       outline-offset: 2px;
+    }
+
+    #undo:disabled,
+    #redo:disabled {
+      opacity: 0.45;
+      cursor: default;
+      box-shadow: none;
     }
 
     .controls {
@@ -207,6 +226,26 @@
       background: var(--cell-paper);
       border: 2px solid var(--graphite);
       border-radius: 3px;
+    }
+
+    #ascii-panel {
+      width: 100%;
+      max-width: 480px;
+    }
+
+    #ascii-text {
+      width: 100%;
+      height: 260px;
+      padding: 10px;
+      font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: pre;
+      color: var(--graphite);
+      background: var(--cell-paper);
+      border: 2px solid var(--graphite);
+      border-radius: 3px;
+      resize: vertical;
     }
   </style>
 </head>
@@ -228,7 +267,13 @@
       <option value="medium" selected>Medium</option>
       <option value="hard">Hard</option>
     </select>
+    <button id="undo" type="button" disabled>Undo</button>
+    <button id="redo" type="button" disabled>Redo</button>
     <button id="new-game" type="button">New Game</button>
+    <button id="ascii-toggle" type="button">Show ASCII</button>
+  </div>
+  <div id="ascii-panel" hidden>
+    <textarea id="ascii-text" readonly spellcheck="false"></textarea>
   </div>
   <script src="main.js"></script>
 </body>
