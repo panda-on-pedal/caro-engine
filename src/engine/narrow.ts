@@ -194,7 +194,7 @@ function boxCell(pattern: PatternInstance, board: Board): Move | null {
  * rejects boxed fives, so a completion whose both ends are blocked does
  * not count).
  */
-function hasImmediateWin(board: Board, attacker: Player): boolean {
+export function hasImmediateWin(board: Board, attacker: Player): boolean {
   for (const pattern of findPatterns(board, attacker)) {
     if (pattern.type !== "four" && pattern.type !== "open-four") {
       continue;
@@ -232,6 +232,77 @@ function survivingBlocks(
         attacker,
       ),
   );
+}
+
+/**
+ * True when `attacker` already has a four/open-four on `board` that
+ * survives every possible block `defender` could play (including the
+ * boxed-five distance cell) — the same futility test Step 2 runs against
+ * the *current* position, factored out so it can also be run against a
+ * hypothetical *future* position (see `opponentForcesWinAfter`).
+ */
+function isUnstoppableFour(
+  board: Board,
+  defender: Player,
+  attacker: Player,
+): boolean {
+  for (const pattern of findPatterns(board, attacker)) {
+    if (pattern.type !== "four" && pattern.type !== "open-four") {
+      continue;
+    }
+    const box = boxCell(pattern, board);
+    const candidates = box ? [...pattern.gains, box] : pattern.gains;
+    if (survivingBlocks(board, defender, attacker, candidates).length === 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * True when, after `defender` plays `move`, `attacker` still has some
+ * single reply that promotes an existing three/open-three into an
+ * unstoppable four/open-four — i.e. `move` neither blocks the threat nor
+ * wins the race outright, so it is a provable loss against correct play
+ * ("if I don't block, I lose no matter what else I do here"). This is
+ * the generic form of the exact question a human opponent asks about a
+ * move like a same-tier fork point that ignores the real threat
+ * entirely: does ignoring this still lose? Used to strip such
+ * candidates out of the pool outright, rather than merely letting them
+ * be outscored.
+ *
+ * A move that gives `defender` their own unstoppable four/open-four is
+ * exempt: `defender` completes that first, before `attacker`'s
+ * three-tier pattern could ever pay off, so it is never a loss even
+ * though it ignores `attacker`'s threat.
+ */
+function opponentForcesWinAfter(
+  board: Board,
+  defender: Player,
+  attacker: Player,
+  move: Move,
+): boolean {
+  const afterDefenderMove = placeMove(board, move.row, move.col, defender);
+  if (isUnstoppableFour(afterDefenderMove, attacker, defender)) {
+    return false;
+  }
+  for (const pattern of findPatterns(afterDefenderMove, attacker)) {
+    if (pattern.type !== "three" && pattern.type !== "open-three") {
+      continue;
+    }
+    for (const gain of pattern.gains) {
+      const afterAttackerMove = placeMove(
+        afterDefenderMove,
+        gain.row,
+        gain.col,
+        attacker,
+      );
+      if (isUnstoppableFour(afterAttackerMove, defender, attacker)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 export interface NarrowConfig {
@@ -347,7 +418,6 @@ export function narrowCandidates(
     (p) => p.type === "four" || p.type === "open-four",
   );
   if (ownFour) {
-    console.log('OWN FOUR', ownFour);
     return { moves: ownFour.gains, source: "forced" };
   }
 
@@ -372,11 +442,6 @@ export function narrowCandidates(
       return { moves: candidates, source: "forced" };
     }
     const working = survivingBlocks(board, player, opponent, candidates);
-    console.log('OPP FOUR', {
-      oppFour,
-      box,
-      working,
-    });
     if (working.length > 0) {
       return { moves: working, source: "forced" };
     }
@@ -480,18 +545,38 @@ export function narrowCandidates(
         }
       }
     }
+    // Must-block filter: strip out any candidate that neither blocks nor
+    // pre-empts a genuine opponent three-tier threat — one that correct
+    // play turns into an unstoppable four/open-four regardless of what
+    // else the mover does this turn (e.g. catalog #11's own fork 8,6,
+    // which ignores X's open-three entirely). A dual-purpose move that
+    // also breaks the threat survives, since re-simulating from the
+    // post-move board sees the pattern is gone. Skipped in desperado mode
+    // (the position is already lost to the opponent's four regardless).
+    const urgentCandidates = [...urgentMoves.values()];
+    const softCandidates = [...softAndQuiet.values()];
+    let urgentSurvivors = urgentCandidates;
+    let softSurvivors = softCandidates;
+    if (!desperado) {
+      const survivesMustBlock = (move: Move) =>
+        !opponentForcesWinAfter(board, player, opponent, move);
+      urgentSurvivors = urgentCandidates.filter(survivesMustBlock);
+      softSurvivors = softCandidates.filter(survivesMustBlock);
+      // A genuine multi-threat position (e.g. two independent opponent
+      // open-threes) can leave nothing surviving at all — fall back to
+      // the unfiltered pool rather than handing negamax an empty tier.
+      if (urgentSurvivors.length + softSurvivors.length === 0) {
+        urgentSurvivors = urgentCandidates;
+        softSurvivors = softCandidates;
+      }
+    }
+
     const selectedMoves = selectTopMovesTiered(
       board,
       player,
-      [[...urgentMoves.values()], [...softAndQuiet.values()]],
+      [urgentSurvivors, softSurvivors],
       DEFAULT_TOP_K,
     );
-
-    console.log('MOVES', {
-      selectedMoves,
-      urgentMoves,
-      softMoves: softAndQuiet,
-    });
 
     return {
       moves: selectedMoves,

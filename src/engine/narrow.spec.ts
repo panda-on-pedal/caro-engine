@@ -602,13 +602,17 @@ describe("narrowCandidates — tier-aware top-K (urgent before soft)", () => {
     expect(keys).toEqual(expect.arrayContaining(["9,7", "10,8", "14,12", "15,13"]));
   });
 
-  it("ranks every urgent block ahead of X's higher-scoring soft offense", () => {
+  it("keeps only the four urgent blocks — X's higher-scoring soft offense (9,9) neither blocks nor outraces O's open-three, so it is dropped outright", () => {
     const result = narrowCandidates(catalog4(), 1, 5, BASE_CONFIG);
     const keys = result.moves.map((m) => `${m.row},${m.col}`);
-    // Urgent tier first, score-sorted (14,12 builds a vertical two, 10,8
+    // Urgent tier only, score-sorted (14,12 builds a vertical two, 10,8
     // is the plain critical block, 9,7/15,13 are zero-delta distance
-    // blocks in pattern-gain order), then the best soft extension.
-    expect(keys).toEqual(["14,12", "10,8", "9,7", "15,13", "9,9"]);
+    // blocks in pattern-gain order). 9,9 would have out-scored all four
+    // as a "soft" move, but playing it loses outright against correct
+    // play (O's open-three promotes to an unstoppable open-four next),
+    // so the must-block filter removes it from the pool entirely instead
+    // of leaving it for search to refute.
+    expect(keys).toEqual(["14,12", "10,8", "9,7", "15,13"]);
   });
 });
 

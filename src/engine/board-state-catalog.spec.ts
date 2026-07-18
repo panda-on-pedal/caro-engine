@@ -192,9 +192,13 @@ describe("catalog #4 — X must answer O's open-three; the dual-purpose block ou
     expect(snapshotNarrow(board, 1, 5)).toMatchSnapshot();
   });
 
-  it("returns every urgent answer to O's open-three first — both criticalGains and both boxed-five distance blocks — then the best soft extension", () => {
+  it("returns only the four urgent answers to O's open-three — 9,9 neither blocks nor outraces it, so the must-block filter drops it entirely", () => {
     // Matches the catalog's move list exactly: 9,7; 10,8; 14,12; 15,13
-    // all "force to block O's open-three, but 14,12 higher score".
+    // all "force to block O's open-three, but 14,12 higher score". 9,9
+    // (4910, the highest raw score of any candidate here) would have
+    // been X's own best soft offense, but playing it loses outright
+    // against correct play — O's open-three simply promotes to an
+    // unstoppable open-four next — so it never enters the pool.
     const result = narrowCandidates(board, 1, 5, CFG);
     expect(result.source).toBe("tactical");
     expect(result.moves).toEqual([
@@ -202,7 +206,6 @@ describe("catalog #4 — X must answer O's open-three; the dual-purpose block ou
       { row: 10, col: 8 }, // 4500: plain critical block
       { row: 9, col: 7 }, // 0: distance block (boxed-five), tier-retained
       { row: 15, col: 13 }, // 0: distance block (boxed-five), tier-retained
-      { row: 9, col: 9 }, // 4910: best soft offense, ranked behind urgent
     ]);
     expect(scoreMove(board, 1, { row: 14, col: 12 })).toBe(4600);
     expect(scoreMove(board, 1, { row: 10, col: 8 })).toBe(4500);
@@ -440,13 +443,16 @@ describe("catalog #11 — O must answer X's row-10 open-three; all four blocks (
     );
   });
 
-  it("dual-purpose blocks outrank pure blocks; O's own fork 8,6 also competes, for search to referee", () => {
+  it("dual-purpose blocks outrank pure blocks; O's own fork 8,6 is dropped outright, not merely outscored", () => {
     // 10,5 and 10,6 don't just answer X's open-three — 10,5 builds O's
     // diagonal open-three (8,7/9,6/10,5) and 10,6 the vertical one
     // (9,6/10,6/11,6) — so both outscore the pure critical block 10,10.
-    // 8,6 (O's row-8 + col-6 fork) shares the urgent tier and ranks
-    // first on score, but it ignores X's open-three; negamax refutes it
-    // (X's reply makes an open four) and picks among the real answers.
+    // 8,6 (O's row-8 + col-6 fork) used to share the urgent tier and rank
+    // first on raw score despite ignoring X's open-three entirely; the
+    // must-block filter now simulates it directly (O plays 8,6, X
+    // answers with the open-three's critical gain, the result is an
+    // unstoppable open-four) and removes it from the pool instead of
+    // leaving it for search to refute.
     const dualDiag = scoreMove(board, 2, { row: 10, col: 5 });
     const dualVert = scoreMove(board, 2, { row: 10, col: 6 });
     const pure = scoreMove(board, 2, { row: 10, col: 10 });
@@ -454,6 +460,40 @@ describe("catalog #11 — O must answer X's row-10 open-three; all four blocks (
     expect(dualVert).toBeGreaterThan(pure);
     const result = narrowCandidates(board, 2, 12, CFG);
     const keys = result.moves.map((m) => `${m.row},${m.col}`);
-    expect(keys).toContain("8,6");
+    expect(keys).not.toContain("8,6");
+    expect(keys.sort()).toEqual(["10,10", "10,11", "10,5", "10,6"]);
+  });
+});
+
+describe("catalog #12 — O's 10,9 blocks two of X's open-twos at once (soft tier, no forced/urgent threats)", () => {
+  // X has no three-tier pattern yet (only two-tier lines), so nothing is
+  // forced or urgent here — this exercises plain soft-tier ranking. X's
+  // diagonal open-two (8,7)/(9,8) is open at 7,6 and 10,9; O's 10,9 takes
+  // the far end. Unlike the catalog's own note, 10,9 does not touch the
+  // vertical open-two (7,9)/(8,9) (open at 6,9/9,9) in narrowCandidates'
+  // single-ply static scoring — patterns.ts groups a "two" by its exact
+  // stone pair per viable 5-window, not by informal adjacency, so 10,9
+  // may also fall inside some window shared with other X stones. Exact
+  // ranking/scores here are intentionally left to the snapshot rather
+  // than hardcoded, since this board's pattern grouping is less obvious
+  // to eyeball than the earlier catalog entries (verify against the
+  // snapshot the first time this runs, then promote anything worth
+  // pinning down into an explicit assertion).
+  const board = parseBoard(`
+       6  7  8  9 10 11 12
+    6  .  .  .  .  .  .  .
+    7  .  .  O  X  O  O  .
+    8  .  X  .  X  .  .  .
+    9  .  .  X  .  .  .  .
+   10  .  .  .  .  .  .  .
+  `);
+
+  it("narrowCandidates ranked output", () => {
+    expect(snapshotNarrow(board, 2, 7)).toMatchSnapshot();
+  });
+
+  it("has no forced or urgent threats — source is tactical from the soft tier alone", () => {
+    const result = narrowCandidates(board, 2, 7, CFG);
+    expect(result.source).toBe("tactical");
   });
 });

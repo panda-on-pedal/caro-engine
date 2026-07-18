@@ -28,6 +28,20 @@ function otherPlayer(player: Player): Player {
   return player === 1 ? 2 : 1;
 }
 
+/** "Root -> O(7,12) -> X(9,9) -> O(...)" — the alternating turn-by-turn
+ * line a root candidate's principalVariation represents, for logging.
+ * `moves` starts with the root candidate itself, played by
+ * `startPlayer`; every following move alternates player. */
+function formatLine(startPlayer: Player, moves: Move[]): string {
+  let mover = startPlayer;
+  const segments = moves.map((move) => {
+    const label = mover === 1 ? "X" : "O";
+    mover = otherPlayer(mover);
+    return `${label}(${move.row},${move.col})`;
+  });
+  return ["Root", ...segments].join(" -> ");
+}
+
 interface NodeCounter {
   count: number;
 }
@@ -44,8 +58,21 @@ function negamax(
   narrowConfig: NarrowConfig,
   rootMoves?: Move[],
   rootJitter?: (score: number) => number,
+  // `path`/`rootPlayer` exist purely for the "[search] node visited" log
+  // below: `path` is every move played so far to reach `board` (empty at
+  // the true root of a depth iteration), and `rootPlayer` is who played
+  // path[0], fixed for the whole tree, so formatLine can label every
+  // move in the path correctly regardless of how deep this call is.
+  path: Move[] = [],
+  rootPlayer: Player = player,
 ): SearchNode {
   nodeCounter.count += 1;
+  logger.log("[search] node visited", {
+    node: nodeCounter.count,
+    depth,
+    toMove: player === 1 ? "X" : "O",
+    path: formatLine(rootPlayer, path),
+  });
 
   if (depth === 0) {
     return { score: evaluate(board, player), principalVariation: [] };
@@ -79,8 +106,34 @@ function negamax(
   let bestCompare = -Infinity;
   let currentAlpha = alpha;
 
+  // `rootMoves !== undefined` marks this as the actual root frame (see
+  // the comment above) — only there do we log per-candidate examination,
+  // since that's the frame whose move ultimately gets played, and the
+  // only frame where "did the deadline cut this short" matters for
+  // debugging (child frames start with beta === Infinity too, but their
+  // alpha-beta cutoffs are expected pruning, not a partial-search risk).
+  const isRootFrame = rootMoves !== undefined;
+  if (isRootFrame) {
+    logger.log("[search] root: examining candidates", {
+      depth,
+      count: moves.length,
+      moves: moves.map((m) => `${m.row},${m.col}`),
+    });
+  }
+
+  let examinedCount = 0;
   for (const move of moves) {
     if (deadline !== null && Date.now() > deadline) {
+      if (isRootFrame) {
+        logger.log("[search] root: deadline hit — stopped early", {
+          depth,
+          examined: examinedCount,
+          total: moves.length,
+          unexamined: moves
+            .slice(examinedCount)
+            .map((m) => `${m.row},${m.col}`),
+        });
+      }
       break;
     }
 
@@ -100,14 +153,34 @@ function negamax(
             nodeCounter,
             moveCount + 1,
             narrowConfig,
+            undefined,
+            undefined,
+            [...path, move],
+            rootPlayer,
           );
           return {
             score: -child.score,
             principalVariation: child.principalVariation,
           };
         })();
+    examinedCount += 1;
 
     const compareScore = rootJitter ? rootJitter(node.score) : node.score;
+    if (isRootFrame) {
+      logger.log("[search] root: candidate examined", {
+        depth,
+        move: `${move.row},${move.col}`,
+        score: node.score,
+        comparedScore: compareScore,
+        isWin,
+        // The turn-by-turn continuation this candidate's score is based
+        // on — empty beyond the move itself whenever the recursive call
+        // bottomed out at a depth-0 static evaluate() with no further
+        // moves simulated (always true one ply before the deepest depth
+        // reached this iteration).
+        line: formatLine(player, [move, ...node.principalVariation]),
+      });
+    }
     if (compareScore > bestCompare) {
       bestCompare = compareScore;
       best = {
@@ -119,6 +192,17 @@ function negamax(
     if (currentAlpha >= beta) {
       break;
     }
+  }
+  if (isRootFrame && examinedCount === moves.length) {
+    logger.log("[search] root: examined all candidates", {
+      depth,
+      count: examinedCount,
+      bestMove: best.principalVariation[0]
+        ? `${best.principalVariation[0].row},${best.principalVariation[0].col}`
+        : null,
+      bestScore: best.score,
+      bestLine: formatLine(player, best.principalVariation),
+    });
   }
 
   // If the deadline fired before any move in this node was evaluated,
@@ -279,6 +363,22 @@ export const negamaxStrategy: MoveSelectionStrategy = (
     if (result.principalVariation.length === 0) {
       break;
     }
+    // This depth's result becomes the strategy's answer unconditionally
+    // (even if the deadline cut the root loop short mid-way through this
+    // depth — see "[search] root: deadline hit" above) — a still-partial
+    // depth D result silently overwrites the fully-examined depth D-1
+    // answer that came before it. Logged here so that can be spotted:
+    // compare this depth's chosen move/score against whether the
+    // matching "examined all candidates" log fired for the same depth.
+    logger.log("[search] depth iteration complete", {
+      depth,
+      chosenMove: result.principalVariation[0]
+        ? `${result.principalVariation[0].row},${result.principalVariation[0].col}`
+        : null,
+      chosenLine: formatLine(player, result.principalVariation),
+      score: result.score,
+      nodesVisitedSoFar: nodeCounter.count,
+    });
     bestNode = result;
     depthReached = depth;
     if (Math.abs(result.score) >= WIN_SCORE) {
