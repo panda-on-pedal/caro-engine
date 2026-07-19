@@ -12,6 +12,7 @@ const STATIC_FILES: Record<string, string> = {
   '/': 'index.html',
   '/index.html': 'index.html',
   '/main.js': 'main.js',
+  '/engineWorker.js': 'engineWorker.js',
 };
 
 const CONTENT_TYPES: Record<string, string> = {

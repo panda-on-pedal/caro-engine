@@ -1,0 +1,156 @@
+import type { Board, Player } from '../engine/board.ts';
+import type { Difficulty } from '../engine/engine.ts';
+import type { SearchResult } from '../engine/search.ts';
+import { logger } from '../utils/logger.ts';
+import type { EngineRequest, EngineResponse } from './engineProtocol.ts';
+
+const WORKER_URL = '/engineWorker.js';
+
+export class CancelledError extends Error {
+  constructor() {
+    super('Engine request cancelled');
+    this.name = 'CancelledError';
+  }
+}
+
+interface PendingEntry {
+  resolve: (result: SearchResult) => void;
+  reject: (error: Error) => void;
+}
+
+interface QueuedJob {
+  request: EngineRequest;
+  resolve: (result: SearchResult) => void;
+  reject: (error: Error) => void;
+}
+
+interface Slot {
+  worker: Worker | null;
+  busy: boolean;
+  currentId: number | null;
+}
+
+/** Fixed-size pool of Web Workers running the (synchronous, blocking) engine
+ * search off the main thread. `cancelAll()` terminates + lazily respawns any
+ * worker mid-search so a stale expert-difficulty search (up to 10s) can't
+ * delay the next request — idle workers are left running. */
+export class EnginePool {
+  private readonly slots: Slot[];
+  private readonly queue: QueuedJob[] = [];
+  private readonly pending = new Map<number, PendingEntry>();
+  private nextId = 0;
+
+  constructor(size: number) {
+    this.slots = Array.from({ length: size }, () => ({ worker: null, busy: false, currentId: null }));
+  }
+
+  requestMove(board: Board, player: Player, difficulty: Difficulty, timeBudgetMs?: number): Promise<SearchResult> {
+    return new Promise((resolve, reject) => {
+      const request: EngineRequest = { id: this.nextId, board, player, difficulty, timeBudgetMs };
+      this.nextId += 1;
+      const job: QueuedJob = { request, resolve, reject };
+      const idleSlot = this.slots.find((slot) => !slot.busy);
+      if (idleSlot) {
+        this.dispatch(idleSlot, job);
+      } else {
+        this.queue.push(job);
+      }
+    });
+  }
+
+  private ensureWorker(slot: Slot): Worker {
+    if (slot.worker) {
+      return slot.worker;
+    }
+    const worker = new Worker(WORKER_URL);
+    worker.onmessage = (event: MessageEvent<EngineResponse>): void => {
+      this.handleResponse(slot, event.data);
+    };
+    worker.onerror = (event: ErrorEvent): void => {
+      logger.error('Engine worker error:', event.message);
+      const id = slot.currentId;
+      slot.worker = null;
+      slot.busy = false;
+      slot.currentId = null;
+      if (id !== null) {
+        const entry = this.pending.get(id);
+        this.pending.delete(id);
+        entry?.reject(new Error(event.message || 'Engine worker error'));
+      }
+      this.pump();
+    };
+    slot.worker = worker;
+    return worker;
+  }
+
+  private dispatch(slot: Slot, job: QueuedJob): void {
+    slot.busy = true;
+    slot.currentId = job.request.id;
+    this.pending.set(job.request.id, { resolve: job.resolve, reject: job.reject });
+    this.ensureWorker(slot).postMessage(job.request);
+  }
+
+  private handleResponse(slot: Slot, response: EngineResponse): void {
+    const entry = this.pending.get(response.id);
+    this.pending.delete(response.id);
+    slot.busy = false;
+    slot.currentId = null;
+    if (entry) {
+      if (response.ok) {
+        entry.resolve(response.result);
+      } else {
+        entry.reject(new Error(response.error));
+      }
+    }
+    this.pump();
+  }
+
+  private pump(): void {
+    const idleSlot = this.slots.find((slot) => !slot.busy);
+    if (!idleSlot) {
+      return;
+    }
+    const job = this.queue.shift();
+    if (job) {
+      this.dispatch(idleSlot, job);
+    }
+  }
+
+  /** Clears the queue and rejects everything in flight with `CancelledError`.
+   * Busy workers are terminated (not merely orphaned) and respawned lazily
+   * on next use, so a running search can never delay a later request. */
+  cancelAll(): void {
+    const queued = this.queue.splice(0, this.queue.length);
+    for (const job of queued) {
+      this.pending.delete(job.request.id);
+      job.reject(new CancelledError());
+    }
+
+    for (const slot of this.slots) {
+      if (!slot.busy) {
+        continue;
+      }
+      const id = slot.currentId;
+      slot.worker?.terminate();
+      slot.worker = null;
+      slot.busy = false;
+      slot.currentId = null;
+      if (id !== null) {
+        const entry = this.pending.get(id);
+        this.pending.delete(id);
+        entry?.reject(new CancelledError());
+      }
+    }
+  }
+
+  terminate(): void {
+    for (const slot of this.slots) {
+      slot.worker?.terminate();
+      slot.worker = null;
+      slot.busy = false;
+      slot.currentId = null;
+    }
+    this.pending.clear();
+    this.queue.length = 0;
+  }
+}

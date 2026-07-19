@@ -1,8 +1,9 @@
 import { BOARD_SIZE, type Board, type Player } from '../engine/board.ts';
-import { chooseMove, type Difficulty } from '../engine/engine.ts';
+import { type Difficulty } from '../engine/engine.ts';
 import { PatternStore } from '../engine/patternStore.ts';
 import { applyMove, deserializeState, newGame, serializeState, type GameState, type Move } from '../engine/state.ts';
 import { logger } from '../utils/logger.ts';
+import { CancelledError, EnginePool } from './enginePool.ts';
 
 const STATE_URL = '/api/state';
 const AI_THINK_DELAY_MS = 300;
@@ -42,6 +43,7 @@ let autoplayRunning = false;
 /** Bumped on every reset; in-flight AI computations abort if it moves on
  * from under them (e.g. New Game / mode switch while the AI is thinking). */
 let generation = 0;
+const pool = new EnginePool(1);
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -353,10 +355,10 @@ async function commitAndSave(
 }
 
 /** Runs one AI move for whichever player is currently on the clock. Aborts
- * without side effects if `generation` moves on during the think-delay (New
- * Game / mode switch fired mid-turn) — `resetForMode` already restores `busy`
- * in that case, so an aborted call must not touch it. `chooseMove` itself is
- * synchronous, so no reset can land between it and the commit that follows. */
+ * without side effects if `generation` moves on during the think-delay or
+ * the (now async, worker-backed) search itself — New Game / mode switch
+ * fired mid-turn bumps `generation` and cancels the pool, and `resetForMode`
+ * already restores `busy` in that case, so an aborted call must not touch it. */
 async function runAiMove(): Promise<void> {
   if (state.winner !== null) {
     return;
@@ -369,7 +371,20 @@ async function runAiMove(): Promise<void> {
     return;
   }
   const player = state.nextPlayer;
-  const move = chooseMove(state, { difficulty: difficultyForPlayer(player) }).move;
+  let move: Move;
+  try {
+    move = (await pool.requestMove(state.board, player, difficultyForPlayer(player))).move;
+  } catch (error) {
+    if (error instanceof CancelledError || myGeneration !== generation) {
+      return;
+    }
+    busy = false;
+    render();
+    throw error;
+  }
+  if (myGeneration !== generation) {
+    return;
+  }
   busy = false;
   await commitAndSave(applyMove(state, move, player), { move, player });
 }
@@ -435,6 +450,7 @@ function updateModeUI(): void {
  * `generation` orphans any in-flight computation for the old game. */
 async function resetForMode(newMode: GameMode): Promise<void> {
   generation += 1;
+  pool.cancelAll();
   mode = newMode;
   autoplayPaused = false;
   busy = false;

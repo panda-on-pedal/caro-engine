@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/ui/app.ts --bundle --outfile=main.js",
+    "build": "esbuild src/ui/app.ts --bundle --outfile=main.js && esbuild src/ui/engineWorker.ts --bundle --outfile=engineWorker.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "jest",

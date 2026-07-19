@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['main.js', 'node_modules/**', 'state.json'],
+    ignores: ['main.js', 'engineWorker.js', 'node_modules/**', 'state.json'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
