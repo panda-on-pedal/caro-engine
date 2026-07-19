@@ -132,12 +132,14 @@
       width: var(--cell-size, 28px);
       height: var(--cell-size, 28px);
       padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       background: transparent;
       border: none;
       color: inherit;
       font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive;
       font-size: 19px;
-      line-height: var(--cell-size, 28px);
       cursor: pointer;
       transition: background-color 0.15s ease;
     }
@@ -156,6 +158,25 @@
 
     .cell[data-player="2"] {
       color: var(--pen-red);
+    }
+
+    .mark {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 78%;
+      height: 78%;
+      border-radius: 50%;
+      transition: box-shadow 0.15s ease, background-color 0.15s ease;
+    }
+
+    .mark[data-winning-cell="true"] {
+      font-weight: 700;
+      background-color: rgba(246, 214, 90, 0.65);
+    }
+
+    .mark[data-last-move="true"] {
+      background-color: rgba(246, 214, 90, 0.9);
     }
 
     .cell:focus {
@@ -264,8 +285,8 @@
   <div class="controls">
     <select id="difficulty">
       <option value="easy">Easy</option>
-      <option value="medium" selected>Medium</option>
-      <option value="hard">Hard</option>
+      <option value="medium">Medium</option>
+      <option value="hard" selected>Hard</option>
     </select>
     <button id="undo" type="button" disabled>Undo</button>
     <button id="redo" type="button" disabled>Redo</button>

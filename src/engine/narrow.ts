@@ -28,12 +28,9 @@ import {
   selectTopMovesTieredFromStore,
 } from "./rankMoves.ts";
 import type { PatternStore } from "./patternStore.ts";
+import { forkBonusFor } from "./evaluate.ts";
 
 const CANDIDATE_RADIUS = 2;
-
-/** Score bonus applied to recognized fork points during tiered ranking —
- * see the `forkBonus` comment in `narrowCandidates` for rationale. */
-const FORK_BONUS = 1000;
 
 export function findCandidateMoves(board: Board): Move[] {
   const candidates = new Map<string, Move>();
@@ -369,8 +366,8 @@ export type NarrowResult = {
  * urgent moves (fork points, three/open-three answers) always precede —
  * and can never be crowded out of the top `DEFAULT_TOP_K` by — soft gains
  * and quiet fillers, because a soft move's static score (e.g. growing an
- * own open-two into an open-three, ~+4900) routinely exceeds an urgent
- * block's (downgrading the opponent's open-three, ~+4500) even when the
+ * own open-two into an open-three, ~+240 on rank weights) routinely exceeds
+ * an urgent block's (downgrading the opponent's open-three, ~+225) even when the
  * block is the only move that avoids losing. Within each tier, moves sort
  * by `scoreMove` (own pattern-score gain + opponent pattern-score loss)
  * descending, so branching stays near-constant at every search node and a
@@ -446,7 +443,7 @@ export function narrowCandidates(
   )) {
     const key = `${forkPoint.move.row},${forkPoint.move.col}`;
     urgentMoves.set(key, forkPoint.move);
-    forkBonus.set(key, FORK_BONUS);
+    forkBonus.set(key, forkBonusFor(forkPoint));
   }
   // Desperado (opponent's four is unstoppable): defense of any kind is
   // pointless, and negamax's -(WIN_SCORE + depth) loss scoring means a
@@ -463,7 +460,7 @@ export function narrowCandidates(
     )) {
       const key = `${forkPoint.move.row},${forkPoint.move.col}`;
       urgentMoves.set(key, forkPoint.move);
-      forkBonus.set(key, FORK_BONUS);
+      forkBonus.set(key, forkBonusFor(forkPoint));
     }
   }
 

@@ -1,6 +1,6 @@
 import { placeMove } from './board.ts';
 import { parseBoard } from './test-helpers/parse-board.ts';
-import { checkCaroWin } from './rules.ts';
+import { checkCaroWin, findCaroWinLine } from './rules.ts';
 
 describe('checkCaroWin', () => {
   it('wins on a five blocked at neither end', () => {
@@ -69,5 +69,65 @@ describe('checkCaroWin', () => {
   it('returns false when the queried cell does not belong to the given player', () => {
     const board = parseBoard('.XXXXX.');
     expect(checkCaroWin(board, 0, 3, 2)).toBe(false);
+  });
+});
+
+describe('findCaroWinLine', () => {
+  it('returns the five horizontal cells through the winning stone', () => {
+    const board = parseBoard(`
+      .......
+      .XXXXX.
+      .......
+    `);
+    expect(findCaroWinLine(board, 1, 3, 1)).toEqual([
+      { row: 1, col: 1 },
+      { row: 1, col: 2 },
+      { row: 1, col: 3 },
+      { row: 1, col: 4 },
+      { row: 1, col: 5 },
+    ]);
+  });
+
+  it('returns null for a double-blocked five', () => {
+    const board = parseBoard('OXXXXXO');
+    expect(findCaroWinLine(board, 0, 3, 1)).toBeNull();
+  });
+
+  it('returns null for an overline', () => {
+    const board = parseBoard(`
+      ........
+      .XXXXXX.
+      ........
+    `);
+    expect(findCaroWinLine(board, 1, 3, 1)).toBeNull();
+  });
+
+  it('returns the diagonal line through the queried cell', () => {
+    const board = parseBoard(`
+      X....
+      .X...
+      ..X..
+      ...X.
+      ....X
+    `);
+    expect(findCaroWinLine(board, 2, 2, 1)).toEqual([
+      { row: 0, col: 0 },
+      { row: 1, col: 1 },
+      { row: 2, col: 2 },
+      { row: 3, col: 3 },
+      { row: 4, col: 4 },
+    ]);
+  });
+
+  it('returns null when the queried cell is not on a winning line', () => {
+    let board = parseBoard(`
+      .........
+      .XXXXX...
+      .........
+      .........
+      .........
+    `);
+    board = placeMove(board, 3, 0, 1);
+    expect(findCaroWinLine(board, 3, 0, 1)).toBeNull();
   });
 });

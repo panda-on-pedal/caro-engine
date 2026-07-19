@@ -29,7 +29,7 @@ function dualPurposeFixtureBoard() {
 }
 
 describe("totalPatternScore", () => {
-  it("sums PATTERN_SCORES over the given instances", () => {
+  it("sums RANK_PATTERN_WEIGHTS over the given instances", () => {
     const board = parseBoard("..OO...");
     const patterns = findPatterns(board, 2);
     expect(totalPatternScore(patterns)).toBe(

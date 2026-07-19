@@ -1,4 +1,5 @@
-import { evaluate, WIN_SCORE } from "./evaluate.ts";
+import { evaluate, forkBonusFor, FORK_BONUS_SCALE, RANK_PATTERN_WEIGHTS, WIN_SCORE } from "./evaluate.ts";
+import { findForkPoints, findPatterns } from "./patterns.ts";
 import { parseBoard } from "./test-helpers/parse-board.ts";
 
 describe("evaluate", () => {
@@ -35,5 +36,24 @@ describe("evaluate", () => {
   it("returns -WIN_SCORE when the opponent already has a five on the board", () => {
     const board = parseBoard(".OOOOO.");
     expect(evaluate(board, 1)).toBe(-WIN_SCORE);
+  });
+});
+
+describe("forkBonusFor", () => {
+  it("scales the sum of RANK_PATTERN_WEIGHTS for contributing lines", () => {
+    const board = parseBoard(`
+      .......
+      .....X.
+      ..XXX..
+      .....X.
+      .......
+    `);
+    const forkPoint = findForkPoints(findPatterns(board, 1))[0];
+    const expected =
+      forkPoint.patterns.reduce(
+        (sum, p) => sum + RANK_PATTERN_WEIGHTS[p.type],
+        0,
+      ) * FORK_BONUS_SCALE;
+    expect(forkBonusFor(forkPoint)).toBe(expected);
   });
 });

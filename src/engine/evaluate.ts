@@ -1,6 +1,7 @@
 import type { Board, Player } from "./board.ts";
 import {
   findPatterns,
+  type ForkPoint,
   type PatternInstance,
   type PatternType,
 } from "./patterns.ts";
@@ -14,6 +15,32 @@ export const PATTERN_SCORES: Record<PatternType, number> = {
   "open-two": 100,
   two: 10,
 };
+
+/** Tighter tier spread for `scoreMove` / fork bonus — same ordering intent as
+ * `PATTERN_SCORES` but ~5× steps instead of 10–20× so forks and dual-purpose
+ * moves can compete within the urgent tier. Leaf `evaluate()` keeps wide
+ * `PATTERN_SCORES` + `WIN_SCORE` cliffs. */
+export const RANK_PATTERN_WEIGHTS: Record<PatternType, number> = {
+  five: 1_000_000,
+  "open-four": 1_000,
+  four: 500,
+  "open-three": 250,
+  three: 50,
+  "open-two": 10,
+  two: 2,
+};
+
+/** Global multiplier for proportional fork bonuses — tune here only. */
+export const FORK_BONUS_SCALE = 3;
+
+/** Sum of `RANK_PATTERN_WEIGHTS` over the fork's contributing lines × scale. */
+export function forkBonusFor(forkPoint: ForkPoint): number {
+  let total = 0;
+  for (const pattern of forkPoint.patterns) {
+    total += RANK_PATTERN_WEIGHTS[pattern.type];
+  }
+  return total * FORK_BONUS_SCALE;
+}
 
 export const TEMPO_MULTIPLIER = 1.2;
 export const WIN_SCORE = 10_000_000;

@@ -1,4 +1,5 @@
 import { isInBounds, WIN_LENGTH, type Board, type Player } from './board.ts';
+import type { Move } from './state.ts';
 
 const DIRECTIONS: ReadonlyArray<readonly [number, number]> = [
   [0, 1],
@@ -8,20 +9,25 @@ const DIRECTIONS: ReadonlyArray<readonly [number, number]> = [
 ];
 
 /**
- * Checks whether the stone just placed at (row, col) completes a
- * Caro-legal five: a run of exactly five stones, not blocked by an
- * opponent stone at both ends. The board edge never counts as a block;
- * a run of six or more (overline) never wins even though it contains
+ * Returns the five cells of a Caro-legal win through `(row, col)` when the
+ * stone just placed there completes one: a run of exactly five stones, not
+ * blocked by an opponent stone at both ends. The board edge never counts as a
+ * block; a run of six or more (overline) never wins even though it contains
  * five consecutive stones.
  */
-export function checkCaroWin(board: Board, row: number, col: number, player: Player): boolean {
+export function findCaroWinLine(
+  board: Board,
+  row: number,
+  col: number,
+  player: Player,
+): Move[] | null {
   if (board[row][col] !== player) {
-    return false;
+    return null;
   }
 
   const opponent: Player = player === 1 ? 2 : 1;
 
-  return DIRECTIONS.some(([dRow, dCol]) => {
+  for (const [dRow, dCol] of DIRECTIONS) {
     let startRow = row;
     let startCol = col;
     while (
@@ -42,21 +48,42 @@ export function checkCaroWin(board: Board, row: number, col: number, player: Pla
       endCol += dCol;
     }
 
-    const runLength = Math.max(Math.abs(endRow - startRow), Math.abs(endCol - startCol)) + 1;
+    const runLength =
+      Math.max(Math.abs(endRow - startRow), Math.abs(endCol - startCol)) + 1;
     if (runLength !== WIN_LENGTH) {
-      return false;
+      continue;
     }
 
-    const beforeRow = startRow - dRow;
-    const beforeCol = startCol - dCol;
-    const afterRow = endRow + dRow;
-    const afterCol = endCol + dCol;
-
     const blockedBefore =
-      isInBounds(board, beforeRow, beforeCol) && board[beforeRow][beforeCol] === opponent;
+      isInBounds(board, startRow - dRow, startCol - dCol) &&
+      board[startRow - dRow][startCol - dCol] === opponent;
     const blockedAfter =
-      isInBounds(board, afterRow, afterCol) && board[afterRow][afterCol] === opponent;
+      isInBounds(board, endRow + dRow, endCol + dCol) &&
+      board[endRow + dRow][endCol + dCol] === opponent;
+    if (blockedBefore && blockedAfter) {
+      continue;
+    }
 
-    return !(blockedBefore && blockedAfter);
-  });
+    const line: Move[] = [];
+    for (let r = startRow, c = startCol; ; r += dRow, c += dCol) {
+      line.push({ row: r, col: c });
+      if (r === endRow && c === endCol) {
+        break;
+      }
+    }
+    return line;
+  }
+
+  return null;
+}
+
+/**
+ * Checks whether the stone just placed at (row, col) completes a
+ * Caro-legal five: a run of exactly five stones, not blocked by an
+ * opponent stone at both ends. The board edge never counts as a block;
+ * a run of six or more (overline) never wins even though it contains
+ * five consecutive stones.
+ */
+export function checkCaroWin(board: Board, row: number, col: number, player: Player): boolean {
+  return findCaroWinLine(board, row, col, player) !== null;
 }

@@ -59,11 +59,11 @@ describe("catalog #1 — extending X's diagonal to a three outranks the dual-pur
     expect(snapshotNarrow(board, 1, 4)).toMatchSnapshot();
   });
 
-  it("ranks the diagonal-extension moves first (score 4900+), far above the dual-purpose move (10,13, score 190)", () => {
+  it("ranks the diagonal-extension moves first (score ~240+), far above the dual-purpose move (10,13, score ~18)", () => {
     const result = narrowCandidates(board, 1, 4, CFG);
     expect(result.source).toBe("tactical");
     expect(result.moves[0]).toEqual({ row: 8, col: 14 });
-    expect(scoreMove(board, 1, result.moves[0])).toBeGreaterThan(4000);
+    expect(scoreMove(board, 1, result.moves[0])).toBeGreaterThan(200);
   });
 
   it("still scores the dual-purpose move (10,13) higher than the pure one-sided block (13,10)", () => {
@@ -71,8 +71,8 @@ describe("catalog #1 — extending X's diagonal to a three outranks the dual-pur
     // extension point; (13,10) only blocks, with no benefit to X.
     const dual = scoreMove(board, 1, { row: 10, col: 13 });
     const pureBlock = scoreMove(board, 1, { row: 13, col: 10 });
-    expect(dual).toBe(190);
-    expect(pureBlock).toBe(90);
+    expect(dual).toBe(18);
+    expect(pureBlock).toBe(8);
     expect(dual).toBeGreaterThan(pureBlock);
   });
 });
@@ -117,7 +117,7 @@ describe("catalog #2 — O's dual-purpose 12,13 competes in the soft tier, behin
       { row: 8, col: 14 },
     ]);
     expect(result.moves[2]).toEqual({ row: 12, col: 13 });
-    expect(scoreMove(board, 2, { row: 12, col: 13 })).toBe(5010);
+    expect(scoreMove(board, 2, { row: 12, col: 13 })).toBe(252);
   });
 
   it("fills the remaining soft slots with the open-three-creating group, dropping the weaker two-gains", () => {
@@ -125,7 +125,7 @@ describe("catalog #2 — O's dual-purpose 12,13 competes in the soft tier, behin
     const keys = result.moves.map((m) => `${m.row},${m.col}`).sort();
     expect(keys).toEqual(["12,12", "12,13", "12,8", "7,15", "8,14"]);
     // With two top-K slots reserved for the urgent tier, only the three
-    // best soft moves survive: 12,13 (5010) and two of the ~4900
+    // best soft moves survive: 12,13 (252) and two of the ~240
     // open-three makers. 12,9, 13,10 (590) and 14,9 (490) are cut.
     expect(keys.includes("14,9")).toBe(false);
   });
@@ -206,8 +206,8 @@ describe("catalog #4 — X must answer O's open-three; the dual-purpose block ou
       { row: 9, col: 7 }, // 0: distance block (boxed-five), tier-retained
       { row: 15, col: 13 }, // 0: distance block (boxed-five), tier-retained
     ]);
-    expect(scoreMove(board, 1, { row: 14, col: 12 })).toBe(4600);
-    expect(scoreMove(board, 1, { row: 10, col: 8 })).toBe(4500);
+    expect(scoreMove(board, 1, { row: 14, col: 12 })).toBe(210);
+    expect(scoreMove(board, 1, { row: 10, col: 8 })).toBe(200);
   });
 });
 
@@ -290,9 +290,9 @@ describe("catalog #6 — X's single block (9,7) works only because it combines w
     expect(checkCaroWin(oTriesNearEnd, 9, 7, 2)).toBe(true);
   });
 
-  it("the pattern SCORER already gets this right — scoreMove ranks 9,7 (fully defuses O, score 100000) far above 14,12 (only downgrades to a one-sided four, score 90110)", () => {
-    expect(scoreMove(board, 1, { row: 9, col: 7 })).toBe(100_000);
-    expect(scoreMove(board, 1, { row: 14, col: 12 })).toBe(90_110);
+  it("scoreMove ranks 9,7 (fully defuses O) far above 14,12 (only downgrades to a one-sided four)", () => {
+    expect(scoreMove(board, 1, { row: 9, col: 7 })).toBe(2500);
+    expect(scoreMove(board, 1, { row: 14, col: 12 })).toBe(2012);
   });
 
   it("the forced tier futility-filters to the single block that works: 9,7 alone — a single-candidate, no-search case", () => {

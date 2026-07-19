@@ -2,7 +2,7 @@
 import { placeMove, type Board, type Player } from "./board.ts";
 import { checkCaroWin } from "./rules.ts";
 import { findPatterns, type PatternInstance } from "./patterns.ts";
-import { PATTERN_SCORES } from "./evaluate.ts";
+import { RANK_PATTERN_WEIGHTS } from "./evaluate.ts";
 import type { PatternStore } from "./patternStore.ts";
 import type { Move } from "./state.ts";
 
@@ -12,13 +12,13 @@ function otherPlayer(player: Player): Player {
   return player === 1 ? 2 : 1;
 }
 
-/** Sum of PATTERN_SCORES over instances (no tempo multiplier). */
+/** Sum of `RANK_PATTERN_WEIGHTS` over instances (no tempo multiplier). */
 export function totalPatternScore(
   patterns: readonly PatternInstance[],
 ): number {
   let total = 0;
   for (const p of patterns) {
-    total += PATTERN_SCORES[p.type];
+    total += RANK_PATTERN_WEIGHTS[p.type];
   }
   return total;
 }

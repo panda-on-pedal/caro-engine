@@ -37,6 +37,35 @@ function cloneState(current: GameState): GameState {
   return deserializeState(serializeState(current));
 }
 
+/** `state` plus the redo history derived from `future`, for persistence.
+ * `future[0]` (bottom of the stack) always holds the full extended move
+ * list, since `future` is appended to bottom-first as undos happen. */
+function persistedState(): GameState {
+  const redoMoves = future.length > 0 ? future[0].moveHistory.slice(state.moveHistory.length) : [];
+  return { ...state, redoMoves };
+}
+
+/** Rebuilds the in-memory undo/redo stacks from a loaded GameState's
+ * `moveHistory` (past) and `redoMoves` (future) by replaying moves through
+ * `applyMove`, so history survives a page reload. */
+function rebuildHistory(loaded: GameState): { current: GameState; past: GameState[]; future: GameState[] } {
+  let current: GameState = newGame();
+  const past: GameState[] = [];
+  for (const move of loaded.moveHistory) {
+    past.push(cloneState(current));
+    current = applyMove(current, move, current.nextPlayer);
+  }
+
+  const forward: GameState[] = [];
+  let cursor = current;
+  for (const move of loaded.redoMoves ?? []) {
+    cursor = applyMove(cursor, move, cursor.nextPlayer);
+    forward.push(cloneState(cursor));
+  }
+
+  return { current, past, future: forward.reverse() };
+}
+
 function currentDifficulty(): Difficulty {
   return difficultyEl.value as Difficulty;
 }
@@ -176,12 +205,16 @@ function render(): void {
     statusEl.dataset.done = 'true';
   }
 
+  const lastMove = state.moveHistory[state.moveHistory.length - 1] as Move | undefined;
+  const winningCells = new Set((state.winningLine ?? []).map((move) => `${move.row},${move.col}`));
+
   const cells = boardEl.children;
   for (let row = 0; row < BOARD_SIZE; row += 1) {
     for (let col = 0; col < BOARD_SIZE; col += 1) {
       const cell = cells[row * BOARD_SIZE + col] as HTMLButtonElement;
+      const mark = cell.firstElementChild as HTMLSpanElement;
       const value = state.board[row][col];
-      cell.textContent = value === 1 ? 'X' : value === 2 ? 'O' : '';
+      mark.textContent = value === 1 ? 'X' : value === 2 ? 'O' : '';
       if (value === 0) {
         delete cell.dataset.player;
         cell.style.transform = '';
@@ -191,6 +224,18 @@ function render(): void {
       }
       cell.disabled =
         busy || value !== 0 || state.nextPlayer !== 1 || state.winner !== null;
+
+      if (lastMove && lastMove.row === row && lastMove.col === col) {
+        mark.dataset.lastMove = 'true';
+      } else {
+        delete mark.dataset.lastMove;
+      }
+
+      if (winningCells.has(`${row},${col}`)) {
+        mark.dataset.winningCell = 'true';
+      } else {
+        delete mark.dataset.winningCell;
+      }
     }
   }
   updateHistoryButtons();
@@ -229,6 +274,11 @@ function buildBoard(): void {
       cell.dataset.row = String(row);
       cell.dataset.col = String(col);
       cell.title = `Row ${row}, Col ${col}`;
+
+      const mark = document.createElement('span');
+      mark.className = 'mark';
+      cell.appendChild(mark);
+
       fragment.appendChild(cell);
     }
   }
@@ -258,7 +308,7 @@ async function handleCellClick(event: MouseEvent): Promise<void> {
     return;
   }
 
-  const target = event.target;
+  const target = (event.target as HTMLElement).closest('.cell');
   if (!(target instanceof HTMLButtonElement) || target.disabled || !target.dataset.row || !target.dataset.col) {
     return;
   }
@@ -282,7 +332,7 @@ async function handleCellClick(event: MouseEvent): Promise<void> {
   render();
   logPatterns();
 
-  await saveState(state);
+  await saveState(persistedState());
 }
 
 /** Undo/redo one full human turn when possible (human stone + AI reply),
@@ -305,7 +355,7 @@ async function handleUndo(): Promise<void> {
   stepHistory(past, future, past.length >= 2 ? 2 : 1);
   render();
   logPatterns();
-  await saveState(state);
+  await saveState(persistedState());
 }
 
 async function handleRedo(): Promise<void> {
@@ -315,7 +365,7 @@ async function handleRedo(): Promise<void> {
   stepHistory(future, past, future.length >= 2 ? 2 : 1);
   render();
   logPatterns();
-  await saveState(state);
+  await saveState(persistedState());
 }
 
 async function handleNewGame(): Promise<void> {
@@ -327,7 +377,7 @@ async function handleNewGame(): Promise<void> {
   state = newGame();
   patternStore = PatternStore.fromBoard(state.board);
   render();
-  await saveState(state);
+  await saveState(persistedState());
 }
 
 async function init(): Promise<void> {
@@ -335,12 +385,22 @@ async function init(): Promise<void> {
   buildBoard();
 
   try {
-    state = await fetchState();
+    const loaded = await fetchState();
+    try {
+      const rebuilt = rebuildHistory(loaded);
+      state = rebuilt.current;
+      past = rebuilt.past;
+      future = rebuilt.future;
+    } catch {
+      state = loaded;
+      past = [];
+      future = [];
+    }
   } catch {
     state = newGame();
+    past = [];
+    future = [];
   }
-  past = [];
-  future = [];
   patternStore = PatternStore.fromBoard(state.board);
   render();
 
