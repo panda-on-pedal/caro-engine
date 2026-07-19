@@ -10,9 +10,10 @@
 
 ## Global Constraints
 
-- Implement in the main `caro-engine` checkout on a dedicated feature branch (suggested name: `feat/incremental-patterns`), branched from the current mainline that already contains pattern-driven search / top-K (`master` or whichever branch is up to date). Paths below are relative to the repo root (`caro-engine/`).
-- Do **not** implement this plan in `.claude/worktrees/pattern-driven-search` or any other git worktree — use the feature branch only.
-- Before Task 1: create and check out the feature branch if it does not already exist (`git checkout -b feat/incremental-patterns`).
+- Implement in the main `caro-engine` checkout on feature branch `feat/incremental-patterns`, branched from `main`. Paths below are relative to the repo root (`caro-engine/`).
+- Do **not** implement this plan in `.claude/worktrees/*` or any other git worktree — use the feature branch only.
+- Before Task 1: `git checkout main && git checkout -b feat/incremental-patterns` (or check out the branch if it already exists).
+- UI (`src/ui/app.ts`): keep a long-lived `PatternStore` in sync on human/AI moves **and** on undo/redo/new-game/load (place/undo when history steps by stones; `fromBoard` on full reset/load).
 - Dependency direction: `engine → search → narrow/rankMoves/evaluate → patternStore → patterns → rules → board`. `patternStore` may import `patterns` and `board`; it must not import `search` or `engine`.
 - `findPatterns` remains a pure full-board scan and the oracle for equality tests. Do **not** make it guess incremental vs full from `(board, player)` alone.
 - Incremental algorithm for this plan is **4-line rebuild**, not fine-grained per-window deltas:

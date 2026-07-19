@@ -2,7 +2,8 @@
 import { placeMove, type Board, type Player } from "./board.ts";
 import { checkCaroWin } from "./rules.ts";
 import { findPatterns, type PatternInstance } from "./patterns.ts";
-import { PATTERN_SCORES } from "./evaluate.ts";
+import { RANK_PATTERN_WEIGHTS } from "./evaluate.ts";
+import type { PatternStore } from "./patternStore.ts";
 import type { Move } from "./state.ts";
 
 export const DEFAULT_TOP_K = 5;
@@ -11,11 +12,13 @@ function otherPlayer(player: Player): Player {
   return player === 1 ? 2 : 1;
 }
 
-/** Sum of PATTERN_SCORES over instances (no tempo multiplier). */
-export function totalPatternScore(patterns: PatternInstance[]): number {
+/** Sum of `RANK_PATTERN_WEIGHTS` over instances (no tempo multiplier). */
+export function totalPatternScore(
+  patterns: readonly PatternInstance[],
+): number {
   let total = 0;
   for (const p of patterns) {
-    total += PATTERN_SCORES[p.type];
+    total += RANK_PATTERN_WEIGHTS[p.type];
   }
   return total;
 }
@@ -43,6 +46,27 @@ function scoreMoveFromBaseline(
   return ownAfter - ownBefore + (oppBefore - oppAfter);
 }
 
+function scoreMoveFromStore(
+  store: PatternStore,
+  player: Player,
+  opponent: Player,
+  ownBefore: number,
+  oppBefore: number,
+  move: Move,
+): number {
+  store.place(move, player);
+  let score: number;
+  if (checkCaroWin(store.board, move.row, move.col, player)) {
+    score = Number.POSITIVE_INFINITY;
+  } else {
+    const ownAfter = totalPatternScore(store.patterns(player));
+    const oppAfter = totalPatternScore(store.patterns(opponent));
+    score = ownAfter - ownBefore + (oppBefore - oppAfter);
+  }
+  store.undo();
+  return score;
+}
+
 /**
  * Own pattern-score gain plus opponent pattern-score reduction from playing
  * `move` as `player`. An immediate win scores `+Infinity` so it always
@@ -62,6 +86,10 @@ export function scoreMove(board: Board, player: Player, move: Move): number {
   );
 }
 
+function bonusFor(bonus: ReadonlyMap<string, number> | undefined, move: Move): number {
+  return bonus?.get(`${move.row},${move.col}`) ?? 0;
+}
+
 function rankByScore(
   board: Board,
   player: Player,
@@ -69,18 +97,39 @@ function rankByScore(
   ownBefore: number,
   oppBefore: number,
   moves: readonly Move[],
+  bonus?: ReadonlyMap<string, number>,
 ): Move[] {
   const ranked = moves.map((move, index) => ({
     move,
     index,
-    score: scoreMoveFromBaseline(
-      board,
-      player,
-      opponent,
-      ownBefore,
-      oppBefore,
-      move,
-    ),
+    score:
+      scoreMoveFromBaseline(board, player, opponent, ownBefore, oppBefore, move) +
+      bonusFor(bonus, move),
+  }));
+  ranked.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    return a.index - b.index;
+  });
+  return ranked.map((r) => r.move);
+}
+
+function rankByScoreFromStore(
+  store: PatternStore,
+  player: Player,
+  opponent: Player,
+  ownBefore: number,
+  oppBefore: number,
+  moves: readonly Move[],
+  bonus?: ReadonlyMap<string, number>,
+): Move[] {
+  const ranked = moves.map((move, index) => ({
+    move,
+    index,
+    score:
+      scoreMoveFromStore(store, player, opponent, ownBefore, oppBefore, move) +
+      bonusFor(bonus, move),
   }));
   ranked.sort((a, b) => {
     if (b.score !== a.score) {
@@ -110,6 +159,26 @@ export function selectTopMoves(
   );
 }
 
+/** Like `selectTopMoves`, scoring trial places via `PatternStore`. */
+export function selectTopMovesFromStore(
+  store: PatternStore,
+  player: Player,
+  moves: readonly Move[],
+  k: number = DEFAULT_TOP_K,
+): Move[] {
+  const opponent = otherPlayer(player);
+  const ownBefore = totalPatternScore(store.patterns(player));
+  const oppBefore = totalPatternScore(store.patterns(opponent));
+  return rankByScoreFromStore(
+    store,
+    player,
+    opponent,
+    ownBefore,
+    oppBefore,
+    moves,
+  ).slice(0, k);
+}
+
 /**
  * Tier-ordered variant of `selectTopMoves`: every move from an earlier
  * tier ranks ahead of all moves from later tiers regardless of score, so
@@ -123,6 +192,7 @@ export function selectTopMovesTiered(
   player: Player,
   tiers: ReadonlyArray<readonly Move[]>,
   k: number = DEFAULT_TOP_K,
+  bonus?: ReadonlyMap<string, number>,
 ): Move[] {
   const opponent = otherPlayer(player);
   const ownBefore = totalPatternScore(findPatterns(board, player));
@@ -149,6 +219,51 @@ export function selectTopMovesTiered(
       ownBefore,
       oppBefore,
       fresh,
+      bonus,
+    )) {
+      if (selected.length >= k) {
+        break;
+      }
+      selected.push(move);
+    }
+  }
+  return selected;
+}
+
+/** Like `selectTopMovesTiered`, scoring trial places via `PatternStore`. */
+export function selectTopMovesTieredFromStore(
+  store: PatternStore,
+  player: Player,
+  tiers: ReadonlyArray<readonly Move[]>,
+  k: number = DEFAULT_TOP_K,
+  bonus?: ReadonlyMap<string, number>,
+): Move[] {
+  const opponent = otherPlayer(player);
+  const ownBefore = totalPatternScore(store.patterns(player));
+  const oppBefore = totalPatternScore(store.patterns(opponent));
+
+  const seen = new Set<string>();
+  const selected: Move[] = [];
+  for (const tier of tiers) {
+    if (selected.length >= k) {
+      break;
+    }
+    const fresh = tier.filter((move) => {
+      const key = `${move.row},${move.col}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+    for (const move of rankByScoreFromStore(
+      store,
+      player,
+      opponent,
+      ownBefore,
+      oppBefore,
+      fresh,
+      bonus,
     )) {
       if (selected.length >= k) {
         break;

@@ -26,12 +26,43 @@ export interface PatternInstance {
   direction: [number, number];
 }
 
-const DIRECTIONS: ReadonlyArray<readonly [number, number]> = [
+export type Direction = readonly [number, number];
+
+const DIRECTIONS: ReadonlyArray<Direction> = [
   [0, 1],
   [1, 0],
   [1, 1],
   [1, -1],
 ];
+
+/** The four scan directions used by pattern detection. */
+export const PATTERN_DIRECTIONS: ReadonlyArray<Direction> = DIRECTIONS;
+
+/**
+ * Line identity for `direction` through `(row, col)`:
+ * horizontal → row; vertical → col; diag ↘ → row-col; diag ↙ → row+col.
+ */
+export function lineKey(
+  row: number,
+  col: number,
+  direction: Direction,
+): number {
+  const dRow = direction[0];
+  const dCol = direction[1];
+  if (dRow === 0 && dCol === 1) {
+    return row;
+  }
+  if (dRow === 1 && dCol === 0) {
+    return col;
+  }
+  if (dRow === 1 && dCol === 1) {
+    return row - col;
+  }
+  if (dRow === 1 && dCol === -1) {
+    return row + col;
+  }
+  throw new Error(`Unsupported direction: ${dRow},${dCol}`);
+}
 
 type CellReader = (row: number, col: number) => Cell | null;
 
@@ -106,10 +137,18 @@ function viableWindowsInDirection(
   dRow: number,
   dCol: number,
   player: Player,
+  lineFilterKey?: number,
 ): WindowInfo[] {
+  const direction: Direction = [dRow, dCol];
   const results: WindowInfo[] = [];
   for (let row = 0; row < size; row += 1) {
     for (let col = 0; col < size; col += 1) {
+      if (
+        lineFilterKey !== undefined &&
+        lineKey(row, col, direction) !== lineFilterKey
+      ) {
+        continue;
+      }
       const cells = windowCells(row, col, dRow, dCol);
       if (!isWindowInBounds(read, cells)) {
         continue;
@@ -132,8 +171,16 @@ function findFives(
   dRow: number,
   dCol: number,
   player: Player,
+  lineFilterKey?: number,
 ): PatternInstance[] {
-  return viableWindowsInDirection(read, size, dRow, dCol, player)
+  return viableWindowsInDirection(
+    read,
+    size,
+    dRow,
+    dCol,
+    player,
+    lineFilterKey,
+  )
     .filter((w) => w.stones.length === WIN_LENGTH)
     .map((w) => ({
       type: "five" as const,
@@ -169,6 +216,7 @@ function findFours(
   dRow: number,
   dCol: number,
   player: Player,
+  lineFilterKey?: number,
 ): PatternInstance[] {
   const windows = viableWindowsInDirection(
     read,
@@ -176,6 +224,7 @@ function findFours(
     dRow,
     dCol,
     player,
+    lineFilterKey,
   ).filter((w) => w.stones.length === 4);
   const groups = groupByStoneSet(windows);
 
@@ -204,6 +253,7 @@ function findThrees(
   dRow: number,
   dCol: number,
   player: Player,
+  lineFilterKey?: number,
 ): PatternInstance[] {
   const windows = viableWindowsInDirection(
     read,
@@ -211,6 +261,7 @@ function findThrees(
     dRow,
     dCol,
     player,
+    lineFilterKey,
   ).filter((w) => w.stones.length === 3);
   const groups = groupByStoneSet(windows);
 
@@ -226,7 +277,14 @@ function findThrees(
         read,
         new Map([[cellKey(gain), player]]),
       );
-      const fours = findFours(hypothetical, size, dRow, dCol, player);
+      const fours = findFours(
+        hypothetical,
+        size,
+        dRow,
+        dCol,
+        player,
+        lineFilterKey,
+      );
       return fours.some(
         (four) =>
           four.type === "open-four" &&
@@ -252,6 +310,7 @@ function findTwos(
   dRow: number,
   dCol: number,
   player: Player,
+  lineFilterKey?: number,
 ): PatternInstance[] {
   const windows = viableWindowsInDirection(
     read,
@@ -259,6 +318,7 @@ function findTwos(
     dRow,
     dCol,
     player,
+    lineFilterKey,
   ).filter((w) => w.stones.length === 2);
   const groups = groupByStoneSet(windows);
 
@@ -274,7 +334,14 @@ function findTwos(
         read,
         new Map([[cellKey(gain), player]]),
       );
-      const threes = findThrees(hypothetical, size, dRow, dCol, player);
+      const threes = findThrees(
+        hypothetical,
+        size,
+        dRow,
+        dCol,
+        player,
+        lineFilterKey,
+      );
       return threes.some(
         (three) =>
           three.type === "open-three" &&
@@ -294,17 +361,57 @@ function findTwos(
   return instances;
 }
 
+function findPatternsInDirection(
+  read: CellReader,
+  size: number,
+  dRow: number,
+  dCol: number,
+  player: Player,
+  lineFilterKey?: number,
+): PatternInstance[] {
+  return [
+    ...findFives(read, size, dRow, dCol, player, lineFilterKey),
+    ...findFours(read, size, dRow, dCol, player, lineFilterKey),
+    ...findThrees(read, size, dRow, dCol, player, lineFilterKey),
+    ...findTwos(read, size, dRow, dCol, player, lineFilterKey),
+  ];
+}
+
 export function findPatterns(board: Board, player: Player): PatternInstance[] {
   const read = boardReader(board);
   const size = board.length;
   const instances: PatternInstance[] = [];
   for (const [dRow, dCol] of DIRECTIONS) {
-    instances.push(...findFives(read, size, dRow, dCol, player));
-    instances.push(...findFours(read, size, dRow, dCol, player));
-    instances.push(...findThrees(read, size, dRow, dCol, player));
-    instances.push(...findTwos(read, size, dRow, dCol, player));
+    instances.push(
+      ...findPatternsInDirection(read, size, dRow, dCol, player),
+    );
   }
   return instances;
+}
+
+/**
+ * Patterns for `player` on the single line through `(anchorRow, anchorCol)`
+ * in `direction`. Same classification as `findPatterns`, restricted to that
+ * line's windows.
+ */
+export function findPatternsOnLine(
+  board: Board,
+  player: Player,
+  anchorRow: number,
+  anchorCol: number,
+  direction: Direction,
+): PatternInstance[] {
+  const read = boardReader(board);
+  const size = board.length;
+  const key = lineKey(anchorRow, anchorCol, direction);
+  return findPatternsInDirection(
+    read,
+    size,
+    direction[0],
+    direction[1],
+    player,
+    key,
+  );
 }
 
 export interface ForkPoint {
@@ -314,19 +421,31 @@ export interface ForkPoint {
 }
 
 /**
- * A fork point is an empty cell that appears in the `criticalGains` of two
- * or more of the player's patterns in different directions — i.e. a single
- * move that promotes two separate lines to a more severe tier at once.
- * `criticalGains` already encodes what "more severe" means per type (four/
- * open-four completes a five; three/open-three promotes to open-four; two/
- * open-two promotes to open-three), and is empty for plain two/three
- * patterns by construction, so no type allow-list is needed here — every
- * pattern's criticalGains can be scanned uniformly.
+ * A fork point is an empty cell that appears in the `gains` of two or more
+ * of the player's DISTINCT pattern instances — i.e. a single move that
+ * advances two separate lines at once. Distinctness is by pattern instance
+ * (stone set), not by direction: two disjoint groups on the *same* line
+ * (e.g. two open-twos three rows apart on one column, meeting at the
+ * midpoint) are still two separate threats, exactly as much as two lines
+ * that cross in different directions.
+ *
+ * This deliberately uses the full `gains`, not just `criticalGains`: a
+ * fork doesn't require both lines to promote all the way to their next
+ * severity tier on their own — one line completing to a plain "four" while
+ * the other merely advances (a classic three-four combo, since *any* gain
+ * of a three-tier pattern already produces a four-tier group by
+ * definition) is just as real a candidate as two lines promoting
+ * symmetrically. Whether a given fork point is actually forcing, or just
+ * a promising shared point, is for `scoreMove`/search to judge — this
+ * function's job is only to make sure the point is never pruned out of
+ * candidacy before that judgment can happen.
  */
-export function findForkPoints(patterns: PatternInstance[]): ForkPoint[] {
+export function findForkPoints(
+  patterns: readonly PatternInstance[],
+): ForkPoint[] {
   const byGain = new Map<string, PatternInstance[]>();
   for (const pattern of patterns) {
-    for (const gain of pattern.criticalGains) {
+    for (const gain of pattern.gains) {
       const key = cellKey(gain);
       const list = byGain.get(key) ?? [];
       list.push(pattern);
@@ -336,10 +455,7 @@ export function findForkPoints(patterns: PatternInstance[]): ForkPoint[] {
 
   const forkPoints: ForkPoint[] = [];
   for (const [key, list] of byGain) {
-    const directions = new Set(
-      list.map((p) => `${p.direction[0]},${p.direction[1]}`),
-    );
-    if (directions.size < 2) {
+    if (list.length < 2) {
       continue;
     }
     const [rowStr, colStr] = key.split(",");

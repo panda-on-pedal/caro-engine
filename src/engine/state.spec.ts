@@ -56,6 +56,31 @@ describe('applyMove', () => {
     state = applyMove(state, { row: 6, col: 5 }, 1); // completes X at cols 1-5, row 6
 
     expect(state.winner).toBeNull();
+    expect(state.winningLine).toBeUndefined();
+  });
+
+  it('sets winningLine to the five winning cells when a move wins', () => {
+    let state = newGame();
+    for (let col = 0; col < 4; col += 1) {
+      state = applyMove(state, { row: 0, col }, 1);
+      state = applyMove(state, { row: 1, col }, 2);
+    }
+    state = applyMove(state, { row: 0, col: 4 }, 1);
+
+    expect(state.winner).toBe(1);
+    expect(state.winningLine).toEqual([
+      { row: 0, col: 0 },
+      { row: 0, col: 1 },
+      { row: 0, col: 2 },
+      { row: 0, col: 3 },
+      { row: 0, col: 4 },
+    ]);
+  });
+
+  it('leaves winningLine unset on a non-winning move', () => {
+    const state = newGame();
+    const next = applyMove(state, { row: 7, col: 7 }, 1);
+    expect(next.winningLine).toBeUndefined();
   });
 });
 

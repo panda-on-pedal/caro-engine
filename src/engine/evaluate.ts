@@ -1,6 +1,7 @@
 import type { Board, Player } from "./board.ts";
 import {
   findPatterns,
+  type ForkPoint,
   type PatternInstance,
   type PatternType,
 } from "./patterns.ts";
@@ -15,25 +16,50 @@ export const PATTERN_SCORES: Record<PatternType, number> = {
   two: 10,
 };
 
+/** Tighter tier spread for `scoreMove` / fork bonus — same ordering intent as
+ * `PATTERN_SCORES` but ~5× steps instead of 10–20× so forks and dual-purpose
+ * moves can compete within the urgent tier. Leaf `evaluate()` keeps wide
+ * `PATTERN_SCORES` + `WIN_SCORE` cliffs. */
+export const RANK_PATTERN_WEIGHTS: Record<PatternType, number> = {
+  five: 1_000_000,
+  "open-four": 1_000,
+  four: 500,
+  "open-three": 250,
+  three: 50,
+  "open-two": 10,
+  two: 2,
+};
+
+/** Global multiplier for proportional fork bonuses — tune here only. */
+export const FORK_BONUS_SCALE = 3;
+
+/** Sum of `RANK_PATTERN_WEIGHTS` over the fork's contributing lines × scale. */
+export function forkBonusFor(forkPoint: ForkPoint): number {
+  let total = 0;
+  for (const pattern of forkPoint.patterns) {
+    total += RANK_PATTERN_WEIGHTS[pattern.type];
+  }
+  return total * FORK_BONUS_SCALE;
+}
+
 export const TEMPO_MULTIPLIER = 1.2;
 export const WIN_SCORE = 10_000_000;
 
-function scorePatterns(patterns: PatternInstance[], isMover: boolean): number {
-  const total = patterns.reduce((sum, p) => sum + PATTERN_SCORES[p.type], 0);
+function scorePatterns(patterns: readonly PatternInstance[], isMover: boolean): number {
+  let total = 0;
+  for (const p of patterns) {
+    total += PATTERN_SCORES[p.type];
+  }
   return isMover ? total * TEMPO_MULTIPLIER : total;
 }
 
 /**
- * Sums pattern scores for both sides, giving the side to move a tempo
- * bonus (a four for the mover is a win next turn). Terminal positions
- * (a five already on the board) short-circuit to +/- WIN_SCORE.
+ * Score from precomputed pattern lists (no board scan).
  */
-export function evaluate(board: Board, playerToMove: Player): number {
-  const opponent: Player = playerToMove === 1 ? 2 : 1;
-
-  const moverPatterns = findPatterns(board, playerToMove);
-  const opponentPatterns = findPatterns(board, opponent);
-
+export function evaluateFromPatterns(
+  moverPatterns: readonly PatternInstance[],
+  opponentPatterns: readonly PatternInstance[],
+): number {
   if (moverPatterns.some((p) => p.type === "five")) {
     return WIN_SCORE;
   }
@@ -43,12 +69,7 @@ export function evaluate(board: Board, playerToMove: Player): number {
 
   // A "four" or "open-four" for the mover is an unstoppable win: the mover
   // gets to act right now and simply plays the completing cell before the
-  // opponent gets a turn, regardless of how much material the opponent has
-  // built up. Without this short-circuit, a large opponent open-four
-  // (scored flat at PATTERN_SCORES["open-four"], no tempo discount) could
-  // outweigh the mover's own tempo-multiplied four in the net sum below,
-  // making the search blind to the fact that the opponent's threat never
-  // gets a chance to materialize because the mover already won.
+  // opponent gets a turn.
   if (
     moverPatterns.some((p) => p.type === "four" || p.type === "open-four")
   ) {
@@ -57,5 +78,18 @@ export function evaluate(board: Board, playerToMove: Player): number {
 
   return (
     scorePatterns(moverPatterns, true) - scorePatterns(opponentPatterns, false)
+  );
+}
+
+/**
+ * Sums pattern scores for both sides, giving the side to move a tempo
+ * bonus (a four for the mover is a win next turn). Terminal positions
+ * (a five already on the board) short-circuit to +/- WIN_SCORE.
+ */
+export function evaluate(board: Board, playerToMove: Player): number {
+  const opponent: Player = playerToMove === 1 ? 2 : 1;
+  return evaluateFromPatterns(
+    findPatterns(board, playerToMove),
+    findPatterns(board, opponent),
   );
 }

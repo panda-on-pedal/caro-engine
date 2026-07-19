@@ -1,7 +1,7 @@
-import { BOARD_SIZE, type Board } from '../engine/board.ts';
+import { BOARD_SIZE, type Board, type Player } from '../engine/board.ts';
 import { chooseMove, type Difficulty } from '../engine/engine.ts';
-import { findPatterns } from '../engine/patterns.ts';
-import { applyMove, deserializeState, newGame, serializeState, type GameState } from '../engine/state.ts';
+import { PatternStore } from '../engine/patternStore.ts';
+import { applyMove, deserializeState, newGame, serializeState, type GameState, type Move } from '../engine/state.ts';
 import { logger } from '../utils/logger.ts';
 
 const STATE_URL = '/api/state';
@@ -26,6 +26,8 @@ let past: GameState[] = [];
 let future: GameState[] = [];
 /** True while the AI reply is pending — blocks clicks / undo / redo. */
 let busy = false;
+/** Incremental pattern cache kept in sync with `state` (including undo/redo). */
+let patternStore = PatternStore.fromBoard(state.board);
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -33,6 +35,35 @@ function delay(ms: number): Promise<void> {
 
 function cloneState(current: GameState): GameState {
   return deserializeState(serializeState(current));
+}
+
+/** `state` plus the redo history derived from `future`, for persistence.
+ * `future[0]` (bottom of the stack) always holds the full extended move
+ * list, since `future` is appended to bottom-first as undos happen. */
+function persistedState(): GameState {
+  const redoMoves = future.length > 0 ? future[0].moveHistory.slice(state.moveHistory.length) : [];
+  return { ...state, redoMoves };
+}
+
+/** Rebuilds the in-memory undo/redo stacks from a loaded GameState's
+ * `moveHistory` (past) and `redoMoves` (future) by replaying moves through
+ * `applyMove`, so history survives a page reload. */
+function rebuildHistory(loaded: GameState): { current: GameState; past: GameState[]; future: GameState[] } {
+  let current: GameState = newGame();
+  const past: GameState[] = [];
+  for (const move of loaded.moveHistory) {
+    past.push(cloneState(current));
+    current = applyMove(current, move, current.nextPlayer);
+  }
+
+  const forward: GameState[] = [];
+  let cursor = current;
+  for (const move of loaded.redoMoves ?? []) {
+    cursor = applyMove(cursor, move, cursor.nextPlayer);
+    forward.push(cloneState(cursor));
+  }
+
+  return { current, past, future: forward.reverse() };
 }
 
 function currentDifficulty(): Difficulty {
@@ -58,11 +89,50 @@ function inkTiltDegrees(row: number, col: number): number {
   return (seed - 3) * 2.5;
 }
 
-/** Debug aid: dumps both players' recognized patterns (win-square counting
- * over sliding 5-windows) for the current board to the browser console. */
-function logPatterns(current: GameState): void {
-  logger.log('[patterns] player 1 (X):', findPatterns(current.board, 1));
-  logger.log('[patterns] player 2 (O):', findPatterns(current.board, 2));
+/** Debug aid: dumps both players' recognized patterns from the live cache. */
+function logPatterns(): void {
+  logger.log('[patterns] player 1 (X):', patternStore.patterns(1));
+  logger.log('[patterns] player 2 (O):', patternStore.patterns(2));
+}
+
+/**
+ * Keep `patternStore` aligned with a history jump (undo/redo). Prefers
+ * place/undo when the stone delta matches the store stack; otherwise
+ * rebuilds from the board so the cache never goes stale.
+ */
+function syncPatternStore(prev: GameState, next: GameState): void {
+  const prevLen = prev.moveHistory.length;
+  const nextLen = next.moveHistory.length;
+  if (nextLen === prevLen) {
+    patternStore.resetFromBoard(next.board);
+    return;
+  }
+
+  if (nextLen < prevLen) {
+    const steps = prevLen - nextLen;
+    if (patternStore.depth >= steps) {
+      for (let i = 0; i < steps; i += 1) {
+        patternStore.undo();
+      }
+      return;
+    }
+    patternStore.resetFromBoard(next.board);
+    return;
+  }
+
+  const added = next.moveHistory.slice(prevLen);
+  for (const move of added) {
+    const cell = next.board[move.row][move.col];
+    if (cell !== 1 && cell !== 2) {
+      patternStore.resetFromBoard(next.board);
+      return;
+    }
+    if (patternStore.board[move.row][move.col] !== 0) {
+      patternStore.resetFromBoard(next.board);
+      return;
+    }
+    patternStore.place(move, cell);
+  }
 }
 
 /** Renders the board as a fixed-width grid (col headers on top, row headers on
@@ -135,12 +205,16 @@ function render(): void {
     statusEl.dataset.done = 'true';
   }
 
+  const lastMove = state.moveHistory[state.moveHistory.length - 1] as Move | undefined;
+  const winningCells = new Set((state.winningLine ?? []).map((move) => `${move.row},${move.col}`));
+
   const cells = boardEl.children;
   for (let row = 0; row < BOARD_SIZE; row += 1) {
     for (let col = 0; col < BOARD_SIZE; col += 1) {
       const cell = cells[row * BOARD_SIZE + col] as HTMLButtonElement;
+      const mark = cell.firstElementChild as HTMLSpanElement;
       const value = state.board[row][col];
-      cell.textContent = value === 1 ? 'X' : value === 2 ? 'O' : '';
+      mark.textContent = value === 1 ? 'X' : value === 2 ? 'O' : '';
       if (value === 0) {
         delete cell.dataset.player;
         cell.style.transform = '';
@@ -150,6 +224,18 @@ function render(): void {
       }
       cell.disabled =
         busy || value !== 0 || state.nextPlayer !== 1 || state.winner !== null;
+
+      if (lastMove && lastMove.row === row && lastMove.col === col) {
+        mark.dataset.lastMove = 'true';
+      } else {
+        delete mark.dataset.lastMove;
+      }
+
+      if (winningCells.has(`${row},${col}`)) {
+        mark.dataset.winningCell = 'true';
+      } else {
+        delete mark.dataset.winningCell;
+      }
     }
   }
   updateHistoryButtons();
@@ -188,6 +274,11 @@ function buildBoard(): void {
       cell.dataset.row = String(row);
       cell.dataset.col = String(col);
       cell.title = `Row ${row}, Col ${col}`;
+
+      const mark = document.createElement('span');
+      mark.className = 'mark';
+      cell.appendChild(mark);
+
       fragment.appendChild(cell);
     }
   }
@@ -197,11 +288,19 @@ function buildBoard(): void {
   buildHeaderStrip(rowHeadersEl, 'row');
 }
 
-/** Push current board, apply `next`, clear redo stack. */
-function commitState(next: GameState): void {
+/** Push current board, apply `next`, clear redo stack, update pattern cache. */
+function commitState(
+  next: GameState,
+  placed?: { move: Move; player: Player },
+): void {
   past.push(cloneState(state));
   future = [];
   state = next;
+  if (placed) {
+    patternStore.place(placed.move, placed.player);
+  } else {
+    patternStore.resetFromBoard(next.board);
+  }
 }
 
 async function handleCellClick(event: MouseEvent): Promise<void> {
@@ -209,7 +308,7 @@ async function handleCellClick(event: MouseEvent): Promise<void> {
     return;
   }
 
-  const target = event.target;
+  const target = (event.target as HTMLElement).closest('.cell');
   if (!(target instanceof HTMLButtonElement) || target.disabled || !target.dataset.row || !target.dataset.col) {
     return;
   }
@@ -217,38 +316,36 @@ async function handleCellClick(event: MouseEvent): Promise<void> {
   const row = Number(target.dataset.row);
   const col = Number(target.dataset.col);
 
-  commitState(applyMove(state, { row, col }, 1));
+  const humanMove = { row, col };
+  commitState(applyMove(state, humanMove, 1), { move: humanMove, player: 1 });
   render();
-  logPatterns(state);
+  logPatterns();
 
   if (state.winner === null) {
     busy = true;
     render();
     await delay(AI_THINK_DELAY_MS);
-    commitState(
-      applyMove(
-        state,
-        chooseMove(state, { difficulty: currentDifficulty() }).move,
-        2,
-      ),
-    );
+    const aiMove = chooseMove(state, { difficulty: currentDifficulty() }).move;
+    commitState(applyMove(state, aiMove, 2), { move: aiMove, player: 2 });
     busy = false;
   }
   render();
-  logPatterns(state);
+  logPatterns();
 
-  await saveState(state);
+  await saveState(persistedState());
 }
 
 /** Undo/redo one full human turn when possible (human stone + AI reply),
  * so after undo it is player 1's turn again. Falls back to a single step
  * when only one snapshot exists (e.g. human just won before the AI moved). */
 function stepHistory(from: GameState[], to: GameState[], preferredSteps: number): void {
+  const prev = state;
   const steps = Math.min(preferredSteps, from.length);
   for (let i = 0; i < steps; i += 1) {
     to.push(cloneState(state));
     state = from.pop()!;
   }
+  syncPatternStore(prev, state);
 }
 
 async function handleUndo(): Promise<void> {
@@ -257,8 +354,8 @@ async function handleUndo(): Promise<void> {
   }
   stepHistory(past, future, past.length >= 2 ? 2 : 1);
   render();
-  logPatterns(state);
-  await saveState(state);
+  logPatterns();
+  await saveState(persistedState());
 }
 
 async function handleRedo(): Promise<void> {
@@ -267,8 +364,8 @@ async function handleRedo(): Promise<void> {
   }
   stepHistory(future, past, future.length >= 2 ? 2 : 1);
   render();
-  logPatterns(state);
-  await saveState(state);
+  logPatterns();
+  await saveState(persistedState());
 }
 
 async function handleNewGame(): Promise<void> {
@@ -278,8 +375,9 @@ async function handleNewGame(): Promise<void> {
   past = [];
   future = [];
   state = newGame();
+  patternStore = PatternStore.fromBoard(state.board);
   render();
-  await saveState(state);
+  await saveState(persistedState());
 }
 
 async function init(): Promise<void> {
@@ -287,12 +385,23 @@ async function init(): Promise<void> {
   buildBoard();
 
   try {
-    state = await fetchState();
+    const loaded = await fetchState();
+    try {
+      const rebuilt = rebuildHistory(loaded);
+      state = rebuilt.current;
+      past = rebuilt.past;
+      future = rebuilt.future;
+    } catch {
+      state = loaded;
+      past = [];
+      future = [];
+    }
   } catch {
     state = newGame();
+    past = [];
+    future = [];
   }
-  past = [];
-  future = [];
+  patternStore = PatternStore.fromBoard(state.board);
   render();
 
   boardEl.addEventListener('click', (event) => {

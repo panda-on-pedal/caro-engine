@@ -6,27 +6,27 @@ exports[`catalog #1 — extending X's diagonal to a three outranks the dual-purp
     {
       "col": 14,
       "row": 8,
-      "score": 4910,
+      "score": 242,
     },
     {
       "col": 9,
       "row": 13,
-      "score": 4910,
+      "score": 242,
     },
     {
       "col": 13,
       "row": 9,
-      "score": 4900,
+      "score": 240,
     },
     {
       "col": 10,
       "row": 12,
-      "score": 4900,
+      "score": 240,
     },
     {
       "col": 13,
       "row": 10,
-      "score": 190,
+      "score": 18,
     },
   ],
   "source": "tactical",
@@ -39,27 +39,27 @@ exports[`catalog #2 — O's dual-purpose 12,13 competes in the soft tier, behind
     {
       "col": 15,
       "row": 7,
-      "score": 500,
+      "score": 50,
     },
     {
       "col": 14,
       "row": 8,
-      "score": 500,
+      "score": 50,
     },
     {
       "col": 13,
       "row": 12,
-      "score": 5010,
+      "score": 252,
     },
     {
       "col": 8,
       "row": 12,
-      "score": 4910,
+      "score": 242,
     },
     {
       "col": 12,
       "row": 12,
-      "score": 4910,
+      "score": 242,
     },
   ],
   "source": "tactical",
@@ -72,12 +72,12 @@ exports[`catalog #3 — X's diagonal four is blocked on one end; boxed-five conf
     {
       "col": 15,
       "row": 7,
-      "score": 10000,
+      "score": 500,
     },
     {
       "col": 16,
       "row": 6,
-      "score": 10000,
+      "score": 500,
     },
   ],
   "source": "forced",
@@ -90,12 +90,12 @@ exports[`catalog #4 — X must answer O's open-three; the dual-purpose block out
     {
       "col": 12,
       "row": 14,
-      "score": 4600,
+      "score": 210,
     },
     {
       "col": 8,
       "row": 10,
-      "score": 4500,
+      "score": 200,
     },
     {
       "col": 7,
@@ -118,22 +118,22 @@ exports[`catalog #5 — O's open four is unstoppable; desperado ranks X's own op
     {
       "col": 9,
       "row": 9,
-      "score": 95000,
+      "score": 750,
     },
     {
       "col": 13,
       "row": 13,
-      "score": 95000,
+      "score": 750,
     },
     {
       "col": 8,
       "row": 8,
-      "score": 5500,
+      "score": 300,
     },
     {
       "col": 14,
       "row": 14,
-      "score": 5500,
+      "score": 300,
     },
   ],
   "source": "tactical",
@@ -146,7 +146,7 @@ exports[`catalog #6 — X's single block (9,7) works only because it combines wi
     {
       "col": 7,
       "row": 9,
-      "score": 100000,
+      "score": 1000,
     },
   ],
   "source": "forced",
@@ -159,27 +159,27 @@ exports[`catalog #7 — X's 9,9 is the sole urgent candidate: a recognized fork 
     {
       "col": 9,
       "row": 9,
-      "score": 9820,
+      "score": 484,
     },
     {
       "col": 6,
       "row": 11,
-      "score": 5010,
+      "score": 252,
     },
     {
       "col": 10,
       "row": 11,
-      "score": 5010,
+      "score": 252,
     },
     {
       "col": 8,
       "row": 11,
-      "score": 5000,
+      "score": 250,
     },
     {
       "col": 8,
       "row": 10,
-      "score": 5000,
+      "score": 250,
     },
   ],
   "source": "tactical",
@@ -192,12 +192,12 @@ exports[`catalog #8 — O's diagonal four is blocked on one end; boxed-five agai
     {
       "col": 4,
       "row": 16,
-      "score": 10000,
+      "score": 500,
     },
     {
       "col": 3,
       "row": 17,
-      "score": 10000,
+      "score": 500,
     },
   ],
   "source": "forced",
@@ -210,27 +210,27 @@ exports[`catalog #9 — X's 10,8 is the sole urgent candidate: a recognized fork
     {
       "col": 8,
       "row": 10,
-      "score": 9800,
+      "score": 480,
     },
     {
       "col": 9,
       "row": 9,
-      "score": 5110,
+      "score": 262,
     },
     {
       "col": 6,
       "row": 11,
-      "score": 5010,
+      "score": 252,
     },
     {
       "col": 6,
       "row": 8,
-      "score": 4920,
+      "score": 244,
     },
     {
       "col": 10,
       "row": 12,
-      "score": 4920,
+      "score": 244,
     },
   ],
   "source": "tactical",
@@ -248,22 +248,22 @@ exports[`catalog #10 — same board as #7, but O to move: O must occupy X's fork
     {
       "col": 7,
       "row": 14,
-      "score": 490,
+      "score": 48,
     },
     {
       "col": 7,
       "row": 15,
-      "score": 490,
+      "score": 48,
     },
     {
       "col": 7,
       "row": 16,
-      "score": 490,
+      "score": 48,
     },
     {
       "col": 6,
       "row": 14,
-      "score": 490,
+      "score": 48,
     },
   ],
   "source": "tactical",
@@ -276,22 +276,22 @@ exports[`catalog #11 — O must answer X's row-10 open-three; all four blocks (c
     {
       "col": 5,
       "row": 10,
-      "score": 9810,
+      "score": 482,
     },
     {
       "col": 6,
       "row": 10,
-      "score": 9500,
+      "score": 450,
     },
     {
       "col": 10,
       "row": 10,
-      "score": 4600,
+      "score": 210,
     },
     {
       "col": 11,
       "row": 10,
-      "score": 100,
+      "score": 10,
     },
   ],
   "source": "tactical",
@@ -304,27 +304,93 @@ exports[`catalog #12 — O's 10,9 blocks two of X's open-twos at once (soft tier
     {
       "col": 9,
       "row": 10,
-      "score": 90,
+      "score": 8,
     },
     {
       "col": 12,
       "row": 7,
-      "score": 490,
+      "score": 48,
     },
     {
       "col": 13,
       "row": 7,
-      "score": 490,
+      "score": 48,
     },
     {
       "col": 14,
       "row": 7,
-      "score": 490,
+      "score": 48,
     },
     {
       "col": 10,
       "row": 8,
-      "score": 290,
+      "score": 28,
+    },
+  ],
+  "source": "tactical",
+}
+`;
+
+exports[`catalog #13 — O's real win is the two-move 6,11 fork; the tempting one-move 7,11 'open-four' is a mirage voided by O's own pre-existing 12,11... a boxed five in disguise narrowCandidates ranked output 1`] = `
+{
+  "moves": [
+    {
+      "col": 11,
+      "row": 6,
+      "score": 492,
+    },
+    {
+      "col": 12,
+      "row": 9,
+      "score": 224,
+    },
+    {
+      "col": 12,
+      "row": 14,
+      "score": 200,
+    },
+    {
+      "col": 8,
+      "row": 11,
+      "score": 204,
+    },
+    {
+      "col": 11,
+      "row": 7,
+      "score": 764,
+    },
+  ],
+  "source": "tactical",
+}
+`;
+
+exports[`catalog #14 — O's 9,6 is the sole urgent candidate: a recognized fork (two open-three lines promoted at once) narrowCandidates ranked output 1`] = `
+{
+  "moves": [
+    {
+      "col": 7,
+      "row": 10,
+      "score": 84,
+    },
+    {
+      "col": 2,
+      "row": 10,
+      "score": 240,
+    },
+    {
+      "col": 3,
+      "row": 10,
+      "score": 240,
+    },
+    {
+      "col": 6,
+      "row": 10,
+      "score": 240,
+    },
+    {
+      "col": 8,
+      "row": 10,
+      "score": 240,
     },
   ],
   "source": "tactical",

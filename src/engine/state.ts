@@ -1,5 +1,5 @@
 import { createEmptyBoard, isFull, isLegalMove, placeMove, type Board, type Player } from './board.ts';
-import { checkCaroWin } from './rules.ts';
+import { findCaroWinLine } from './rules.ts';
 
 export interface Move {
   row: number;
@@ -13,6 +13,11 @@ export interface GameState {
   nextPlayer: Player;
   moveHistory: Move[];
   winner: Winner;
+  /** Moves undone via UI undo, in original chronological order; used only to
+   * persist redo history across reloads. Not set by `applyMove` or `newGame`. */
+  redoMoves?: Move[];
+  /** The five winning cells, set only when `winner` is a player (not 'draw' or null). */
+  winningLine?: Move[];
 }
 
 export function newGame(): GameState {
@@ -37,14 +42,15 @@ export function applyMove(state: GameState, move: Move, player: Player): GameSta
   }
 
   const board = placeMove(state.board, move.row, move.col, player);
-  const won = checkCaroWin(board, move.row, move.col, player);
-  const winner: Winner = won ? player : isFull(board) ? 'draw' : null;
+  const winningLine = findCaroWinLine(board, move.row, move.col, player);
+  const winner: Winner = winningLine !== null ? player : isFull(board) ? 'draw' : null;
 
   return {
     board,
     nextPlayer: player === 1 ? 2 : 1,
     moveHistory: [...state.moveHistory, move],
     winner,
+    ...(winningLine !== null ? { winningLine } : {}),
   };
 }
 

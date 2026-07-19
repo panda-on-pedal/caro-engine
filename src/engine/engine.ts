@@ -22,10 +22,11 @@ const DIFFICULTY_DEPTH: Record<Difficulty, number> = {
 };
 
 // Default per-difficulty time budgets, in milliseconds. These bound the cost
-// of a single chooseMove call regardless of maxDepth, protecting against
-// findPatterns' per-node rescan cost making deeper searches take an
-// unreasonable amount of wall-clock time on the real 20x20 board. Callers
-// that pass an explicit `timeBudgetMs` always override these defaults.
+// of a single chooseMove call regardless of maxDepth. Search uses a
+// PatternStore (4-line incremental pattern updates) so node cost is much
+// lower than a full findPatterns rescan, but a wall-clock cap still protects
+// busy midgame positions. Callers that pass an explicit `timeBudgetMs`
+// always override these defaults.
 const DIFFICULTY_TIME_BUDGET_MS: Record<Difficulty, number> = {
   easy: 500,
   medium: 2000,
