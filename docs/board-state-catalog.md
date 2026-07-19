@@ -208,5 +208,39 @@ O's moves
  10  .  .  .  .  .  .  .
 ```
 
+# 13
+O's Moves:
+- Should have 6,11 - a fork three-four pattern - win
+
+```
+     4  5  6  7  8  9 10 11 12 13 14 15
+  4  .  .  .  .  .  .  .  .  .  .  .  .
+  5  .  .  .  X  .  .  .  .  .  .  .  .
+  6  .  .  .  .  O  .  O  .  .  .  .  .
+  7  .  .  .  .  X  O  .  .  .  .  .  .
+  8  .  .  .  .  O  X  O  O  .  .  .  .
+  9  .  .  .  .  O  X  .  O  .  .  .  .
+ 10  .  O  X  X  X  X  O  O  X  .  .  .
+ 11  .  .  .  .  .  X  X  .  X  .  .  .
+ 12  .  .  .  .  .  O  .  X  .  .  .  .
+ 13  .  .  .  .  .  .  .  .  X  .  .  .
+ 14  .  .  .  .  .  .  .  .  .  .  .  .
+ 15  .  .  .  .  .  .  .  .  .  .  O  .
+ 16  .  .  .  .  .  .  .  .  .  .  .  .
+```
+
+
+# 14
+O's move:
+- 9,6 - Fork point to create 2 open-three
+
+     4  5  6  7  8  9 10
+  8  .  .  .  .  .  .  .
+  9  .  O  .  .  O  .  .
+ 10  .  .  .  .  .  .  .
+ 11  .  .  O  .  X  X  .
+ 12  .  .  O  X  X  .  .
+ 13  .  .  .  .  .  .  .
+
 So, with above scenarios:
 - If cases with only one candidate: Just play it, no search needed.

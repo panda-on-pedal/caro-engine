@@ -23,10 +23,17 @@ import {
 import {
   DEFAULT_TOP_K,
   selectTopMoves,
+  selectTopMovesFromStore,
   selectTopMovesTiered,
+  selectTopMovesTieredFromStore,
 } from "./rankMoves.ts";
+import type { PatternStore } from "./patternStore.ts";
 
 const CANDIDATE_RADIUS = 2;
+
+/** Score bonus applied to recognized fork points during tiered ranking —
+ * see the `forkBonus` comment in `narrowCandidates` for rationale. */
+const FORK_BONUS = 1000;
 
 export function findCandidateMoves(board: Board): Move[] {
   const candidates = new Map<string, Move>();
@@ -141,7 +148,7 @@ export const ALL_FORK_PATTERN_NAMES: ReadonlySet<ForkPatternName> = new Set(
  * config with an empty `recognized` set never sees any fork.
  */
 export function recognizedForkPoints(
-  patterns: PatternInstance[],
+  patterns: readonly PatternInstance[],
   recognized: ReadonlySet<ForkPatternName>,
 ): ForkPoint[] {
   const allForkPoints = findForkPoints(patterns);
@@ -235,74 +242,35 @@ function survivingBlocks(
 }
 
 /**
- * True when `attacker` already has a four/open-four on `board` that
- * survives every possible block `defender` could play (including the
- * boxed-five distance cell) — the same futility test Step 2 runs against
- * the *current* position, factored out so it can also be run against a
- * hypothetical *future* position (see `opponentForcesWinAfter`).
+ * Cells that block an opponent open-three (full `gains`, including
+ * one-step-beyond distance blocks). Used by the static must-answer
+ * filter — no place/undo simulation.
  */
-function isUnstoppableFour(
-  board: Board,
-  defender: Player,
-  attacker: Player,
-): boolean {
-  for (const pattern of findPatterns(board, attacker)) {
-    if (pattern.type !== "four" && pattern.type !== "open-four") {
-      continue;
-    }
-    const box = boxCell(pattern, board);
-    const candidates = box ? [...pattern.gains, box] : pattern.gains;
-    if (survivingBlocks(board, defender, attacker, candidates).length === 0) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * True when, after `defender` plays `move`, `attacker` still has some
- * single reply that promotes an existing three/open-three into an
- * unstoppable four/open-four — i.e. `move` neither blocks the threat nor
- * wins the race outright, so it is a provable loss against correct play
- * ("if I don't block, I lose no matter what else I do here"). This is
- * the generic form of the exact question a human opponent asks about a
- * move like a same-tier fork point that ignores the real threat
- * entirely: does ignoring this still lose? Used to strip such
- * candidates out of the pool outright, rather than merely letting them
- * be outscored.
- *
- * A move that gives `defender` their own unstoppable four/open-four is
- * exempt: `defender` completes that first, before `attacker`'s
- * three-tier pattern could ever pay off, so it is never a loss even
- * though it ignores `attacker`'s threat.
- */
-function opponentForcesWinAfter(
-  board: Board,
-  defender: Player,
-  attacker: Player,
-  move: Move,
-): boolean {
-  const afterDefenderMove = placeMove(board, move.row, move.col, defender);
-  if (isUnstoppableFour(afterDefenderMove, attacker, defender)) {
-    return false;
-  }
-  for (const pattern of findPatterns(afterDefenderMove, attacker)) {
-    if (pattern.type !== "three" && pattern.type !== "open-three") {
+function openThreeBlockKeys(
+  oppPatterns: readonly PatternInstance[],
+): Set<string> {
+  const keys = new Set<string>();
+  for (const pattern of oppPatterns) {
+    if (pattern.type !== "open-three") {
       continue;
     }
     for (const gain of pattern.gains) {
-      const afterAttackerMove = placeMove(
-        afterDefenderMove,
-        gain.row,
-        gain.col,
-        attacker,
-      );
-      if (isUnstoppableFour(afterAttackerMove, defender, attacker)) {
-        return true;
-      }
+      keys.add(`${gain.row},${gain.col}`);
     }
   }
-  return false;
+  return keys;
+}
+
+/** Own open-three / four / open-four means we can race, not only block. */
+function ownCanRaceOpenThree(
+  ownPatterns: readonly PatternInstance[],
+): boolean {
+  return ownPatterns.some(
+    (p) =>
+      p.type === "open-three" ||
+      p.type === "four" ||
+      p.type === "open-four",
+  );
 }
 
 export interface NarrowConfig {
@@ -320,6 +288,11 @@ export interface NarrowConfig {
    * behaviors side by side.
    */
   desperado?: boolean;
+  /** When set, skip the opening `findPatterns` scans. */
+  ownPatterns?: readonly PatternInstance[];
+  oppPatterns?: readonly PatternInstance[];
+  /** When set, top-K scoring uses store place/undo instead of full rescans. */
+  store?: PatternStore;
 }
 
 const QUIET_FALLBACK_SAMPLE_SIZE = 8;
@@ -410,8 +383,8 @@ export function narrowCandidates(
   config: NarrowConfig,
 ): NarrowResult {
   const opponent = otherPlayer(player);
-  const ownPatterns = findPatterns(board, player);
-  const oppPatterns = findPatterns(board, opponent);
+  const ownPatterns = config.ownPatterns ?? findPatterns(board, player);
+  const oppPatterns = config.oppPatterns ?? findPatterns(board, opponent);
 
   // Step 1: I can win now.
   const ownFour = ownPatterns.find(
@@ -450,6 +423,16 @@ export function narrowCandidates(
 
   const urgentMoves = new Map<string, Move>();
   const softMoves = new Map<string, Move>();
+  // Recognized fork points get a static score bonus on top of guaranteed
+  // tier-1 inclusion: a move that advances two separate lines at once
+  // should outrank a comparably-scored single-line move within the same
+  // tier, both for move-ordering (search sees the more promising branch
+  // first) and so a fork doesn't quietly lose the tie-break to whatever
+  // else is sitting in the pool. It's a nudge, not an override — a real
+  // four/open-four completion still scores far higher on raw pattern
+  // severity, and it's still search's job to confirm the fork actually
+  // works (see catalog #13's mirage note above).
+  const forkBonus = new Map<string, number>();
 
   const addTo = (target: Map<string, Move>, moves: Move[]) => {
     for (const move of moves) {
@@ -461,10 +444,9 @@ export function narrowCandidates(
     ownPatterns,
     config.recognizedForkPatterns,
   )) {
-    urgentMoves.set(
-      `${forkPoint.move.row},${forkPoint.move.col}`,
-      forkPoint.move,
-    );
+    const key = `${forkPoint.move.row},${forkPoint.move.col}`;
+    urgentMoves.set(key, forkPoint.move);
+    forkBonus.set(key, FORK_BONUS);
   }
   // Desperado (opponent's four is unstoppable): defense of any kind is
   // pointless, and negamax's -(WIN_SCORE + depth) loss scoring means a
@@ -479,10 +461,9 @@ export function narrowCandidates(
       oppPatterns,
       config.recognizedForkPatterns,
     )) {
-      urgentMoves.set(
-        `${forkPoint.move.row},${forkPoint.move.col}`,
-        forkPoint.move,
-      );
+      const key = `${forkPoint.move.row},${forkPoint.move.col}`;
+      urgentMoves.set(key, forkPoint.move);
+      forkBonus.set(key, FORK_BONUS);
     }
   }
 
@@ -523,17 +504,33 @@ export function narrowCandidates(
   }
 
   if (urgentMoves.size > 0 || softMoves.size > 0) {
+    // Must-answer open-three: opponent has an open-three and we have no
+    // open-three/four of our own to race with — keep only cells that
+    // sit in the opponent's open-three gains (catalog #11 drops 8,6).
+    // Static set check on patterns already collected above; other threat
+    // types can join this set later. Skipped in desperado mode.
+    const openThreeBlocks = openThreeBlockKeys(oppPatterns);
+    const mustAnswerOpenThree =
+      !desperado &&
+      openThreeBlocks.size > 0 &&
+      !ownCanRaceOpenThree(ownPatterns);
+
     // Neither tier is forced — fill remaining slots from the quiet
     // neighborhood so development/racing stays possible, but cap at the
     // quiet sample size so every-node branching does not explode. Quiet
     // fillers join the soft tier: they compete with soft gains on score,
     // but neither can displace an urgent threat-answering move —
     // selectTopMovesTiered guarantees the urgent tier survives top-K
-    // ahead of any soft/quiet score.
+    // ahead of any soft/quiet score. Skip quiet padding when we must
+    // answer an open-three (those fillers would be stripped anyway).
     const softAndQuiet = new Map(softMoves);
     let poolSize = new Set([...urgentMoves.keys(), ...softAndQuiet.keys()])
       .size;
-    if (!desperado && poolSize < QUIET_FALLBACK_SAMPLE_SIZE) {
+    if (
+      !desperado &&
+      !mustAnswerOpenThree &&
+      poolSize < QUIET_FALLBACK_SAMPLE_SIZE
+    ) {
       for (const move of sampleQuietMoves(board, moveCount, config)) {
         if (poolSize >= QUIET_FALLBACK_SAMPLE_SIZE) {
           break;
@@ -545,38 +542,39 @@ export function narrowCandidates(
         }
       }
     }
-    // Must-block filter: strip out any candidate that neither blocks nor
-    // pre-empts a genuine opponent three-tier threat — one that correct
-    // play turns into an unstoppable four/open-four regardless of what
-    // else the mover does this turn (e.g. catalog #11's own fork 8,6,
-    // which ignores X's open-three entirely). A dual-purpose move that
-    // also breaks the threat survives, since re-simulating from the
-    // post-move board sees the pattern is gone. Skipped in desperado mode
-    // (the position is already lost to the opponent's four regardless).
+
     const urgentCandidates = [...urgentMoves.values()];
     const softCandidates = [...softAndQuiet.values()];
     let urgentSurvivors = urgentCandidates;
     let softSurvivors = softCandidates;
-    if (!desperado) {
-      const survivesMustBlock = (move: Move) =>
-        !opponentForcesWinAfter(board, player, opponent, move);
-      urgentSurvivors = urgentCandidates.filter(survivesMustBlock);
-      softSurvivors = softCandidates.filter(survivesMustBlock);
-      // A genuine multi-threat position (e.g. two independent opponent
-      // open-threes) can leave nothing surviving at all — fall back to
-      // the unfiltered pool rather than handing negamax an empty tier.
+    if (mustAnswerOpenThree) {
+      const isBlock = (move: Move) =>
+        openThreeBlocks.has(`${move.row},${move.col}`);
+      urgentSurvivors = urgentCandidates.filter(isBlock);
+      softSurvivors = softCandidates.filter(isBlock);
+      // Safety: never hand search an empty pool if gains were empty or
+      // mistyped — fall back to the unfiltered set.
       if (urgentSurvivors.length + softSurvivors.length === 0) {
         urgentSurvivors = urgentCandidates;
         softSurvivors = softCandidates;
       }
     }
 
-    const selectedMoves = selectTopMovesTiered(
-      board,
-      player,
-      [urgentSurvivors, softSurvivors],
-      DEFAULT_TOP_K,
-    );
+    const selectedMoves = config.store
+      ? selectTopMovesTieredFromStore(
+          config.store,
+          player,
+          [urgentSurvivors, softSurvivors],
+          DEFAULT_TOP_K,
+          forkBonus,
+        )
+      : selectTopMovesTiered(
+          board,
+          player,
+          [urgentSurvivors, softSurvivors],
+          DEFAULT_TOP_K,
+          forkBonus,
+        );
 
     return {
       moves: selectedMoves,
@@ -591,13 +589,11 @@ export function narrowCandidates(
     return { moves: desperadoBlocks, source: "forced" };
   }
 
+  const quietSample = sampleQuietMoves(board, moveCount, config);
   return {
-    moves: selectTopMoves(
-      board,
-      player,
-      sampleQuietMoves(board, moveCount, config),
-      DEFAULT_TOP_K,
-    ),
+    moves: config.store
+      ? selectTopMovesFromStore(config.store, player, quietSample, DEFAULT_TOP_K)
+      : selectTopMoves(board, player, quietSample, DEFAULT_TOP_K),
     source: "quiet",
   };
 }

@@ -608,10 +608,9 @@ describe("narrowCandidates — tier-aware top-K (urgent before soft)", () => {
     // Urgent tier only, score-sorted (14,12 builds a vertical two, 10,8
     // is the plain critical block, 9,7/15,13 are zero-delta distance
     // blocks in pattern-gain order). 9,9 would have out-scored all four
-    // as a "soft" move, but playing it loses outright against correct
-    // play (O's open-three promotes to an unstoppable open-four next),
-    // so the must-block filter removes it from the pool entirely instead
-    // of leaving it for search to refute.
+    // as a "soft" move, but it is not in O's open-three gains and X has
+    // no open-three/four to race with, so the must-answer filter removes
+    // it from the pool entirely instead of leaving it for search to refute.
     expect(keys).toEqual(["14,12", "10,8", "9,7", "15,13"]);
   });
 });

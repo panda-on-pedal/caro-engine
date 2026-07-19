@@ -192,13 +192,12 @@ describe("catalog #4 — X must answer O's open-three; the dual-purpose block ou
     expect(snapshotNarrow(board, 1, 5)).toMatchSnapshot();
   });
 
-  it("returns only the four urgent answers to O's open-three — 9,9 neither blocks nor outraces it, so the must-block filter drops it entirely", () => {
+  it("returns only the four urgent answers to O's open-three — 9,9 neither blocks nor outraces it, so the must-answer filter drops it entirely", () => {
     // Matches the catalog's move list exactly: 9,7; 10,8; 14,12; 15,13
     // all "force to block O's open-three, but 14,12 higher score". 9,9
     // (4910, the highest raw score of any candidate here) would have
-    // been X's own best soft offense, but playing it loses outright
-    // against correct play — O's open-three simply promotes to an
-    // unstoppable open-four next — so it never enters the pool.
+    // been X's own best soft offense, but it is outside O's open-three
+    // gains and X has no open-three/four to race with — so it is dropped.
     const result = narrowCandidates(board, 1, 5, CFG);
     expect(result.source).toBe("tactical");
     expect(result.moves).toEqual([
@@ -449,10 +448,8 @@ describe("catalog #11 — O must answer X's row-10 open-three; all four blocks (
     // (9,6/10,6/11,6) — so both outscore the pure critical block 10,10.
     // 8,6 (O's row-8 + col-6 fork) used to share the urgent tier and rank
     // first on raw score despite ignoring X's open-three entirely; the
-    // must-block filter now simulates it directly (O plays 8,6, X
-    // answers with the open-three's critical gain, the result is an
-    // unstoppable open-four) and removes it from the pool instead of
-    // leaving it for search to refute.
+    // must-answer filter drops any cell outside X's open-three gains
+    // when O has no open-three/four to race with.
     const dualDiag = scoreMove(board, 2, { row: 10, col: 5 });
     const dualVert = scoreMove(board, 2, { row: 10, col: 6 });
     const pure = scoreMove(board, 2, { row: 10, col: 10 });
@@ -495,5 +492,44 @@ describe("catalog #12 — O's 10,9 blocks two of X's open-twos at once (soft tie
   it("has no forced or urgent threats — source is tactical from the soft tier alone", () => {
     const result = narrowCandidates(board, 2, 7, CFG);
     expect(result.source).toBe("tactical");
+  });
+});
+
+describe("catalog #13 — O's real win is the two-move 6,11 fork; the tempting one-move 7,11 'open-four' is a mirage voided by O's own pre-existing 12,11... a boxed five in disguise", () => {
+  const board = parseBoard(`
+       4  5  6  7  8  9 10 11 12 13 14 15
+    4  .  .  .  .  .  .  .  .  .  .  .  .
+    5  .  .  .  X  .  .  .  .  .  .  .  .
+    6  .  .  .  .  O  .  O  .  .  .  .  .
+    7  .  .  .  .  X  O  .  .  .  .  .  .
+    8  .  .  .  .  O  X  O  O  .  .  .  .
+    9  .  .  .  .  O  X  .  O  .  .  .  .
+   10  .  O  X  X  X  X  O  O  X  .  .  .
+   11  .  .  .  .  .  X  X  .  X  .  .  .
+   12  .  .  .  .  .  O  .  X  .  .  .  .
+   13  .  .  .  .  .  .  .  .  X  .  .  .
+   14  .  .  .  .  .  .  .  .  .  .  .  .
+   15  .  .  .  .  .  .  .  .  .  .  O  .
+   16  .  .  .  .  .  .  .  .  .  .  .  .
+  `);
+
+  it("narrowCandidates ranked output", () => {
+    expect(snapshotNarrow(board, 2, 27)).toMatchSnapshot();
+  });
+});
+
+describe("catalog #14 — O's 9,6 is the sole urgent candidate: a recognized fork (two open-three lines promoted at once)", () => {
+  const board = parseBoard(`
+       4  5  6  7  8  9 10
+    8  .  X  .  .  .  X  .
+    9  .  .  .  .  .  .  .
+   10  O  O  .  .  .  O  O
+   11  .  .  .  .  .  .  .
+   12  .  .  .  .  X  .  .
+   13  .  X  .  .  .  .  .
+  `);
+
+  it("narrowCandidates ranked output", () => {
+    expect(snapshotNarrow(board, 2, 8)).toMatchSnapshot();
   });
 });

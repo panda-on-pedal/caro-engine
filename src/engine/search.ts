@@ -1,7 +1,7 @@
 // src/engine/search.ts
-import { placeMove, type Board, type Player } from "./board.ts";
+import { type Board, type Player } from "./board.ts";
 import { checkCaroWin } from "./rules.ts";
-import { evaluate, WIN_SCORE } from "./evaluate.ts";
+import { evaluateFromPatterns, WIN_SCORE } from "./evaluate.ts";
 import {
   ALL_FORK_PATTERN_NAMES,
   findCandidateMoves,
@@ -9,6 +9,7 @@ import {
   type ForkPatternName,
   type NarrowConfig,
 } from "./narrow.ts";
+import { PatternStore } from "./patternStore.ts";
 import type { DecayConfig } from "./randomize.ts";
 import { logger } from "../utils/logger.ts";
 import type { Move } from "./state.ts";
@@ -22,6 +23,8 @@ export const DEFAULT_DECAY_CONFIG: DecayConfig = {
 interface SearchNode {
   score: number;
   principalVariation: Move[];
+  /** False when the root candidate loop stopped early (deadline). */
+  complete?: boolean;
 }
 
 function otherPlayer(player: Player): Player {
@@ -46,8 +49,28 @@ interface NodeCounter {
   count: number;
 }
 
+function narrowConfigForStore(
+  store: PatternStore,
+  player: Player,
+  base: NarrowConfig,
+): NarrowConfig {
+  return {
+    ...base,
+    ownPatterns: store.patterns(player),
+    oppPatterns: store.patterns(otherPlayer(player)),
+    store,
+  };
+}
+
+function evaluateStore(store: PatternStore, player: Player): number {
+  return evaluateFromPatterns(
+    store.patterns(player),
+    store.patterns(otherPlayer(player)),
+  );
+}
+
 function negamax(
-  board: Board,
+  store: PatternStore,
   player: Player,
   depth: number,
   alpha: number,
@@ -58,11 +81,6 @@ function negamax(
   narrowConfig: NarrowConfig,
   rootMoves?: Move[],
   rootJitter?: (score: number) => number,
-  // `path`/`rootPlayer` exist purely for the "[search] node visited" log
-  // below: `path` is every move played so far to reach `board` (empty at
-  // the true root of a depth iteration), and `rootPlayer` is who played
-  // path[0], fixed for the whole tree, so formatLine can label every
-  // move in the path correctly regardless of how deep this call is.
   path: Move[] = [],
   rootPlayer: Player = player,
 ): SearchNode {
@@ -75,43 +93,25 @@ function negamax(
   });
 
   if (depth === 0) {
-    return { score: evaluate(board, player), principalVariation: [] };
+    return { score: evaluateStore(store, player), principalVariation: [] };
   }
 
-  // Check before paying for narrowCandidates' pattern computation — see
-  // the deadline-precision note this comment replaces below.
   if (deadline !== null && Date.now() > deadline) {
-    return { score: evaluate(board, player), principalVariation: [] };
+    return { score: evaluateStore(store, player), principalVariation: [] };
   }
 
-  // `rootMoves`, when provided, is the exact pre-narrowed candidate set a
-  // MoveSelectionStrategy (Task 8) already computed once via
-  // narrowCandidates before invoking this search — reusing it here (rather
-  // than recomputing) avoids both duplicating this loop in the strategy
-  // and silently re-rolling narrowCandidates' weighted-random reordering
-  // into a different order than what the strategy actually received.
-  // Every recursive call omits it, so deeper plies compute their own
-  // candidates as normal.
+  const nodeNarrow = narrowConfigForStore(store, player, narrowConfig);
   const moves =
     rootMoves ??
-    narrowCandidates(board, player, moveCount, narrowConfig).moves;
+    narrowCandidates(store.board, player, moveCount, nodeNarrow).moves;
   if (moves.length === 0) {
     return { score: 0, principalVariation: [] };
   }
 
   let best: SearchNode = { score: -Infinity, principalVariation: [] };
-  // Best-move selection can be jittered (root only); alpha-beta and the
-  // reported score always use true scores, so pruning stays sound and
-  // callers see the chosen move's real evaluation.
   let bestCompare = -Infinity;
   let currentAlpha = alpha;
 
-  // `rootMoves !== undefined` marks this as the actual root frame (see
-  // the comment above) — only there do we log per-candidate examination,
-  // since that's the frame whose move ultimately gets played, and the
-  // only frame where "did the deadline cut this short" matters for
-  // debugging (child frames start with beta === Infinity too, but their
-  // alpha-beta cutoffs are expected pruning, not a partial-search risk).
   const isRootFrame = rootMoves !== undefined;
   if (isRootFrame) {
     logger.log("[search] root: examining candidates", {
@@ -122,9 +122,11 @@ function negamax(
   }
 
   let examinedCount = 0;
+  let rootIncomplete = false;
   for (const move of moves) {
     if (deadline !== null && Date.now() > deadline) {
       if (isRootFrame) {
+        rootIncomplete = true;
         logger.log("[search] root: deadline hit — stopped early", {
           depth,
           examined: examinedCount,
@@ -137,14 +139,14 @@ function negamax(
       break;
     }
 
-    const next = placeMove(board, move.row, move.col, player);
-    const isWin = checkCaroWin(next, move.row, move.col, player);
+    store.place(move, player);
+    const isWin = checkCaroWin(store.board, move.row, move.col, player);
 
     const node: SearchNode = isWin
       ? { score: WIN_SCORE + depth, principalVariation: [] }
       : (() => {
           const child = negamax(
-            next,
+            store,
             otherPlayer(player),
             depth - 1,
             -beta,
@@ -163,6 +165,7 @@ function negamax(
             principalVariation: child.principalVariation,
           };
         })();
+    store.undo();
     examinedCount += 1;
 
     const compareScore = rootJitter ? rootJitter(node.score) : node.score;
@@ -173,11 +176,6 @@ function negamax(
         score: node.score,
         comparedScore: compareScore,
         isWin,
-        // The turn-by-turn continuation this candidate's score is based
-        // on — empty beyond the move itself whenever the recursive call
-        // bottomed out at a depth-0 static evaluate() with no further
-        // moves simulated (always true one ply before the deepest depth
-        // reached this iteration).
         line: formatLine(player, [move, ...node.principalVariation]),
       });
     }
@@ -205,16 +203,13 @@ function negamax(
     });
   }
 
-  // If the deadline fired before any move in this node was evaluated,
-  // `best` is still the -Infinity sentinel. A parent frame negates a
-  // child's score (`-child.score`) to fold it into its own comparison,
-  // which would turn an un-evaluated -Infinity into a bogus +Infinity —
-  // a false "forced win" signal. Fall back to a finite static evaluation
-  // instead, matching what a depth-0 leaf would report.
   if (best.score === -Infinity) {
-    return { score: evaluate(board, player), principalVariation: [] };
+    return { score: evaluateStore(store, player), principalVariation: [] };
   }
 
+  if (isRootFrame) {
+    best.complete = !rootIncomplete;
+  }
   return best;
 }
 
@@ -244,12 +239,13 @@ export function negamaxSearch(
   player: Player,
   depth: number,
 ): SearchNode {
+  const store = PatternStore.fromBoard(board);
   const narrowConfig: NarrowConfig = {
     recognizedForkPatterns: ALL_FORK_PATTERN_NAMES,
     decay: DEFAULT_DECAY_CONFIG,
   };
   return negamax(
-    board,
+    store,
     player,
     depth,
     -Infinity,
@@ -288,6 +284,8 @@ export interface SearchConfig {
   /** Random stream for jitter and quiet-move sampling. Defaults to
    * Math.random; inject a seeded stream for deterministic tests. */
   rng?: () => number;
+  /** Shared pattern cache for this chooseMove/search call. */
+  patternStore?: PatternStore;
 }
 
 /**
@@ -324,8 +322,9 @@ export const negamaxStrategy: MoveSelectionStrategy = (
       ? Date.now() + config.timeBudgetMs
       : null;
   const nodeCounter: NodeCounter = { count: 0 };
+  const store = config.patternStore ?? PatternStore.fromBoard(board);
   const narrowConfig = resolveNarrowConfig(config);
-  const moveCount = countStones(board);
+  const moveCount = countStones(store.board);
   const jitterFraction = config.rootScoreJitter ?? 0;
   const rng = config.rng ?? Math.random;
   const rootJitter =
@@ -340,15 +339,8 @@ export const negamaxStrategy: MoveSelectionStrategy = (
     if (deadline !== null && Date.now() > deadline) {
       break;
     }
-    // Reuse negamax's existing loop/pruning logic rather than
-    // reimplementing it here — `candidates` (the exact pre-narrowed set
-    // `search()` computed once) is threaded through as `rootMoves`, so
-    // this call searches precisely those moves instead of recomputing
-    // (and potentially re-rolling a different weighted-random order for)
-    // its own candidate set. Deeper recursive calls inside `negamax` omit
-    // `rootMoves` and narrow normally at every subsequent node.
     const result = negamax(
-      board,
+      store,
       player,
       depth,
       -Infinity,
@@ -363,13 +355,33 @@ export const negamaxStrategy: MoveSelectionStrategy = (
     if (result.principalVariation.length === 0) {
       break;
     }
-    // This depth's result becomes the strategy's answer unconditionally
-    // (even if the deadline cut the root loop short mid-way through this
-    // depth — see "[search] root: deadline hit" above) — a still-partial
-    // depth D result silently overwrites the fully-examined depth D-1
-    // answer that came before it. Logged here so that can be spotted:
-    // compare this depth's chosen move/score against whether the
-    // matching "examined all candidates" log fired for the same depth.
+    // Discard a partial deeper iteration when a fully examined shallower
+    // depth already exists — a mid-root deadline must not overwrite that
+    // with an ordering-biased partial. If this is the first depth and it
+    // was cut short, keep the partial best (still better than candidates[0]).
+    if (result.complete === false) {
+      if (bestNode === null && result.principalVariation.length > 0) {
+        bestNode = result;
+        depthReached = depth;
+        logger.log(
+          "[search] depth iteration incomplete — keeping partial first depth",
+          {
+            depth,
+            nodesVisitedSoFar: nodeCounter.count,
+          },
+        );
+      } else {
+        logger.log(
+          "[search] depth iteration incomplete — keeping prior depth",
+          {
+            depth,
+            priorDepth: depthReached,
+            nodesVisitedSoFar: nodeCounter.count,
+          },
+        );
+      }
+      break;
+    }
     logger.log("[search] depth iteration complete", {
       depth,
       chosenMove: result.principalVariation[0]
@@ -426,12 +438,19 @@ export function search(
   config: SearchConfig,
   strategy?: MoveSelectionStrategy,
 ): SearchResult {
-  const narrowConfig = resolveNarrowConfig(config);
-  const moveCount = countStones(board);
-  const narrowed = narrowCandidates(board, player, moveCount, narrowConfig);
+  const store = config.patternStore ?? PatternStore.fromBoard(board);
+  const baseNarrow = resolveNarrowConfig(config);
+  const moveCount = countStones(store.board);
+  const narrowConfig = narrowConfigForStore(store, player, baseNarrow);
+  const narrowed = narrowCandidates(
+    store.board,
+    player,
+    moveCount,
+    narrowConfig,
+  );
 
   if (narrowed.moves.length === 0) {
-    const fallbackMoves = findCandidateMoves(board);
+    const fallbackMoves = findCandidateMoves(store.board);
     return {
       move: fallbackMoves[0],
       score: 0,
@@ -441,17 +460,14 @@ export function search(
     };
   }
 
-  // A single candidate (any source — forced, a lone tactical fork point
-  // like catalog #7/#9, or quiet) has nothing to compare against: play it
-  // directly instead of paying for a negamax search whose root loop would
-  // only ever visit one move anyway.
+  const searchConfig: SearchConfig = { ...config, patternStore: store };
+
   const resolvedStrategy =
     strategy ??
     (narrowed.moves.length === 1 || narrowed.source === "quiet"
       ? patternOnlyStrategy
       : negamaxStrategy);
 
-  // Debug: root (depth-1) candidate set and search order.
   logger.log("[search] root candidates", {
     player,
     moveCount,
@@ -466,5 +482,5 @@ export function search(
     moves: narrowed.moves.map((m) => `${m.row},${m.col}`),
   });
 
-  return resolvedStrategy(board, player, narrowed.moves, config);
+  return resolvedStrategy(store.board, player, narrowed.moves, searchConfig);
 }

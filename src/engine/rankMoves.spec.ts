@@ -4,10 +4,12 @@ import { parseBoard } from "./test-helpers/parse-board.ts";
 import {
   scoreMove,
   selectTopMoves,
+  selectTopMovesFromStore,
   selectTopMovesTiered,
   totalPatternScore,
 } from "./rankMoves.ts";
 import { findPatterns } from "./patterns.ts";
+import { PatternStore } from "./patternStore.ts";
 
 /** O: (8,10), (10,11), (12,9). X: 2x2 block (9,8)/(9,9)/(10,8)/(10,9).
  * Matches docs/superpowers/plans/2026-07-18-board-state-catalog.md #5.1 —
@@ -59,6 +61,27 @@ describe("scoreMove", () => {
       ..........
     `);
     expect(scoreMove(board, 1, { row: 2, col: 9 })).toBe(0);
+  });
+});
+
+describe("selectTopMovesFromStore", () => {
+  it("agrees with selectTopMoves and leaves the store depth unchanged", () => {
+    const board = dualPurposeFixtureBoard();
+    const moves = [
+      { row: 11, col: 10 },
+      { row: 10, col: 6 },
+      { row: 9, col: 10 },
+      { row: 11, col: 9 },
+      { row: 8, col: 9 },
+      { row: 12, col: 10 },
+    ];
+    const store = PatternStore.fromBoard(board);
+    const fromStore = selectTopMovesFromStore(store, 2, moves, 5);
+    const fromBoard = selectTopMoves(board, 2, moves, 5);
+    expect(fromStore.map((m) => `${m.row},${m.col}`)).toEqual(
+      fromBoard.map((m) => `${m.row},${m.col}`),
+    );
+    expect(store.depth).toBe(0);
   });
 });
 

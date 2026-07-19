@@ -1,5 +1,90 @@
-import { findForkPoints, findPatterns } from "./patterns.ts";
+import {
+  findForkPoints,
+  findPatterns,
+  findPatternsOnLine,
+  lineKey,
+} from "./patterns.ts";
 import { parseBoard } from "./test-helpers/parse-board.ts";
+
+describe("lineKey", () => {
+  it("groups cells on the same diagonal", () => {
+    expect(lineKey(3, 1, [1, 1])).toBe(lineKey(5, 3, [1, 1]));
+    expect(lineKey(3, 1, [1, 1])).not.toBe(lineKey(3, 2, [1, 1]));
+  });
+
+  it("groups cells on the same anti-diagonal", () => {
+    expect(lineKey(2, 5, [1, -1])).toBe(lineKey(4, 3, [1, -1]));
+  });
+});
+
+describe("findPatternsOnLine vs findPatterns", () => {
+  it("horizontal line patterns are a subset of the full scan", () => {
+    const board = parseBoard(`
+      .......
+      .XX.X..
+      ..O....
+      .......
+    `);
+    const onLine = findPatternsOnLine(board, 1, 1, 1, [0, 1]);
+    const full = findPatterns(board, 1);
+    for (const p of onLine) {
+      expect(p.direction).toEqual([0, 1]);
+      expect(
+        full.some(
+          (f) =>
+            f.type === p.type &&
+            f.cells.map((c) => `${c.row},${c.col}`).sort().join("|") ===
+              p.cells.map((c) => `${c.row},${c.col}`).sort().join("|"),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("union of all distinct lines reproduces findPatterns", () => {
+    const board = parseBoard(`
+      .......
+      .XX.X..
+      ..O.X..
+      ...X...
+    `);
+    const full = findPatterns(board, 1);
+    const seen = new Set<string>();
+    const rebuilt: typeof full = [];
+    for (let row = 0; row < board.length; row += 1) {
+      for (let col = 0; col < board.length; col += 1) {
+        if (board[row][col] === 0) {
+          continue;
+        }
+        for (const direction of [
+          [0, 1],
+          [1, 0],
+          [1, 1],
+          [1, -1],
+        ] as const) {
+          const key = `${direction[0]},${direction[1]}:${lineKey(row, col, direction)}`;
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
+          rebuilt.push(
+            ...findPatternsOnLine(board, 1, row, col, direction),
+          );
+        }
+      }
+    }
+    const canon = (patterns: typeof full) =>
+      patterns
+        .map(
+          (p) =>
+            `${p.type}|${p.direction[0]},${p.direction[1]}|${p.cells
+              .map((c) => `${c.row},${c.col}`)
+              .sort()
+              .join("|")}`,
+        )
+        .sort();
+    expect(canon(rebuilt)).toEqual(canon(full));
+  });
+});
 
 describe("findPatterns — five", () => {
   it("finds a five with no gains", () => {
