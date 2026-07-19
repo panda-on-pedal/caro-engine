@@ -15,19 +15,33 @@ const rowHeadersEl = document.getElementById('row-headers') as HTMLDivElement;
 const newGameButton = document.getElementById('new-game') as HTMLButtonElement;
 const undoButton = document.getElementById('undo') as HTMLButtonElement;
 const redoButton = document.getElementById('redo') as HTMLButtonElement;
+const gameModeEl = document.getElementById('game-mode') as HTMLSelectElement;
 const difficultyEl = document.getElementById('difficulty') as HTMLSelectElement;
+const difficultyP1El = document.getElementById('difficulty-p1') as HTMLSelectElement;
+const difficultyP2El = document.getElementById('difficulty-p2') as HTMLSelectElement;
+const pauseButton = document.getElementById('pause') as HTMLButtonElement;
 const asciiToggleButton = document.getElementById('ascii-toggle') as HTMLButtonElement;
 const asciiPanelEl = document.getElementById('ascii-panel') as HTMLDivElement;
 const asciiTextEl = document.getElementById('ascii-text') as HTMLTextAreaElement;
+
+type GameMode = 'human-ai' | 'ai-human' | 'ai-ai';
 
 let state: GameState = newGame();
 /** Snapshots before each stone; undo pops one stone at a time. */
 let past: GameState[] = [];
 let future: GameState[] = [];
-/** True while the AI reply is pending — blocks clicks / undo / redo. */
+/** True while an AI reply is pending — blocks clicks / undo / redo. */
 let busy = false;
 /** Incremental pattern cache kept in sync with `state` (including undo/redo). */
 let patternStore = PatternStore.fromBoard(state.board);
+let mode: GameMode = 'human-ai';
+/** ai-ai only: true while autoplay is paused. */
+let autoplayPaused = false;
+/** Guards against starting a second concurrent autoplay loop. */
+let autoplayRunning = false;
+/** Bumped on every reset; in-flight AI computations abort if it moves on
+ * from under them (e.g. New Game / mode switch while the AI is thinking). */
+let generation = 0;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -66,8 +80,26 @@ function rebuildHistory(loaded: GameState): { current: GameState; past: GameStat
   return { current, past, future: forward.reverse() };
 }
 
-function currentDifficulty(): Difficulty {
+/** The human's player number for the current mode, or `null` in ai-ai. */
+function humanPlayer(): Player | null {
+  if (mode === 'human-ai') {
+    return 1;
+  }
+  if (mode === 'ai-human') {
+    return 2;
+  }
+  return null;
+}
+
+function difficultyForPlayer(player: Player): Difficulty {
+  if (mode === 'ai-ai') {
+    return (player === 1 ? difficultyP1El.value : difficultyP2El.value) as Difficulty;
+  }
   return difficultyEl.value as Difficulty;
+}
+
+function historyLocked(): boolean {
+  return mode === 'ai-ai' && !autoplayPaused;
 }
 
 async function fetchState(): Promise<GameState> {
@@ -180,21 +212,26 @@ function boardToAscii(board: Board): string {
 }
 
 function statusText(current: GameState): string {
-  if (current.winner === 1) {
-    return 'You win!';
-  }
-  if (current.winner === 2) {
-    return 'AI wins!';
-  }
   if (current.winner === 'draw') {
     return "It's a draw!";
   }
-  return current.nextPlayer === 1 ? 'Your turn' : 'AI thinking…';
+  const human = humanPlayer();
+  if (current.winner !== null) {
+    if (human !== null) {
+      return current.winner === human ? 'You win!' : 'AI wins!';
+    }
+    return `Player ${current.winner} (AI) wins!`;
+  }
+  if (human !== null) {
+    return current.nextPlayer === human ? 'Your turn' : 'AI thinking…';
+  }
+  return autoplayPaused ? 'Paused' : `Player ${current.nextPlayer} (AI) thinking…`;
 }
 
 function updateHistoryButtons(): void {
-  undoButton.disabled = busy || past.length === 0;
-  redoButton.disabled = busy || future.length === 0;
+  const locked = historyLocked();
+  undoButton.disabled = busy || locked || past.length === 0;
+  redoButton.disabled = busy || locked || future.length === 0;
 }
 
 function render(): void {
@@ -223,7 +260,7 @@ function render(): void {
         cell.style.transform = `rotate(${inkTiltDegrees(row, col)}deg)`;
       }
       cell.disabled =
-        busy || value !== 0 || state.nextPlayer !== 1 || state.winner !== null;
+        busy || value !== 0 || state.nextPlayer !== humanPlayer() || state.winner !== null;
 
       if (lastMove && lastMove.row === row && lastMove.col === col) {
         mark.dataset.lastMove = 'true';
@@ -303,8 +340,116 @@ function commitState(
   }
 }
 
+/** Commit a move, render, and persist — the single path every move (human
+ * click or AI reply) funnels through so saved state is always current. */
+async function commitAndSave(
+  next: GameState,
+  placed: { move: Move; player: Player },
+): Promise<void> {
+  commitState(next, placed);
+  render();
+  logPatterns();
+  await saveState(persistedState());
+}
+
+/** Runs one AI move for whichever player is currently on the clock. Aborts
+ * without side effects if `generation` moves on during the think-delay (New
+ * Game / mode switch fired mid-turn) — `resetForMode` already restores `busy`
+ * in that case, so an aborted call must not touch it. `chooseMove` itself is
+ * synchronous, so no reset can land between it and the commit that follows. */
+async function runAiMove(): Promise<void> {
+  if (state.winner !== null) {
+    return;
+  }
+  const myGeneration = generation;
+  busy = true;
+  render();
+  await delay(AI_THINK_DELAY_MS);
+  if (myGeneration !== generation) {
+    return;
+  }
+  const player = state.nextPlayer;
+  const move = chooseMove(state, { difficulty: difficultyForPlayer(player) }).move;
+  busy = false;
+  await commitAndSave(applyMove(state, move, player), { move, player });
+}
+
+/** Repeatedly runs AI moves for ai-ai until paused, the game ends, or the
+ * mode changes. Safe to call while a loop is already running (no-op) — a
+ * live loop naturally keeps going after a reset since `runAiMove` re-reads
+ * `state`/`generation` fresh on each iteration. */
+async function runAutoplayLoop(): Promise<void> {
+  if (autoplayRunning) {
+    return;
+  }
+  autoplayRunning = true;
+  try {
+    while (mode === 'ai-ai' && !autoplayPaused && state.winner === null) {
+      await runAiMove();
+    }
+  } finally {
+    autoplayRunning = false;
+  }
+}
+
+/** After any commit (or a reset), starts whatever should happen next given
+ * the current mode and turn. */
+async function advanceIfAiTurn(): Promise<void> {
+  if (state.winner !== null) {
+    return;
+  }
+  if (mode === 'ai-ai') {
+    await runAutoplayLoop();
+    return;
+  }
+  if (state.nextPlayer !== humanPlayer()) {
+    await runAiMove();
+  }
+}
+
+function togglePause(): void {
+  if (mode !== 'ai-ai') {
+    return;
+  }
+  autoplayPaused = !autoplayPaused;
+  updateModeUI();
+  render();
+  if (!autoplayPaused) {
+    runAutoplayLoop().catch((error: unknown) => {
+      logger.error(error);
+    });
+  }
+}
+
+function updateModeUI(): void {
+  const isAiAi = mode === 'ai-ai';
+  gameModeEl.value = mode;
+  difficultyEl.hidden = isAiAi;
+  difficultyP1El.hidden = !isAiAi;
+  difficultyP2El.hidden = !isAiAi;
+  pauseButton.hidden = !isAiAi;
+  pauseButton.textContent = autoplayPaused ? 'Resume' : 'Pause';
+}
+
+/** Starts a fresh game under `newMode`. Safe to call mid-AI-think — bumping
+ * `generation` orphans any in-flight computation for the old game. */
+async function resetForMode(newMode: GameMode): Promise<void> {
+  generation += 1;
+  mode = newMode;
+  autoplayPaused = false;
+  busy = false;
+  past = [];
+  future = [];
+  state = newGame();
+  patternStore = PatternStore.fromBoard(state.board);
+  updateModeUI();
+  render();
+  await saveState(persistedState());
+  await advanceIfAiTurn();
+}
+
 async function handleCellClick(event: MouseEvent): Promise<void> {
-  if (busy || state.nextPlayer !== 1 || state.winner !== null) {
+  if (busy || state.nextPlayer !== humanPlayer() || state.winner !== null) {
     return;
   }
 
@@ -315,24 +460,11 @@ async function handleCellClick(event: MouseEvent): Promise<void> {
 
   const row = Number(target.dataset.row);
   const col = Number(target.dataset.col);
-
+  const player = state.nextPlayer;
   const humanMove = { row, col };
-  commitState(applyMove(state, humanMove, 1), { move: humanMove, player: 1 });
-  render();
-  logPatterns();
 
-  if (state.winner === null) {
-    busy = true;
-    render();
-    await delay(AI_THINK_DELAY_MS);
-    const aiMove = chooseMove(state, { difficulty: currentDifficulty() }).move;
-    commitState(applyMove(state, aiMove, 2), { move: aiMove, player: 2 });
-    busy = false;
-  }
-  render();
-  logPatterns();
-
-  await saveState(persistedState());
+  await commitAndSave(applyMove(state, humanMove, player), { move: humanMove, player });
+  await advanceIfAiTurn();
 }
 
 /** Undo/redo one full human turn when possible (human stone + AI reply),
@@ -349,7 +481,7 @@ function stepHistory(from: GameState[], to: GameState[], preferredSteps: number)
 }
 
 async function handleUndo(): Promise<void> {
-  if (busy || past.length === 0) {
+  if (busy || historyLocked() || past.length === 0) {
     return;
   }
   stepHistory(past, future, past.length >= 2 ? 2 : 1);
@@ -359,24 +491,12 @@ async function handleUndo(): Promise<void> {
 }
 
 async function handleRedo(): Promise<void> {
-  if (busy || future.length === 0) {
+  if (busy || historyLocked() || future.length === 0) {
     return;
   }
   stepHistory(future, past, future.length >= 2 ? 2 : 1);
   render();
   logPatterns();
-  await saveState(persistedState());
-}
-
-async function handleNewGame(): Promise<void> {
-  if (busy) {
-    return;
-  }
-  past = [];
-  future = [];
-  state = newGame();
-  patternStore = PatternStore.fromBoard(state.board);
-  render();
   await saveState(persistedState());
 }
 
@@ -402,6 +522,7 @@ async function init(): Promise<void> {
     future = [];
   }
   patternStore = PatternStore.fromBoard(state.board);
+  updateModeUI();
   render();
 
   boardEl.addEventListener('click', (event) => {
@@ -423,15 +544,27 @@ async function init(): Promise<void> {
   });
 
   newGameButton.addEventListener('click', () => {
-    handleNewGame().catch((error: unknown) => {
+    resetForMode(mode).catch((error: unknown) => {
       logger.error(error);
     });
+  });
+
+  gameModeEl.addEventListener('change', () => {
+    resetForMode(gameModeEl.value as GameMode).catch((error: unknown) => {
+      logger.error(error);
+    });
+  });
+
+  pauseButton.addEventListener('click', () => {
+    togglePause();
   });
 
   asciiToggleButton.addEventListener('click', () => {
     asciiPanelEl.hidden = !asciiPanelEl.hidden;
     asciiToggleButton.textContent = asciiPanelEl.hidden ? 'Show ASCII' : 'Hide ASCII';
   });
+
+  await advanceIfAiTurn();
 }
 
 init().catch((error: unknown) => {

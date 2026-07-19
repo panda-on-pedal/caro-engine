@@ -191,6 +191,7 @@
     #new-game,
     #undo,
     #redo,
+    #pause,
     #ascii-toggle {
       padding: 10px 20px;
       font-family: inherit;
@@ -206,6 +207,7 @@
     #new-game:hover,
     #undo:hover:not(:disabled),
     #redo:hover:not(:disabled),
+    #pause:hover:not(:disabled),
     #ascii-toggle:hover {
       background: #f1ead8;
     }
@@ -213,6 +215,7 @@
     #new-game:active,
     #undo:active:not(:disabled),
     #redo:active:not(:disabled),
+    #pause:active:not(:disabled),
     #ascii-toggle:active {
       box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.1);
       transform: translate(2px, 2px);
@@ -221,13 +224,15 @@
     #new-game:focus-visible,
     #undo:focus-visible,
     #redo:focus-visible,
+    #pause:focus-visible,
     #ascii-toggle:focus-visible {
       outline: 2px solid var(--ink-blue);
       outline-offset: 2px;
     }
 
     #undo:disabled,
-    #redo:disabled {
+    #redo:disabled,
+    #pause:disabled {
       opacity: 0.45;
       cursor: default;
       box-shadow: none;
@@ -236,10 +241,15 @@
     .controls {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
       gap: 10px;
     }
 
-    #difficulty {
+    #game-mode,
+    #difficulty,
+    #difficulty-p1,
+    #difficulty-p2 {
       padding: 8px 10px;
       font-family: inherit;
       font-size: 0.95rem;
@@ -283,11 +293,27 @@
     <div id="board"></div>
   </div>
   <div class="controls">
+    <select id="game-mode">
+      <option value="human-ai" selected>Human vs AI</option>
+      <option value="ai-human">AI vs Human</option>
+      <option value="ai-ai">AI vs AI</option>
+    </select>
     <select id="difficulty">
       <option value="easy">Easy</option>
       <option value="medium">Medium</option>
       <option value="hard" selected>Hard</option>
     </select>
+    <select id="difficulty-p1" hidden>
+      <option value="easy">P1: Easy</option>
+      <option value="medium">P1: Medium</option>
+      <option value="hard" selected>P1: Hard</option>
+    </select>
+    <select id="difficulty-p2" hidden>
+      <option value="easy">P2: Easy</option>
+      <option value="medium" selected>P2: Medium</option>
+      <option value="hard">P2: Hard</option>
+    </select>
+    <button id="pause" type="button" hidden>Pause</button>
     <button id="undo" type="button" disabled>Undo</button>
     <button id="redo" type="button" disabled>Redo</button>
     <button id="new-game" type="button">New Game</button>
