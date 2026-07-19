@@ -2,30 +2,48 @@ import { BOARD_SIZE, type Board, type Player } from '../engine/board.ts';
 import { type Difficulty } from '../engine/engine.ts';
 import { PatternStore } from '../engine/patternStore.ts';
 import { applyMove, deserializeState, newGame, serializeState, type GameState, type Move } from '../engine/state.ts';
+import type { GameResult, PairingStats } from '../shared/results.ts';
+import { aggregateResults } from '../shared/results.ts';
 import { logger } from '../utils/logger.ts';
 import { CancelledError, EnginePool } from './enginePool.ts';
+import { pairingAt, sessionTabLabel, TOURNAMENT_TIME_BUDGET_MS, type TournamentDifficulty } from './tournament.ts';
 
 const STATE_URL = '/api/state';
+const RESULTS_URL = '/api/results';
 const AI_THINK_DELAY_MS = 300;
 const CELL_SIZE_PX = 28;
 
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
+const tabStripEl = document.getElementById('tab-strip') as HTMLDivElement;
 const boardEl = document.getElementById('board') as HTMLDivElement;
 const colHeadersEl = document.getElementById('col-headers') as HTMLDivElement;
 const rowHeadersEl = document.getElementById('row-headers') as HTMLDivElement;
+const statsPanelEl = document.getElementById('stats-panel') as HTMLDivElement;
 const newGameButton = document.getElementById('new-game') as HTMLButtonElement;
 const undoButton = document.getElementById('undo') as HTMLButtonElement;
 const redoButton = document.getElementById('redo') as HTMLButtonElement;
 const gameModeEl = document.getElementById('game-mode') as HTMLSelectElement;
 const difficultyEl = document.getElementById('difficulty') as HTMLSelectElement;
-const difficultyP1El = document.getElementById('difficulty-p1') as HTMLSelectElement;
-const difficultyP2El = document.getElementById('difficulty-p2') as HTMLSelectElement;
+const boardCountEl = document.getElementById('board-count') as HTMLSelectElement;
 const pauseButton = document.getElementById('pause') as HTMLButtonElement;
 const asciiToggleButton = document.getElementById('ascii-toggle') as HTMLButtonElement;
 const asciiPanelEl = document.getElementById('ascii-panel') as HTMLDivElement;
 const asciiTextEl = document.getElementById('ascii-text') as HTMLTextAreaElement;
 
 type GameMode = 'human-ai' | 'ai-human' | 'ai-ai';
+
+/** One board's worth of ai-ai tournament state. Human modes (human-ai /
+ * ai-human) never use this — they keep the single global `state` below. */
+interface BoardSession {
+  id: number;
+  state: GameState;
+  p1: TournamentDifficulty;
+  p2: TournamentDifficulty;
+  busy: boolean;
+  gameStartMs: number;
+  gamesPlayed: number;
+  loopRunning: boolean;
+}
 
 let state: GameState = newGame();
 /** Snapshots before each stone; undo pops one stone at a time. */
@@ -36,14 +54,20 @@ let busy = false;
 /** Incremental pattern cache kept in sync with `state` (including undo/redo). */
 let patternStore = PatternStore.fromBoard(state.board);
 let mode: GameMode = 'human-ai';
-/** ai-ai only: true while autoplay is paused. */
+/** ai-ai only: true while autoplay is paused (halts every board). */
 let autoplayPaused = false;
-/** Guards against starting a second concurrent autoplay loop. */
-let autoplayRunning = false;
 /** Bumped on every reset; in-flight AI computations abort if it moves on
  * from under them (e.g. New Game / mode switch while the AI is thinking). */
 let generation = 0;
-const pool = new EnginePool(1);
+let pool = new EnginePool(1);
+
+/** ai-ai only, below. */
+let sessions: BoardSession[] = [];
+let activeIndex = 0;
+let pairingCounter = 0;
+let sessionIdCounter = 0;
+let boardCount = Number(boardCountEl.value);
+let pairingStats: PairingStats[] = aggregateResults([]);
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -93,15 +117,30 @@ function humanPlayer(): Player | null {
   return null;
 }
 
-function difficultyForPlayer(player: Player): Difficulty {
-  if (mode === 'ai-ai') {
-    return (player === 1 ? difficultyP1El.value : difficultyP2El.value) as Difficulty;
-  }
+/** Human-mode (human-ai / ai-human) difficulty — read from the single
+ * shared select. ai-ai reads each board's own `session.p1`/`p2` instead. */
+function currentDifficulty(): Difficulty {
   return difficultyEl.value as Difficulty;
 }
 
 function historyLocked(): boolean {
   return mode === 'ai-ai' && !autoplayPaused;
+}
+
+/** `Math.max(1, Math.min(count, cores - 1))` — caps worker concurrency at
+ * physical parallelism so oversubscription doesn't silently shallow
+ * searches (which would bias the win rates the tournament measures). */
+function desiredPoolSize(count: number): number {
+  const cores = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 4;
+  return Math.max(1, Math.min(count, cores - 1));
+}
+
+function resizePool(targetSize: number): void {
+  if (pool.size === targetSize) {
+    return;
+  }
+  pool.terminate();
+  pool = new EnginePool(targetSize);
 }
 
 async function fetchState(): Promise<GameState> {
@@ -230,29 +269,51 @@ function statusText(current: GameState): string {
   return autoplayPaused ? 'Paused' : `Player ${current.nextPlayer} (AI) thinking…`;
 }
 
+/** The board currently shown in the DOM: the active tournament session in
+ * ai-ai, otherwise the single global `state`. */
+function activeGameState(): GameState {
+  if (mode === 'ai-ai') {
+    return sessions[activeIndex]?.state ?? newGame();
+  }
+  return state;
+}
+
+function activeBusy(): boolean {
+  if (mode === 'ai-ai') {
+    return sessions[activeIndex]?.busy ?? false;
+  }
+  return busy;
+}
+
 function updateHistoryButtons(): void {
+  const isAiAi = mode === 'ai-ai';
+  undoButton.hidden = isAiAi;
+  redoButton.hidden = isAiAi;
   const locked = historyLocked();
   undoButton.disabled = busy || locked || past.length === 0;
   redoButton.disabled = busy || locked || future.length === 0;
 }
 
 function render(): void {
-  statusEl.textContent = statusText(state);
-  if (state.winner === null) {
+  const current = activeGameState();
+  const isBusy = activeBusy();
+
+  statusEl.textContent = statusText(current);
+  if (current.winner === null) {
     delete statusEl.dataset.done;
   } else {
     statusEl.dataset.done = 'true';
   }
 
-  const lastMove = state.moveHistory[state.moveHistory.length - 1] as Move | undefined;
-  const winningCells = new Set((state.winningLine ?? []).map((move) => `${move.row},${move.col}`));
+  const lastMove = current.moveHistory[current.moveHistory.length - 1] as Move | undefined;
+  const winningCells = new Set((current.winningLine ?? []).map((move) => `${move.row},${move.col}`));
 
   const cells = boardEl.children;
   for (let row = 0; row < BOARD_SIZE; row += 1) {
     for (let col = 0; col < BOARD_SIZE; col += 1) {
       const cell = cells[row * BOARD_SIZE + col] as HTMLButtonElement;
       const mark = cell.firstElementChild as HTMLSpanElement;
-      const value = state.board[row][col];
+      const value = current.board[row][col];
       mark.textContent = value === 1 ? 'X' : value === 2 ? 'O' : '';
       if (value === 0) {
         delete cell.dataset.player;
@@ -262,7 +323,7 @@ function render(): void {
         cell.style.transform = `rotate(${inkTiltDegrees(row, col)}deg)`;
       }
       cell.disabled =
-        busy || value !== 0 || state.nextPlayer !== humanPlayer() || state.winner !== null;
+        isBusy || value !== 0 || current.nextPlayer !== humanPlayer() || current.winner !== null;
 
       if (lastMove && lastMove.row === row && lastMove.col === col) {
         mark.dataset.lastMove = 'true';
@@ -278,7 +339,7 @@ function render(): void {
     }
   }
   updateHistoryButtons();
-  asciiTextEl.value = boardToAscii(state.board);
+  asciiTextEl.value = boardToAscii(current.board);
 }
 
 function buildHeaderStrip(container: HTMLDivElement, axis: 'row' | 'col'): void {
@@ -373,7 +434,7 @@ async function runAiMove(): Promise<void> {
   const player = state.nextPlayer;
   let move: Move;
   try {
-    move = (await pool.requestMove(state.board, player, difficultyForPlayer(player))).move;
+    move = (await pool.requestMove(state.board, player, currentDifficulty())).move;
   } catch (error) {
     if (error instanceof CancelledError || myGeneration !== generation) {
       return;
@@ -389,36 +450,201 @@ async function runAiMove(): Promise<void> {
   await commitAndSave(applyMove(state, move, player), { move, player });
 }
 
-/** Repeatedly runs AI moves for ai-ai until paused, the game ends, or the
- * mode changes. Safe to call while a loop is already running (no-op) — a
- * live loop naturally keeps going after a reset since `runAiMove` re-reads
- * `state`/`generation` fresh on each iteration. */
-async function runAutoplayLoop(): Promise<void> {
-  if (autoplayRunning) {
-    return;
-  }
-  autoplayRunning = true;
-  try {
-    while (mode === 'ai-ai' && !autoplayPaused && state.winner === null) {
-      await runAiMove();
-    }
-  } finally {
-    autoplayRunning = false;
-  }
-}
-
 /** After any commit (or a reset), starts whatever should happen next given
- * the current mode and turn. */
+ * the current mode and turn. Never called while `mode === 'ai-ai'` — that
+ * path is driven entirely by per-session tournament loops instead. */
 async function advanceIfAiTurn(): Promise<void> {
   if (state.winner !== null) {
     return;
   }
-  if (mode === 'ai-ai') {
-    await runAutoplayLoop();
-    return;
-  }
   if (state.nextPlayer !== humanPlayer()) {
     await runAiMove();
+  }
+}
+
+function createSession(p1: TournamentDifficulty, p2: TournamentDifficulty): BoardSession {
+  const session: BoardSession = {
+    id: sessionIdCounter,
+    state: newGame(),
+    p1,
+    p2,
+    busy: false,
+    gameStartMs: Date.now(),
+    gamesPlayed: 0,
+    loopRunning: false,
+  };
+  sessionIdCounter += 1;
+  return session;
+}
+
+function startTournament(count: number): void {
+  sessions = Array.from({ length: count }, () => {
+    const [p1, p2] = pairingAt(pairingCounter);
+    pairingCounter += 1;
+    return createSession(p1, p2);
+  });
+  activeIndex = 0;
+}
+
+async function postResult(session: BoardSession, winner: 1 | 2 | 'draw'): Promise<void> {
+  const result: GameResult = {
+    p1: session.p1,
+    p2: session.p2,
+    winner,
+    moves: session.state.moveHistory.length,
+    durationMs: Date.now() - session.gameStartMs,
+    endedAt: new Date().toISOString(),
+  };
+  try {
+    await fetch(RESULTS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(result),
+    });
+  } catch (error) {
+    logger.error(error);
+  }
+  await refreshStats();
+}
+
+async function refreshStats(): Promise<void> {
+  try {
+    const response = await fetch(RESULTS_URL);
+    const records = (await response.json()) as GameResult[];
+    pairingStats = aggregateResults(records);
+  } catch (error) {
+    logger.error(error);
+  }
+  renderStats();
+}
+
+function renderStats(): void {
+  if (mode !== 'ai-ai') {
+    statsPanelEl.innerHTML = '';
+    return;
+  }
+  const rows = pairingStats
+    .map(
+      (row) =>
+        `<tr><td>${row.p1}×${row.p2}</td><td>${row.games}</td><td>${row.p1Wins}</td>` +
+        `<td>${row.p2Wins}</td><td>${row.draws}</td>` +
+        `<td>${row.games === 0 ? '—' : row.p1WinPct.toFixed(1) + '%'}</td></tr>`,
+    )
+    .join('');
+  statsPanelEl.innerHTML =
+    '<table><thead><tr><th>Pairing</th><th>Games</th><th>P1 wins</th><th>P2 wins</th>' +
+    `<th>Draws</th><th>P1 win%</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderTabs(): void {
+  const isAiAi = mode === 'ai-ai';
+  tabStripEl.hidden = !isAiAi;
+  tabStripEl.innerHTML = '';
+  if (!isAiAi) {
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  sessions.forEach((session, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'tab-button';
+    button.textContent = sessionTabLabel(index, session.p1, session.p2, session.state.moveHistory.length);
+    button.dataset.status = session.state.winner !== null ? 'restarting' : session.busy ? 'thinking' : 'idle';
+    if (index === activeIndex) {
+      button.dataset.active = 'true';
+    }
+    button.addEventListener('click', () => {
+      activeIndex = index;
+      render();
+      renderTabs();
+    });
+    fragment.appendChild(button);
+  });
+  tabStripEl.appendChild(fragment);
+}
+
+/** Runs one AI move for `session`. Mirrors `runAiMove`'s cancellation
+ * handling but keys everything off the session rather than the global
+ * `state`/`busy`, and skips the human-facing think-delay (tournament games
+ * run at full worker speed). */
+async function runSessionAiMove(session: BoardSession, myGeneration: number): Promise<void> {
+  session.busy = true;
+  if (sessions[activeIndex] === session) {
+    render();
+  }
+  renderTabs();
+
+  const player = session.state.nextPlayer;
+  const difficulty = player === 1 ? session.p1 : session.p2;
+  let move: Move;
+  try {
+    move = (
+      await pool.requestMove(session.state.board, player, difficulty, TOURNAMENT_TIME_BUDGET_MS[difficulty])
+    ).move;
+  } catch (error) {
+    session.busy = false;
+    if (error instanceof CancelledError || myGeneration !== generation) {
+      return;
+    }
+    if (sessions[activeIndex] === session) {
+      render();
+    }
+    throw error;
+  }
+  if (myGeneration !== generation) {
+    return;
+  }
+  session.busy = false;
+  session.state = applyMove(session.state, move, player);
+  if (sessions[activeIndex] === session) {
+    render();
+  }
+  renderTabs();
+}
+
+/** Drives one board through repeated games: plays moves until a game ends,
+ * posts the result, rotates to the next pairing, and repeats — until
+ * paused, reset (generation bump), or the mode changes away from ai-ai.
+ * Safe to call on an already-running session (no-op via `loopRunning`). */
+async function runSessionLoop(session: BoardSession): Promise<void> {
+  if (session.loopRunning) {
+    return;
+  }
+  session.loopRunning = true;
+  const myGeneration = generation;
+  try {
+    while (myGeneration === generation && mode === 'ai-ai' && !autoplayPaused) {
+      const winner = session.state.winner;
+      if (winner !== null) {
+        await postResult(session, winner);
+        if (myGeneration !== generation) {
+          return;
+        }
+        const [p1, p2] = pairingAt(pairingCounter);
+        pairingCounter += 1;
+        session.p1 = p1;
+        session.p2 = p2;
+        session.state = newGame();
+        session.gameStartMs = Date.now();
+        session.gamesPlayed += 1;
+        renderTabs();
+        if (sessions[activeIndex] === session) {
+          render();
+        }
+        continue;
+      }
+      await runSessionAiMove(session, myGeneration);
+    }
+  } finally {
+    session.loopRunning = false;
+  }
+}
+
+function startAllSessionLoops(): void {
+  for (const session of sessions) {
+    runSessionLoop(session).catch((error: unknown) => {
+      logger.error(error);
+    });
   }
 }
 
@@ -430,9 +656,7 @@ function togglePause(): void {
   updateModeUI();
   render();
   if (!autoplayPaused) {
-    runAutoplayLoop().catch((error: unknown) => {
-      logger.error(error);
-    });
+    startAllSessionLoops();
   }
 }
 
@@ -440,19 +664,36 @@ function updateModeUI(): void {
   const isAiAi = mode === 'ai-ai';
   gameModeEl.value = mode;
   difficultyEl.hidden = isAiAi;
-  difficultyP1El.hidden = !isAiAi;
-  difficultyP2El.hidden = !isAiAi;
+  boardCountEl.hidden = !isAiAi;
   pauseButton.hidden = !isAiAi;
   pauseButton.textContent = autoplayPaused ? 'Resume' : 'Pause';
 }
 
-/** Starts a fresh game under `newMode`. Safe to call mid-AI-think — bumping
- * `generation` orphans any in-flight computation for the old game. */
+/** Starts a fresh game (or, for ai-ai, a fresh tournament) under `newMode`.
+ * Safe to call mid-AI-think — bumping `generation` orphans any in-flight
+ * computation for the old game/tournament, and `pool.cancelAll()` kills any
+ * search actually running in a worker. Also used to restart the tournament
+ * in place when the board count changes. */
 async function resetForMode(newMode: GameMode): Promise<void> {
   generation += 1;
   pool.cancelAll();
   mode = newMode;
   autoplayPaused = false;
+
+  if (newMode === 'ai-ai') {
+    resizePool(desiredPoolSize(boardCount));
+    pairingCounter = 0;
+    startTournament(boardCount);
+    updateModeUI();
+    render();
+    renderTabs();
+    await refreshStats();
+    startAllSessionLoops();
+    return;
+  }
+
+  sessions = [];
+  resizePool(1);
   busy = false;
   past = [];
   future = [];
@@ -460,6 +701,7 @@ async function resetForMode(newMode: GameMode): Promise<void> {
   patternStore = PatternStore.fromBoard(state.board);
   updateModeUI();
   render();
+  renderTabs();
   await saveState(persistedState());
   await advanceIfAiTurn();
 }
@@ -569,6 +811,15 @@ async function init(): Promise<void> {
     resetForMode(gameModeEl.value as GameMode).catch((error: unknown) => {
       logger.error(error);
     });
+  });
+
+  boardCountEl.addEventListener('change', () => {
+    boardCount = Number(boardCountEl.value);
+    if (mode === 'ai-ai') {
+      resetForMode('ai-ai').catch((error: unknown) => {
+        logger.error(error);
+      });
+    }
   });
 
   pauseButton.addEventListener('click', () => {

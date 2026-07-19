@@ -44,6 +44,10 @@ export class EnginePool {
     this.slots = Array.from({ length: size }, () => ({ worker: null, busy: false, currentId: null }));
   }
 
+  get size(): number {
+    return this.slots.length;
+  }
+
   requestMove(board: Board, player: Player, difficulty: Difficulty, timeBudgetMs?: number): Promise<SearchResult> {
     return new Promise((resolve, reject) => {
       const request: EngineRequest = { id: this.nextId, board, player, difficulty, timeBudgetMs };
@@ -143,14 +147,14 @@ export class EnginePool {
     }
   }
 
+  /** Like `cancelAll()`, but also kills idle workers — for retiring the
+   * pool entirely (e.g. resizing). Rejects everything in flight, not just
+   * busy-slot requests, so no caller is left awaiting forever. */
   terminate(): void {
+    this.cancelAll();
     for (const slot of this.slots) {
       slot.worker?.terminate();
       slot.worker = null;
-      slot.busy = false;
-      slot.currentId = null;
     }
-    this.pending.clear();
-    this.queue.length = 0;
   }
 }

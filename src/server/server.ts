@@ -3,10 +3,12 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, join } from 'node:path';
 import { newGame, serializeState, type GameState } from '../engine/state.ts';
+import { isValidGameResult, type GameResult } from '../shared/results.ts';
 
 const PORT = 3000;
 const ROOT = process.cwd();
 const STATE_PATH = join(ROOT, 'state.json');
+const RESULTS_PATH = join(ROOT, 'results.json');
 
 const STATIC_FILES: Record<string, string> = {
   '/': 'index.html',
@@ -24,6 +26,12 @@ const CONTENT_TYPES: Record<string, string> = {
 async function ensureStateFile(): Promise<void> {
   if (!existsSync(STATE_PATH)) {
     await writeFile(STATE_PATH, serializeState(newGame()));
+  }
+}
+
+async function ensureResultsFile(): Promise<void> {
+  if (!existsSync(RESULTS_PATH)) {
+    await writeFile(RESULTS_PATH, '[]');
   }
 }
 
@@ -81,6 +89,51 @@ async function handlePutState(req: IncomingMessage, res: ServerResponse): Promis
   res.end(serialized);
 }
 
+async function handleGetResults(res: ServerResponse): Promise<void> {
+  const raw = await readFile(RESULTS_PATH, 'utf-8');
+  res.writeHead(200, { 'Content-Type': CONTENT_TYPES['.json'] });
+  res.end(raw);
+}
+
+/** Serializes concurrent appends from multiple boards posting results at
+ * once: each call chains onto the previous append instead of racing a
+ * read-modify-write against it. */
+let resultsWriteChain: Promise<unknown> = Promise.resolve();
+
+async function appendResult(result: GameResult): Promise<void> {
+  const raw = await readFile(RESULTS_PATH, 'utf-8');
+  const records = JSON.parse(raw) as GameResult[];
+  records.push(result);
+  await writeFile(RESULTS_PATH, JSON.stringify(records, null, 2));
+}
+
+async function handlePostResults(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readRequestBody(req);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    sendText(res, 400, 'Invalid JSON');
+    return;
+  }
+
+  if (!isValidGameResult(parsed)) {
+    sendText(res, 400, 'Invalid game result');
+    return;
+  }
+
+  const result = parsed;
+  // Chain onto the previous append regardless of whether it failed, so one
+  // bad append can't permanently wedge every later POST behind a rejection.
+  const appendPromise = resultsWriteChain.catch(() => undefined).then(() => appendResult(result));
+  resultsWriteChain = appendPromise;
+  await appendPromise;
+
+  res.writeHead(200, { 'Content-Type': CONTENT_TYPES['.json'] });
+  res.end(JSON.stringify(result));
+}
+
 async function handleStatic(pathname: string, res: ServerResponse): Promise<void> {
   const relativePath = STATIC_FILES[pathname];
   if (!relativePath) {
@@ -115,6 +168,20 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  if (url.pathname === '/api/results') {
+    if (req.method === 'GET') {
+      await handleGetResults(res);
+      return;
+    }
+    if (req.method === 'POST') {
+      await handlePostResults(req, res);
+      return;
+    }
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET, POST' });
+    res.end('Method Not Allowed');
+    return;
+  }
+
   await handleStatic(url.pathname, res);
 }
 
@@ -128,6 +195,7 @@ const server = createServer((req, res) => {
 });
 
 await ensureStateFile();
+await ensureResultsFile();
 server.listen(PORT, () => {
   console.log(`Caro server listening on http://localhost:${PORT}`);
 });

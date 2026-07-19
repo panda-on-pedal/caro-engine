@@ -2,3 +2,4 @@ node_modules/
 main.js
 engineWorker.js
 state.json
+results.json
