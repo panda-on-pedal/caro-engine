@@ -12,9 +12,13 @@ const STATE_URL = '/api/state';
 const RESULTS_URL = '/api/results';
 const AI_THINK_DELAY_MS = 300;
 const CELL_SIZE_PX = 28;
+/** How long a finished tournament board holds its win/draw message before
+ * rotating to the next pairing — long enough to actually read it. */
+const GAME_END_PAUSE_MS = 2000;
 
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
 const tabStripEl = document.getElementById('tab-strip') as HTMLDivElement;
+const boardGridEl = document.getElementById('board-grid') as HTMLDivElement;
 const boardEl = document.getElementById('board') as HTMLDivElement;
 const colHeadersEl = document.getElementById('col-headers') as HTMLDivElement;
 const rowHeadersEl = document.getElementById('row-headers') as HTMLDivElement;
@@ -64,6 +68,8 @@ let pool = new EnginePool(1);
 /** ai-ai only, below. */
 let sessions: BoardSession[] = [];
 let activeIndex = 0;
+/** True when the extra "Results" tab is selected instead of a board. */
+let viewingResults = false;
 let pairingCounter = 0;
 let sessionIdCounter = 0;
 let boardCount = Number(boardCountEl.value);
@@ -295,6 +301,16 @@ function updateHistoryButtons(): void {
 }
 
 function render(): void {
+  const showingResults = mode === 'ai-ai' && viewingResults;
+  boardGridEl.hidden = showingResults;
+  statsPanelEl.hidden = !showingResults;
+  if (showingResults) {
+    statusEl.textContent = 'Tournament results';
+    delete statusEl.dataset.done;
+    updateHistoryButtons();
+    return;
+  }
+
   const current = activeGameState();
   const isBusy = activeBusy();
 
@@ -528,12 +544,14 @@ function renderStats(): void {
       (row) =>
         `<tr><td>${row.p1}×${row.p2}</td><td>${row.games}</td><td>${row.p1Wins}</td>` +
         `<td>${row.p2Wins}</td><td>${row.draws}</td>` +
-        `<td>${row.games === 0 ? '—' : row.p1WinPct.toFixed(1) + '%'}</td></tr>`,
+        `<td>${row.games === 0 ? '—' : row.p1WinPct.toFixed(1) + '%'}</td>` +
+        `<td>${row.games === 0 ? '—' : `${row.avgP1Moves.toFixed(1)} / ${row.avgP2Moves.toFixed(1)}`}</td></tr>`,
     )
     .join('');
   statsPanelEl.innerHTML =
     '<table><thead><tr><th>Pairing</th><th>Games</th><th>P1 wins</th><th>P2 wins</th>' +
-    `<th>Draws</th><th>P1 win%</th></tr></thead><tbody>${rows}</tbody></table>`;
+    '<th>Draws</th><th>P1 win%</th><th>Avg moves (P1 / P2)</th></tr></thead>' +
+    `<tbody>${rows}</tbody></table>`;
 }
 
 function renderTabs(): void {
@@ -550,16 +568,32 @@ function renderTabs(): void {
     button.className = 'tab-button';
     button.textContent = sessionTabLabel(index, session.p1, session.p2, session.state.moveHistory.length);
     button.dataset.status = session.state.winner !== null ? 'restarting' : session.busy ? 'thinking' : 'idle';
-    if (index === activeIndex) {
+    if (!viewingResults && index === activeIndex) {
       button.dataset.active = 'true';
     }
     button.addEventListener('click', () => {
+      viewingResults = false;
       activeIndex = index;
       render();
       renderTabs();
     });
     fragment.appendChild(button);
   });
+
+  const resultsButton = document.createElement('button');
+  resultsButton.type = 'button';
+  resultsButton.className = 'tab-button tab-button-results';
+  resultsButton.textContent = 'Results';
+  if (viewingResults) {
+    resultsButton.dataset.active = 'true';
+  }
+  resultsButton.addEventListener('click', () => {
+    viewingResults = true;
+    render();
+    renderTabs();
+  });
+  fragment.appendChild(resultsButton);
+
   tabStripEl.appendChild(fragment);
 }
 
@@ -617,6 +651,12 @@ async function runSessionLoop(session: BoardSession): Promise<void> {
       const winner = session.state.winner;
       if (winner !== null) {
         await postResult(session, winner);
+        if (myGeneration !== generation) {
+          return;
+        }
+        // Hold the finished board on screen (win/draw message still showing
+        // via statusText) before rotating to the next pairing.
+        await delay(GAME_END_PAUSE_MS);
         if (myGeneration !== generation) {
           return;
         }
@@ -683,6 +723,7 @@ async function resetForMode(newMode: GameMode): Promise<void> {
   if (newMode === 'ai-ai') {
     resizePool(desiredPoolSize(boardCount));
     pairingCounter = 0;
+    viewingResults = false;
     startTournament(boardCount);
     updateModeUI();
     render();

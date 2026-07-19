@@ -40,7 +40,15 @@ describe("aggregateResults", () => {
     stats.forEach((row, i) => {
       expect(row.p1).toBe(PAIRINGS[i][0]);
       expect(row.p2).toBe(PAIRINGS[i][1]);
-      expect(row).toMatchObject({ games: 0, p1Wins: 0, p2Wins: 0, draws: 0, p1WinPct: 0 });
+      expect(row).toMatchObject({
+        games: 0,
+        p1Wins: 0,
+        p2Wins: 0,
+        draws: 0,
+        p1WinPct: 0,
+        avgP1Moves: 0,
+        avgP2Moves: 0,
+      });
     });
   });
 
@@ -64,5 +72,17 @@ describe("aggregateResults", () => {
     const stats = aggregateResults(records);
     const row = stats.find((r) => r.p1 === "easy" && r.p2 === "medium")!;
     expect(row).toMatchObject({ games: 1, p1Wins: 0, p2Wins: 0, draws: 1, p1WinPct: 0 });
+  });
+
+  it("computes average moves per player, splitting an odd total toward player 1 (who always moves first)", () => {
+    const records: GameResult[] = [
+      { p1: "hard", p2: "easy", winner: 1, moves: 9, durationMs: 100, endedAt: "t1" },
+      { p1: "hard", p2: "easy", winner: 2, moves: 20, durationMs: 100, endedAt: "t2" },
+    ];
+    const stats = aggregateResults(records);
+    const row = stats.find((r) => r.p1 === "hard" && r.p2 === "easy")!;
+    // game 1: 9 moves -> p1 made 5, p2 made 4. game 2: 20 moves -> p1 made 10, p2 made 10.
+    expect(row.avgP1Moves).toBeCloseTo((5 + 10) / 2);
+    expect(row.avgP2Moves).toBeCloseTo((4 + 10) / 2);
   });
 });

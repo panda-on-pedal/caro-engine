@@ -37,6 +37,14 @@ export interface PairingStats {
   p2Wins: number;
   draws: number;
   p1WinPct: number;
+  /** Average move count per player, per game (player 1 always moves first,
+   * so on an odd-length game they made one more move than player 2). */
+  avgP1Moves: number;
+  avgP2Moves: number;
+}
+
+function average(values: number[]): number {
+  return values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 /** Tallies results per ordered pairing (hard×medium and medium×hard are
@@ -50,6 +58,8 @@ export function aggregateResults(records: GameResult[]): PairingStats[] {
     const p2Wins = matching.filter((record) => record.winner === 2).length;
     const draws = matching.filter((record) => record.winner === 'draw').length;
     const p1WinPct = games === 0 ? 0 : (p1Wins / games) * 100;
-    return { p1, p2, games, p1Wins, p2Wins, draws, p1WinPct };
+    const avgP1Moves = average(matching.map((record) => Math.ceil(record.moves / 2)));
+    const avgP2Moves = average(matching.map((record) => Math.floor(record.moves / 2)));
+    return { p1, p2, games, p1Wins, p2Wins, draws, p1WinPct, avgP1Moves, avgP2Moves };
   });
 }
