@@ -1,4 +1,4 @@
-import { search, type SearchResult } from "./search.ts";
+import { search, type SearchConfig, type SearchResult } from "./search.ts";
 import { DEFAULT_DECAY_CONFIG } from "./search.ts";
 import {
   ALL_FORK_PATTERN_NAMES,
@@ -6,58 +6,84 @@ import {
 } from "./narrow.ts";
 import type { GameState } from "./state.ts";
 
-export type Difficulty = "easy" | "medium" | "hard";
+export type Difficulty = "easy" | "medium" | "hard" | "expert";
+
+export interface DifficultyProfile {
+  maxDepth: number;
+  timeBudgetMs: number;
+  recognizedForkPatterns: ReadonlySet<ForkPatternName>;
+  rootScoreJitter: number;
+  threatSearch: boolean;
+  /** Max plies for TSS (attacker+defender). Ignored when threatSearch is false. */
+  threatMaxPly: number;
+}
+
+/**
+ * Single source of truth for per-difficulty engine ability. Tune a level by
+ * editing its object here — do not scatter parallel Record maps.
+ */
+export const DIFFICULTY_PROFILES: Record<Difficulty, DifficultyProfile> = {
+  easy: {
+    maxDepth: 2,
+    timeBudgetMs: 500,
+    recognizedForkPatterns: new Set(),
+    rootScoreJitter: 0.15,
+    threatSearch: false,
+    threatMaxPly: 0,
+  },
+  medium: {
+    maxDepth: 4,
+    timeBudgetMs: 2000,
+    recognizedForkPatterns: new Set([
+      "double-three-trap",
+      "double-four-trap",
+    ]),
+    rootScoreJitter: 0.1,
+    threatSearch: false,
+    threatMaxPly: 0,
+  },
+  hard: {
+    maxDepth: 6,
+    timeBudgetMs: 5000,
+    recognizedForkPatterns: ALL_FORK_PATTERN_NAMES,
+    rootScoreJitter: 0.05,
+    threatSearch: false,
+    threatMaxPly: 0,
+  },
+  expert: {
+    maxDepth: 6,
+    timeBudgetMs: 10000,
+    recognizedForkPatterns: ALL_FORK_PATTERN_NAMES,
+    rootScoreJitter: 0.02,
+    threatSearch: true,
+    threatMaxPly: 16,
+  },
+};
 
 export interface EngineConfig {
   difficulty: Difficulty;
   timeBudgetMs?: number;
   /** Override the difficulty's default root-score jitter (0 disables). */
   rootScoreJitter?: number;
+  /** Override the difficulty's threat-search flag. */
+  threatSearch?: boolean;
 }
 
-const DIFFICULTY_DEPTH: Record<Difficulty, number> = {
-  easy: 2,
-  medium: 4,
-  hard: 6,
-};
-
-// Default per-difficulty time budgets, in milliseconds. These bound the cost
-// of a single chooseMove call regardless of maxDepth. Search uses a
-// PatternStore (4-line incremental pattern updates) so node cost is much
-// lower than a full findPatterns rescan, but a wall-clock cap still protects
-// busy midgame positions. Callers that pass an explicit `timeBudgetMs`
-// always override these defaults.
-const DIFFICULTY_TIME_BUDGET_MS: Record<Difficulty, number> = {
-  easy: 500,
-  medium: 2000,
-  hard: 5000,
-};
-
-// The line-pattern ladder (two -> five) is always fully recognized at
-// every difficulty; only fork recognition is difficulty-gated. Medium
-// recognizes the two most common/basic fork shapes; hard recognizes
-// everything in the catalog (medium's two plus the rest).
-const DIFFICULTY_FORK_PATTERNS: Record<
-  Difficulty,
-  ReadonlySet<ForkPatternName>
-> = {
-  easy: new Set(),
-  medium: new Set(["double-three-trap", "double-four-trap"]),
-  hard: ALL_FORK_PATTERN_NAMES,
-};
-
-// Root-score jitter per difficulty: near-equal root candidates (search
-// scores within the fraction of each other) become interchangeable, so
-// repeated games don't replay identical lines. Easier levels wobble more
-// (feels more human); hard stays close to its best move. Forced win/loss
-// choices are never affected (see SearchConfig.rootScoreJitter).
-const DIFFICULTY_ROOT_JITTER: Record<Difficulty, number> = {
-  easy: 0.15,
-  medium: 0.1,
-  hard: 0.05,
-};
-
 const DEFAULT_CONFIG: EngineConfig = { difficulty: "medium" };
+
+/** Merge a difficulty profile with optional per-call overrides. */
+export function resolveEngineSearchConfig(config: EngineConfig): SearchConfig {
+  const profile = DIFFICULTY_PROFILES[config.difficulty];
+  return {
+    maxDepth: profile.maxDepth,
+    timeBudgetMs: config.timeBudgetMs ?? profile.timeBudgetMs,
+    recognizedForkPatterns: profile.recognizedForkPatterns,
+    decay: DEFAULT_DECAY_CONFIG,
+    rootScoreJitter: config.rootScoreJitter ?? profile.rootScoreJitter,
+    threatSearch: config.threatSearch ?? profile.threatSearch,
+    threatMaxPly: profile.threatMaxPly,
+  };
+}
 
 /**
  * Chooses the engine's next move for `state.nextPlayer`. Returns the full
@@ -68,15 +94,9 @@ export function chooseMove(
   state: GameState,
   config: EngineConfig = DEFAULT_CONFIG,
 ): SearchResult {
-  const maxDepth = DIFFICULTY_DEPTH[config.difficulty];
-  const timeBudgetMs =
-    config.timeBudgetMs ?? DIFFICULTY_TIME_BUDGET_MS[config.difficulty];
-  return search(state.board, state.nextPlayer, {
-    maxDepth,
-    timeBudgetMs,
-    recognizedForkPatterns: DIFFICULTY_FORK_PATTERNS[config.difficulty],
-    decay: DEFAULT_DECAY_CONFIG,
-    rootScoreJitter:
-      config.rootScoreJitter ?? DIFFICULTY_ROOT_JITTER[config.difficulty],
-  });
+  return search(
+    state.board,
+    state.nextPlayer,
+    resolveEngineSearchConfig(config),
+  );
 }

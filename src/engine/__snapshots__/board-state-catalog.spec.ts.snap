@@ -396,3 +396,54 @@ exports[`catalog #14 — O's 9,6 is the sole urgent candidate: a recognized fork
   "source": "tactical",
 }
 `;
+
+exports[`catalog #15 — X to move: O already has a four; X also has an open-three whose critical gain is 8,12 narrowCandidates ranked output 1`] = `
+{
+  "moves": [
+    {
+      "col": 14,
+      "row": 11,
+      "score": 500,
+    },
+    {
+      "col": 15,
+      "row": 11,
+      "score": 500,
+    },
+  ],
+  "source": "forced",
+}
+`;
+
+exports[`catalog #16 — X to move after O's 13,10: must-answer keeps racing fours (8,10) alongside O's open-three blocks narrowCandidates ranked output 1`] = `
+{
+  "moves": [
+    {
+      "col": 10,
+      "row": 8,
+      "score": 700,
+    },
+    {
+      "col": 9,
+      "row": 10,
+      "score": 526,
+    },
+    {
+      "col": 11,
+      "row": 10,
+      "score": 524,
+    },
+    {
+      "col": 10,
+      "row": 7,
+      "score": 450,
+    },
+    {
+      "col": 12,
+      "row": 13,
+      "score": 220,
+    },
+  ],
+  "source": "tactical",
+}
+`;

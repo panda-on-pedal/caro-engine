@@ -157,9 +157,9 @@ requirement.
 ## Roadmap to maximum strength (post-A phases, all additive)
 
 1. **Phase B — threat-space search**: `findForcedWin(board, player)` that
-   searches only forcing sequences (VCF: chains of fours; then VCT: threes
-   included). Runs before regular search at `hard`; also powers "must-block"
-   detection for briefings.
+   searches only forcing sequences (option A: fours, open-three critical
+   gains, recognized forks). Runs before regular search at `expert` (not
+   hard). Detailed design: `2026-07-19-threat-space-search-design.md`.
 2. **Phase C1 — transposition table** (Zobrist hashing) + killer/history move
    ordering.
 3. **Phase C2 — incremental pattern/eval updates** on place/undo instead of

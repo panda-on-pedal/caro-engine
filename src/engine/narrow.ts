@@ -172,7 +172,7 @@ function otherPlayer(player: Player): Player {
  * side leaves the other fully live, so it doesn't help) or when the
  * box cell is off-board/already occupied.
  */
-function boxCell(pattern: PatternInstance, board: Board): Move | null {
+export function boxCell(pattern: PatternInstance, board: Board): Move | null {
   if (pattern.type !== "four" || pattern.gains.length !== 1) {
     return null;
   }
@@ -223,7 +223,7 @@ export function hasImmediateWin(board: Board, attacker: Player): boolean {
  * IS stoppable when an outer cell is already blocked (boxed five, e.g.
  * catalog #6) — so each candidate is simulated.
  */
-function survivingBlocks(
+export function survivingBlocks(
   board: Board,
   defender: Player,
   attacker: Player,
@@ -238,13 +238,24 @@ function survivingBlocks(
   );
 }
 
+/** Tempo ladder for must-answer / race: four beats open-three. */
+function threatRank(patterns: readonly PatternInstance[]): number {
+  if (patterns.some((p) => p.type === "four" || p.type === "open-four")) {
+    return 3;
+  }
+  if (patterns.some((p) => p.type === "open-three")) {
+    return 2;
+  }
+  return 0;
+}
+
 /**
- * Cells that block an opponent open-three (full `gains`, including
- * one-step-beyond distance blocks). Used by the static must-answer
- * filter — no place/undo simulation.
+ * Cells that answer the opponent's current forcing threats:
+ * open-three gains (incl. distance blocks) and recognized fork points.
  */
-function openThreeBlockKeys(
+function forcingAnswerKeys(
   oppPatterns: readonly PatternInstance[],
+  recognized: ReadonlySet<ForkPatternName>,
 ): Set<string> {
   const keys = new Set<string>();
   for (const pattern of oppPatterns) {
@@ -255,19 +266,36 @@ function openThreeBlockKeys(
       keys.add(`${gain.row},${gain.col}`);
     }
   }
+  for (const fork of recognizedForkPoints(oppPatterns, recognized)) {
+    keys.add(`${fork.move.row},${fork.move.col}`);
+  }
   return keys;
 }
 
-/** Own open-three / four / open-four means we can race, not only block. */
-function ownCanRaceOpenThree(
-  ownPatterns: readonly PatternInstance[],
+/** Already holding open-three / four means the whole urgent pool may race. */
+function ownAlreadyRacing(ownPatterns: readonly PatternInstance[]): boolean {
+  return threatRank(ownPatterns) >= 2;
+}
+
+/**
+ * True when playing `move` creates a four / open-four — the only tempo that
+ * forces the opponent to answer instead of converting their open-three /
+ * fork. Merely creating an open-three does not race (catalog #11's 8,6).
+ */
+function createsRacingFour(
+  board: Board,
+  player: Player,
+  move: Move,
+  store: PatternStore | undefined,
 ): boolean {
-  return ownPatterns.some(
-    (p) =>
-      p.type === "open-three" ||
-      p.type === "four" ||
-      p.type === "open-four",
-  );
+  if (store !== undefined) {
+    store.place(move, player);
+    const rank = threatRank(store.patterns(player));
+    store.undo();
+    return rank >= 3;
+  }
+  const next = placeMove(board, move.row, move.col, player);
+  return threatRank(findPatterns(next, player)) >= 3;
 }
 
 export interface NarrowConfig {
@@ -501,16 +529,17 @@ export function narrowCandidates(
   }
 
   if (urgentMoves.size > 0 || softMoves.size > 0) {
-    // Must-answer open-three: opponent has an open-three and we have no
-    // open-three/four of our own to race with — keep only cells that
-    // sit in the opponent's open-three gains (catalog #11 drops 8,6).
-    // Static set check on patterns already collected above; other threat
-    // types can join this set later. Skipped in desperado mode.
-    const openThreeBlocks = openThreeBlockKeys(oppPatterns);
-    const mustAnswerOpenThree =
-      !desperado &&
-      openThreeBlocks.size > 0 &&
-      !ownCanRaceOpenThree(ownPatterns);
+    // Must-answer forcing threats: opponent open-three and/or recognized
+    // forks, when we do not already hold an open-three/four. Survivors =
+    // answer cells ∪ moves that create a racing four/open-four (catalog
+    // #16 keeps 8,10; catalog #11 still drops 8,6 which only makes
+    // open-threes). Skipped in desperado mode.
+    const answerKeys = forcingAnswerKeys(
+      oppPatterns,
+      config.recognizedForkPatterns,
+    );
+    const mustAnswer =
+      !desperado && answerKeys.size > 0 && !ownAlreadyRacing(ownPatterns);
 
     // Neither tier is forced — fill remaining slots from the quiet
     // neighborhood so development/racing stays possible, but cap at the
@@ -519,13 +548,13 @@ export function narrowCandidates(
     // but neither can displace an urgent threat-answering move —
     // selectTopMovesTiered guarantees the urgent tier survives top-K
     // ahead of any soft/quiet score. Skip quiet padding when we must
-    // answer an open-three (those fillers would be stripped anyway).
+    // answer (those fillers would be stripped anyway).
     const softAndQuiet = new Map(softMoves);
     let poolSize = new Set([...urgentMoves.keys(), ...softAndQuiet.keys()])
       .size;
     if (
       !desperado &&
-      !mustAnswerOpenThree &&
+      !mustAnswer &&
       poolSize < QUIET_FALLBACK_SAMPLE_SIZE
     ) {
       for (const move of sampleQuietMoves(board, moveCount, config)) {
@@ -544,11 +573,16 @@ export function narrowCandidates(
     const softCandidates = [...softAndQuiet.values()];
     let urgentSurvivors = urgentCandidates;
     let softSurvivors = softCandidates;
-    if (mustAnswerOpenThree) {
-      const isBlock = (move: Move) =>
-        openThreeBlocks.has(`${move.row},${move.col}`);
-      urgentSurvivors = urgentCandidates.filter(isBlock);
-      softSurvivors = softCandidates.filter(isBlock);
+    if (mustAnswer) {
+      const survives = (move: Move) => {
+        const key = `${move.row},${move.col}`;
+        if (answerKeys.has(key)) {
+          return true;
+        }
+        return createsRacingFour(board, player, move, config.store);
+      };
+      urgentSurvivors = urgentCandidates.filter(survives);
+      softSurvivors = softCandidates.filter(survives);
       // Safety: never hand search an empty pool if gains were empty or
       // mistyped — fall back to the unfiltered set.
       if (urgentSurvivors.length + softSurvivors.length === 0) {

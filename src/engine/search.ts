@@ -11,6 +11,10 @@ import {
 } from "./narrow.ts";
 import { PatternStore } from "./patternStore.ts";
 import type { DecayConfig } from "./randomize.ts";
+import {
+  collectDefenceMoves,
+  findForcedWin,
+} from "./threatSearch.ts";
 import { logger } from "../utils/logger.ts";
 import type { Move } from "./state.ts";
 
@@ -286,6 +290,10 @@ export interface SearchConfig {
   rng?: () => number;
   /** Shared pattern cache for this chooseMove/search call. */
   patternStore?: PatternStore;
+  /** When true, run threat-space search before negamax. */
+  threatSearch?: boolean;
+  /** Max plies for threat-space search (attacker + defender). */
+  threatMaxPly?: number;
 }
 
 /**
@@ -441,13 +449,63 @@ export function search(
   const store = config.patternStore ?? PatternStore.fromBoard(board);
   const baseNarrow = resolveNarrowConfig(config);
   const moveCount = countStones(store.board);
+  const deadline =
+    config.timeBudgetMs !== undefined
+      ? Date.now() + config.timeBudgetMs
+      : null;
+  const recognizedForkPatterns =
+    config.recognizedForkPatterns ?? ALL_FORK_PATTERN_NAMES;
+
+  let tssNodes = 0;
+  let forcedRootMoves: Move[] | null = null;
+
+  if (config.threatSearch) {
+    const threatOpts = {
+      maxPly: config.threatMaxPly ?? 16,
+      deadline,
+      recognizedForkPatterns,
+    };
+    const opponent = otherPlayer(player);
+
+    // Own force before must-block: an immediate (or forced) win beats defending.
+    const ownForce = findForcedWin(store, player, threatOpts);
+    tssNodes += ownForce.nodesVisited;
+    if (ownForce.won && ownForce.principalVariation.length > 0) {
+      logger.log("[search] TSS: own forced win", {
+        line: ownForce.principalVariation.map((m) => `${m.row},${m.col}`),
+      });
+      return {
+        move: ownForce.principalVariation[0],
+        score: WIN_SCORE,
+        depth: ownForce.principalVariation.length,
+        principalVariation: ownForce.principalVariation,
+        nodesVisited: tssNodes,
+      };
+    }
+
+    const oppForce = findForcedWin(store, opponent, threatOpts);
+    tssNodes += oppForce.nodesVisited;
+    if (oppForce.won) {
+      const defence = collectDefenceMoves(
+        store,
+        opponent,
+        player,
+        recognizedForkPatterns,
+      );
+      if (defence.length > 0) {
+        forcedRootMoves = defence;
+        logger.log("[search] TSS: must-block opponent forced win", {
+          defence: defence.map((m) => `${m.row},${m.col}`),
+        });
+      }
+    }
+  }
+
   const narrowConfig = narrowConfigForStore(store, player, baseNarrow);
-  const narrowed = narrowCandidates(
-    store.board,
-    player,
-    moveCount,
-    narrowConfig,
-  );
+  const narrowed =
+    forcedRootMoves !== null
+      ? { moves: forcedRootMoves, source: "forced" as const }
+      : narrowCandidates(store.board, player, moveCount, narrowConfig);
 
   if (narrowed.moves.length === 0) {
     const fallbackMoves = findCandidateMoves(store.board);
@@ -456,7 +514,7 @@ export function search(
       score: 0,
       depth: 0,
       principalVariation: [],
-      nodesVisited: 0,
+      nodesVisited: tssNodes,
     };
   }
 
@@ -482,5 +540,14 @@ export function search(
     moves: narrowed.moves.map((m) => `${m.row},${m.col}`),
   });
 
-  return resolvedStrategy(store.board, player, narrowed.moves, searchConfig);
+  const result = resolvedStrategy(
+    store.board,
+    player,
+    narrowed.moves,
+    searchConfig,
+  );
+  return {
+    ...result,
+    nodesVisited: result.nodesVisited + tssNodes,
+  };
 }

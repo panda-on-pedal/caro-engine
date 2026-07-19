@@ -414,9 +414,6 @@ describe("catalog #10 — same board as #7, but O to move: O must occupy X's for
 });
 
 describe("catalog #11 — O must answer X's row-10 open-three; all four blocks (critical + distance) lead", () => {
-  // X's vertical col-8 line (9,8-12,8) looks scary but is already dead:
-  // O at 8,8 and 13,8 boxes both ends, so no five through it can ever be
-  // valid and it produces no pattern — the forced tier stays quiet.
   const board = parseBoard(`
        5  6  7  8  9 10 11
     7  .  .  .  .  .  .  .
@@ -446,10 +443,9 @@ describe("catalog #11 — O must answer X's row-10 open-three; all four blocks (
     // 10,5 and 10,6 don't just answer X's open-three — 10,5 builds O's
     // diagonal open-three (8,7/9,6/10,5) and 10,6 the vertical one
     // (9,6/10,6/11,6) — so both outscore the pure critical block 10,10.
-    // 8,6 (O's row-8 + col-6 fork) used to share the urgent tier and rank
-    // first on raw score despite ignoring X's open-three entirely; the
-    // must-answer filter drops any cell outside X's open-three gains
-    // when O has no open-three/four to race with.
+    // 8,6 (O's row-8 + col-6 fork) makes open-threes but not a four, so it
+    // does not race X's open-three; must-answer keeps only answer cells ∪
+    // racing fours.
     const dualDiag = scoreMove(board, 2, { row: 10, col: 5 });
     const dualVert = scoreMove(board, 2, { row: 10, col: 6 });
     const pure = scoreMove(board, 2, { row: 10, col: 10 });
@@ -463,19 +459,6 @@ describe("catalog #11 — O must answer X's row-10 open-three; all four blocks (
 });
 
 describe("catalog #12 — O's 10,9 blocks two of X's open-twos at once (soft tier, no forced/urgent threats)", () => {
-  // X has no three-tier pattern yet (only two-tier lines), so nothing is
-  // forced or urgent here — this exercises plain soft-tier ranking. X's
-  // diagonal open-two (8,7)/(9,8) is open at 7,6 and 10,9; O's 10,9 takes
-  // the far end. Unlike the catalog's own note, 10,9 does not touch the
-  // vertical open-two (7,9)/(8,9) (open at 6,9/9,9) in narrowCandidates'
-  // single-ply static scoring — patterns.ts groups a "two" by its exact
-  // stone pair per viable 5-window, not by informal adjacency, so 10,9
-  // may also fall inside some window shared with other X stones. Exact
-  // ranking/scores here are intentionally left to the snapshot rather
-  // than hardcoded, since this board's pattern grouping is less obvious
-  // to eyeball than the earlier catalog entries (verify against the
-  // snapshot the first time this runs, then promote anything worth
-  // pinning down into an explicit assertion).
   const board = parseBoard(`
        6  7  8  9 10 11 12
     6  .  .  .  .  .  .  .
@@ -531,5 +514,51 @@ describe("catalog #14 — O's 9,6 is the sole urgent candidate: a recognized for
 
   it("narrowCandidates ranked output", () => {
     expect(snapshotNarrow(board, 2, 8)).toMatchSnapshot();
+  });
+});
+
+describe("catalog #15 — X to move: O already has a four; X also has an open-three whose critical gain is 8,12", () => {
+  const board = parseBoard(`
+       8  9 10 11 12 13 14
+    7  .  .  .  .  .  .  .
+    8  .  .  X  .  .  .  .
+    9  .  .  .  X  .  .  .
+   10  .  .  X  O  X  .  .
+   11  .  X  O  O  O  O  .
+   12  .  .  .  .  .  .  .
+  `);
+
+  it("narrowCandidates ranked output", () => {
+    expect(snapshotNarrow(board, 1, 10)).toMatchSnapshot();
+  });
+});
+
+describe("catalog #16 — X to move after O's 13,10: must-answer keeps racing fours (8,10) alongside O's open-three blocks", () => {
+  // X has a plain three on col 10 (9/10/11); 8,10 is also a mixed-tier fork
+  // gain. O has an open-three on row 13. Must-answer allows answer cells ∪
+  // moves that create a four — 8,10 races; pure non-racing offense does not.
+  const board = parseBoard(`
+     5  6  7  8  9 10 11 12 13
+  8  .  .  .  .  .  .  .  .  .
+  9  .  .  .  .  X  X  .  .  .
+ 10  .  .  .  X  .  X  .  X  .
+ 11  .  .  .  .  O  X  O  .  .
+ 12  .  .  .  .  .  O  .  .  .
+ 13  .  .  .  .  O  O  O  .  .
+ 14  .  .  .  O  .  .  .  .  .
+ 15  .  .  .  .  .  .  .  .  .
+ 16  .  X  .  .  .  .  .  .  .
+ 17  .  .  .  .  .  .  .  .  .
+  `);
+
+  it("narrowCandidates ranked output", () => {
+    expect(snapshotNarrow(board, 1, 14)).toMatchSnapshot();
+  });
+
+  it("includes the racing four-maker 8,10 (mixed-tier fork / vertical three gain)", () => {
+    const result = narrowCandidates(board, 1, 14, CFG);
+    expect(result.source).toBe("tactical");
+    const keys = result.moves.map((m) => `${m.row},${m.col}`);
+    expect(keys).toContain("8,10");
   });
 });

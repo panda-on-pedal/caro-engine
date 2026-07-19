@@ -1,5 +1,11 @@
 import { isLegalMove } from "./board.ts";
-import { chooseMove } from "./engine.ts";
+import {
+  DIFFICULTY_PROFILES,
+  chooseMove,
+  resolveEngineSearchConfig,
+  type Difficulty,
+} from "./engine.ts";
+import { ALL_FORK_PATTERN_NAMES } from "./narrow.ts";
 import { applyMove, newGame } from "./state.ts";
 
 describe("chooseMove", () => {
@@ -110,5 +116,73 @@ describe("chooseMove — difficulty-gated fork recognition", () => {
     // sample, so this asserts hard's score reflects fork awareness rather
     // than asserting easy never plays it).
     expect(hard.score).toBeGreaterThanOrEqual(easy.score);
+  });
+});
+
+describe("DIFFICULTY_PROFILES", () => {
+  it("is the single table covering every Difficulty key", () => {
+    const keys: Difficulty[] = ["easy", "medium", "hard", "expert"];
+    for (const d of keys) {
+      expect(DIFFICULTY_PROFILES[d]).toBeDefined();
+    }
+  });
+
+  it("enables threat search only on expert", () => {
+    expect(DIFFICULTY_PROFILES.easy.threatSearch).toBe(false);
+    expect(DIFFICULTY_PROFILES.medium.threatSearch).toBe(false);
+    expect(DIFFICULTY_PROFILES.hard.threatSearch).toBe(false);
+    expect(DIFFICULTY_PROFILES.expert.threatSearch).toBe(true);
+    expect(DIFFICULTY_PROFILES.expert.threatMaxPly).toBe(16);
+  });
+
+  it("keeps prior depth / budget / fork / jitter values for easy-medium-hard", () => {
+    expect(DIFFICULTY_PROFILES.easy).toMatchObject({
+      maxDepth: 2,
+      timeBudgetMs: 500,
+      rootScoreJitter: 0.15,
+      threatMaxPly: 0,
+    });
+    expect(DIFFICULTY_PROFILES.easy.recognizedForkPatterns.size).toBe(0);
+    expect(DIFFICULTY_PROFILES.medium).toMatchObject({
+      maxDepth: 4,
+      timeBudgetMs: 2000,
+      rootScoreJitter: 0.1,
+    });
+    expect(DIFFICULTY_PROFILES.medium.recognizedForkPatterns).toEqual(
+      new Set(["double-three-trap", "double-four-trap"]),
+    );
+    expect(DIFFICULTY_PROFILES.hard).toMatchObject({
+      maxDepth: 6,
+      timeBudgetMs: 5000,
+      rootScoreJitter: 0.05,
+    });
+    expect(DIFFICULTY_PROFILES.hard.recognizedForkPatterns).toEqual(
+      ALL_FORK_PATTERN_NAMES,
+    );
+    expect(DIFFICULTY_PROFILES.expert).toMatchObject({
+      maxDepth: 6,
+      timeBudgetMs: 10000,
+      rootScoreJitter: 0.02,
+    });
+    expect(DIFFICULTY_PROFILES.expert.recognizedForkPatterns).toEqual(
+      ALL_FORK_PATTERN_NAMES,
+    );
+  });
+
+  it("resolveEngineSearchConfig merges profile with overrides", () => {
+    const base = resolveEngineSearchConfig({ difficulty: "expert" });
+    expect(base.threatSearch).toBe(true);
+    expect(base.threatMaxPly).toBe(16);
+    expect(base.maxDepth).toBe(6);
+    expect(base.timeBudgetMs).toBe(10000);
+
+    const overridden = resolveEngineSearchConfig({
+      difficulty: "hard",
+      threatSearch: true,
+      timeBudgetMs: 123,
+    });
+    expect(overridden.threatSearch).toBe(true);
+    expect(overridden.timeBudgetMs).toBe(123);
+    expect(overridden.maxDepth).toBe(6);
   });
 });
