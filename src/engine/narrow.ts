@@ -250,12 +250,16 @@ function threatRank(patterns: readonly PatternInstance[]): number {
 }
 
 /**
- * Cells that answer the opponent's current forcing threats:
- * open-three gains (incl. distance blocks) and recognized fork points.
+ * Cells that answer the opponent's current forcing threats: open-three
+ * gains only (incl. distance / boxed-five blocks). Empty fork points are
+ * not must-answer — ignoring them does not lose next turn; they stay in
+ * the urgent pool for ranking so search can still prefer occupying one
+ * when offense does not out-tempo it (catalog #10). Catalog #18: a two-
+ * open-three counter must not be stripped just because a two-tier fork
+ * cell exists.
  */
 function forcingAnswerKeys(
   oppPatterns: readonly PatternInstance[],
-  recognized: ReadonlySet<ForkPatternName>,
 ): Set<string> {
   const keys = new Set<string>();
   for (const pattern of oppPatterns) {
@@ -265,9 +269,6 @@ function forcingAnswerKeys(
     for (const gain of pattern.gains) {
       keys.add(`${gain.row},${gain.col}`);
     }
-  }
-  for (const fork of recognizedForkPoints(oppPatterns, recognized)) {
-    keys.add(`${fork.move.row},${fork.move.col}`);
   }
   return keys;
 }
@@ -279,8 +280,8 @@ function ownAlreadyRacing(ownPatterns: readonly PatternInstance[]): boolean {
 
 /**
  * True when playing `move` creates a four / open-four — the only tempo that
- * forces the opponent to answer instead of converting their open-three /
- * fork. Merely creating an open-three does not race (catalog #11's 8,6).
+ * forces the opponent to answer instead of converting their open-three.
+ * Merely creating an open-three does not race (catalog #11's 8,6).
  */
 function createsRacingFour(
   board: Board,
@@ -534,10 +535,7 @@ export function narrowCandidates(
     // answer cells ∪ moves that create a racing four/open-four (catalog
     // #16 keeps 8,10; catalog #11 still drops 8,6 which only makes
     // open-threes). Skipped in desperado mode.
-    const answerKeys = forcingAnswerKeys(
-      oppPatterns,
-      config.recognizedForkPatterns,
-    );
+    const answerKeys = forcingAnswerKeys(oppPatterns);
     const mustAnswer =
       !desperado && answerKeys.size > 0 && !ownAlreadyRacing(ownPatterns);
 

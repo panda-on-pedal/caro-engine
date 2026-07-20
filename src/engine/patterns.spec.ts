@@ -102,12 +102,18 @@ describe("findPatterns — five", () => {
     );
   });
 
-  it("does not report a five for an overline (six in a row)", () => {
+  it("reports a five for an overline (six in a row) when at least one end is open", () => {
     const board = parseBoard(`
       ........
       .XXXXXX.
       ........
     `);
+    const patterns = findPatterns(board, 1);
+    expect(patterns.filter((p) => p.type === "five").length).toBeGreaterThan(0);
+  });
+
+  it("does not report a five for an overline blocked at both ends", () => {
+    const board = parseBoard("OXXXXXXO");
     const patterns = findPatterns(board, 1);
     expect(patterns.filter((p) => p.type === "five")).toHaveLength(0);
   });
@@ -152,6 +158,56 @@ describe("findPatterns — four / open-four", () => {
     expect(
       patterns.filter((p) => p.type === "four" || p.type === "open-four"),
     ).toHaveLength(0);
+  });
+
+  it("treats gapped shapes that complete to five-or-more as plain fours (XOOOO.O / XOO.OOO / XOOO.OO)", () => {
+    for (const { ascii, gainCol } of [
+      { ascii: "XOOOO.O", gainCol: 5 },
+      { ascii: "XOO.OOO", gainCol: 3 },
+      { ascii: "XOOO.OO", gainCol: 4 },
+    ]) {
+      const patterns = findPatterns(parseBoard(ascii), 2);
+      const fours = patterns.filter((p) => p.type === "four");
+      expect(fours.length).toBeGreaterThanOrEqual(1);
+      const gainCols = new Set(
+        fours.flatMap((p) => p.gains.map((g) => g.col)),
+      );
+      expect(gainCols.has(gainCol)).toBe(true);
+    }
+  });
+
+  it("does not treat a gapped overline as a four when both ends are already boxed", () => {
+    const board = parseBoard("XOOOO.OX");
+    const patterns = findPatterns(board, 2);
+    expect(
+      patterns.filter((p) => p.type === "four" || p.type === "open-four"),
+    ).toHaveLength(0);
+  });
+});
+
+describe("findPatterns — subset suppression", () => {
+  it("does not emit a two that is just two stones of a same-line three", () => {
+    // Diagonal three; without suppression the leading pair also forms a
+    // viable two-window once overlines are allowed, which then false-
+    // positives as a mixed-tier fork with the three (catalog #2).
+    const board = parseBoard(`
+       6  7  8  9 10 11 12 13 14 15 16 17
+    9  .  .  .  .  .  .  .  X  .  .  .  .
+   10  .  .  .  .  .  .  X  X  .  .  .  .
+   11  .  .  .  .  .  X  O  .  .  .  .  .
+   12  .  .  .  .  O  O  .  .  .  .  .  .
+    `);
+    const patterns = findPatterns(board, 1);
+    expect(patterns.filter((p) => p.type === "three")).toHaveLength(1);
+    expect(
+      patterns.filter(
+        (p) =>
+          p.type === "two" &&
+          p.direction[0] === 1 &&
+          p.direction[1] === -1,
+      ),
+    ).toHaveLength(0);
+    expect(findForkPoints(patterns)).toEqual([]);
   });
 });
 

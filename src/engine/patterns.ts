@@ -102,9 +102,11 @@ function isWindowInBounds(read: CellReader, cells: Move[]): boolean {
 
 /**
  * A window is viable for `player` if it contains no opponent stone and
- * filling its empty cells with `player`'s stones would produce a
- * Caro-legal five: not blocked at both ends, and not already extended
- * into an overline by a same-player stone just outside either end.
+ * filling its empty cells with `player`'s stones would produce a Caro-legal
+ * win: the contiguous run through the filled window is at least five long
+ * and not blocked by opponent stones at both ends. The board edge never
+ * counts as a block. Overlines still count when at least one end is open;
+ * a run boxed on both ends is never viable, regardless of length.
  */
 function isViableWindow(
   read: CellReader,
@@ -118,12 +120,31 @@ function isViableWindow(
     return false;
   }
 
-  const before = read(cells[0].row - dRow, cells[0].col - dCol);
-  const after = read(cells[4].row + dRow, cells[4].col + dCol);
-  if (before === player || after === player) {
-    return false;
+  const overrides = new Map<string, Player>();
+  for (const cell of cells) {
+    if (read(cell.row, cell.col) === 0) {
+      overrides.set(cellKey(cell), player);
+    }
   }
-  return !(before === opponent && after === opponent);
+  const filled = overrides.size > 0 ? withOverrides(read, overrides) : read;
+
+  let startRow = cells[0].row;
+  let startCol = cells[0].col;
+  while (filled(startRow - dRow, startCol - dCol) === player) {
+    startRow -= dRow;
+    startCol -= dCol;
+  }
+
+  let endRow = cells[4].row;
+  let endCol = cells[4].col;
+  while (filled(endRow + dRow, endCol + dCol) === player) {
+    endRow += dRow;
+    endCol += dCol;
+  }
+
+  const blockedBefore = filled(startRow - dRow, startCol - dCol) === opponent;
+  const blockedAfter = filled(endRow + dRow, endCol + dCol) === opponent;
+  return !(blockedBefore && blockedAfter);
 }
 
 interface WindowInfo {
@@ -369,12 +390,40 @@ function findPatternsInDirection(
   player: Player,
   lineFilterKey?: number,
 ): PatternInstance[] {
-  return [
+  return withoutStoneSubsets([
     ...findFives(read, size, dRow, dCol, player, lineFilterKey),
     ...findFours(read, size, dRow, dCol, player, lineFilterKey),
     ...findThrees(read, size, dRow, dCol, player, lineFilterKey),
     ...findTwos(read, size, dRow, dCol, player, lineFilterKey),
-  ];
+  ]);
+}
+
+/**
+ * True when every cell of `a` also appears in `b`.
+ */
+function isCellSubset(a: readonly Move[], b: readonly Move[]): boolean {
+  const keys = new Set(b.map(cellKey));
+  return a.every((c) => keys.has(cellKey(c)));
+}
+
+/**
+ * Drop weaker same-direction patterns whose stones are a strict subset of
+ * another pattern (e.g. a two made of two stones of a three). Those are
+ * the same threat line, not a second one — keeping them double-counts
+ * score and creates phantom same-line "forks".
+ */
+function withoutStoneSubsets(
+  patterns: readonly PatternInstance[],
+): PatternInstance[] {
+  return patterns.filter(
+    (p, i) =>
+      !patterns.some(
+        (q, j) =>
+          i !== j &&
+          p.cells.length < q.cells.length &&
+          isCellSubset(p.cells, q.cells),
+      ),
+  );
 }
 
 export function findPatterns(board: Board, player: Player): PatternInstance[] {

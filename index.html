@@ -26,7 +26,7 @@
       grid-template-columns: 72px max-content 1fr;
       align-items: start;
       column-gap: 20px;
-      padding: 40px 24px 56px 0;
+      padding: 0px 24px 56px 0;
       font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
       color: var(--graphite);
       background-color: var(--paper);
@@ -112,6 +112,12 @@
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
+      margin-top: var(--cell-size, 28px);
+      margin-left: var(--cell-size, 28px);
+    }
+
+    #tab-strip[hidden] {
+      display: none;
     }
 
     .tab-button {
@@ -259,6 +265,16 @@
       align-items: stretch;
       gap: 10px;
       width: 170px;
+      margin-top: var(--cell-size, 28px);
+    }
+
+    .controls[hidden] {
+      display: none;
+    }
+
+    #board-grid[hidden],
+    #stats-panel[hidden] {
+      display: none;
     }
 
     #new-game,
@@ -311,6 +327,7 @@
       box-shadow: none;
     }
 
+    #lang,
     #game-mode,
     #difficulty,
     #board-count {
@@ -325,6 +342,22 @@
 
     #stats-panel {
       min-width: 560px;
+    }
+
+    #stats-panel .stats-section {
+      margin-bottom: 1.1rem;
+    }
+
+    #stats-panel .stats-section h3 {
+      margin: 0 0 0.45rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    #stats-panel .stats-summary {
+      margin: 0;
+      font-size: 0.9rem;
     }
 
     #stats-panel table {
@@ -345,9 +378,19 @@
       text-align: left;
     }
 
+    #stats-panel .stats-hint {
+      margin: 10px 0 0;
+      max-width: 42rem;
+      font-size: 0.8rem;
+      line-height: 1.4;
+      color: var(--graphite);
+      opacity: 0.85;
+    }
+
     #ascii-panel {
       width: 100%;
       max-width: 480px;
+      margin-left: var(--cell-size, 28px);
     }
 
     #ascii-text {
@@ -370,12 +413,11 @@
   <div class="margin-col"></div>
   <aside class="logo-col">
     <div class="titlebar">
-      <h1 id="title">Caro</h1>
-      <p class="subtitle">Five in a row</p>
+      <h1 id="title" data-i18n="title">Caro</h1>
+      <p class="subtitle" data-i18n="subtitle">Five in a row</p>
     </div>
   </aside>
   <main>
-    <p id="status">Loading&hellip;</p>
     <div id="tab-strip" hidden></div>
     <div class="play-row">
       <div id="board-grid">
@@ -385,30 +427,29 @@
         <div id="board"></div>
       </div>
       <div id="stats-panel" hidden></div>
-      <div class="controls">
+      <div id="controls" class="controls">
         <select id="game-mode">
-          <option value="human-ai" selected>Human vs AI</option>
-          <option value="ai-human">AI vs Human</option>
-          <option value="ai-ai">AI vs AI</option>
+          <option value="human-ai" selected data-i18n="mode.humanAi">Human vs AI</option>
+          <option value="ai-human" data-i18n="mode.aiHuman">AI vs Human</option>
+          <option value="ai-ai" data-i18n="mode.aiAi">Tournament</option>
         </select>
         <select id="difficulty">
-          <option value="easy">Easy</option>
-          <option value="medium">Medium</option>
-          <option value="hard" selected>Hard</option>
-          <option value="expert">Expert</option>
+          <option value="easy" data-i18n="difficulty.easy">Easy</option>
+          <option value="medium" data-i18n="difficulty.medium">Medium</option>
+          <option value="hard" selected data-i18n="difficulty.hard">Hard</option>
+          <option value="expert" data-i18n="difficulty.expert">Expert</option>
         </select>
-        <select id="board-count" hidden>
-          <option value="1">1 board</option>
-          <option value="2" selected>2 boards</option>
-          <option value="4">4 boards</option>
-          <option value="6">6 boards</option>
-          <option value="8">8 boards</option>
+        <select id="board-count" hidden></select>
+        <button id="pause" type="button" hidden data-i18n="controls.pause">Pause</button>
+        <button id="undo" type="button" disabled data-i18n="controls.undo">Undo</button>
+        <button id="redo" type="button" disabled data-i18n="controls.redo">Redo</button>
+        <button id="new-game" type="button" data-i18n="controls.newGame">New Game</button>
+        <select id="lang" aria-label="Language">
+          <option value="en" data-i18n="lang.en">English</option>
+          <option value="vi" data-i18n="lang.vi">Tiếng Việt</option>
         </select>
-        <button id="pause" type="button" hidden>Pause</button>
-        <button id="undo" type="button" disabled>Undo</button>
-        <button id="redo" type="button" disabled>Redo</button>
-        <button id="new-game" type="button">New Game</button>
-        <button id="ascii-toggle" type="button">Show ASCII</button>
+        <button id="ascii-toggle" type="button" data-i18n="controls.showAscii">Show ASCII</button>
+        <p id="status" data-i18n="status.loading">Loading&hellip;</p>
       </div>
     </div>
     <div id="ascii-panel" hidden>

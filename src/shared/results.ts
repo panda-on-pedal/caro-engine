@@ -1,5 +1,5 @@
 import type { Difficulty } from '../engine/engine.ts';
-import { PAIRINGS } from '../ui/tournament.ts';
+import { PAIRINGS, TOURNAMENT_DIFFICULTIES } from '../ui/tournament.ts';
 
 export interface GameResult {
   p1: Difficulty;
@@ -62,4 +62,58 @@ export function aggregateResults(records: GameResult[]): PairingStats[] {
     const avgP2Moves = average(matching.map((record) => Math.floor(record.moves / 2)));
     return { p1, p2, games, p1Wins, p2Wins, draws, p1WinPct, avgP1Moves, avgP2Moves };
   });
+}
+
+/** Overall first-seat win rate across every recorded game. Draws count in the
+ * denominator. `null` when there are no games yet. */
+export function firstPlayerWinPct(records: GameResult[]): number | null {
+  if (records.length === 0) {
+    return null;
+  }
+  const p1Wins = records.filter((record) => record.winner === 1).length;
+  return (p1Wins / records.length) * 100;
+}
+
+export interface PlayerLeaderboardRow {
+  player: Difficulty;
+  wins: number;
+  games: number;
+  winPct: number;
+}
+
+const DIFFICULTY_ORDER = new Map(
+  TOURNAMENT_DIFFICULTIES.map((difficulty, index) => [difficulty, index]),
+);
+
+/** Per-difficulty standings: wins (either seat) and win% = wins / games played.
+ * Sorted by wins desc, then win% desc, then difficulty order. Always one row
+ * per tournament difficulty. */
+export function playerLeaderboard(records: GameResult[]): PlayerLeaderboardRow[] {
+  const rows: PlayerLeaderboardRow[] = TOURNAMENT_DIFFICULTIES.map((player) => {
+    let wins = 0;
+    let games = 0;
+    for (const record of records) {
+      if (record.p1 !== player && record.p2 !== player) {
+        continue;
+      }
+      games += 1;
+      if (
+        (record.winner === 1 && record.p1 === player) ||
+        (record.winner === 2 && record.p2 === player)
+      ) {
+        wins += 1;
+      }
+    }
+    return { player, wins, games, winPct: games === 0 ? 0 : (wins / games) * 100 };
+  });
+  rows.sort((a, b) => {
+    if (b.wins !== a.wins) {
+      return b.wins - a.wins;
+    }
+    if (b.winPct !== a.winPct) {
+      return b.winPct - a.winPct;
+    }
+    return (DIFFICULTY_ORDER.get(a.player) ?? 0) - (DIFFICULTY_ORDER.get(b.player) ?? 0);
+  });
+  return rows;
 }

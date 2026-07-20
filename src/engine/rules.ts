@@ -9,11 +9,10 @@ const DIRECTIONS: ReadonlyArray<readonly [number, number]> = [
 ];
 
 /**
- * Returns the five cells of a Caro-legal win through `(row, col)` when the
- * stone just placed there completes one: a run of exactly five stones, not
- * blocked by an opponent stone at both ends. The board edge never counts as a
- * block; a run of six or more (overline) never wins even though it contains
- * five consecutive stones.
+ * Returns the winning line through `(row, col)` when the stone just placed
+ * there completes one: a contiguous run of five or more stones, not blocked
+ * by an opponent stone at both ends. The board edge never counts as a block.
+ * Overlines (six+) win unless double-blocked.
  */
 export function findCaroWinLine(
   board: Board,
@@ -50,7 +49,7 @@ export function findCaroWinLine(
 
     const runLength =
       Math.max(Math.abs(endRow - startRow), Math.abs(endCol - startCol)) + 1;
-    if (runLength !== WIN_LENGTH) {
+    if (runLength < WIN_LENGTH) {
       continue;
     }
 
@@ -78,11 +77,10 @@ export function findCaroWinLine(
 }
 
 /**
- * Checks whether the stone just placed at (row, col) completes a
- * Caro-legal five: a run of exactly five stones, not blocked by an
- * opponent stone at both ends. The board edge never counts as a block;
- * a run of six or more (overline) never wins even though it contains
- * five consecutive stones.
+ * Checks whether the stone just placed at (row, col) completes a Caro-legal
+ * win: a contiguous run of five or more, not blocked by an opponent stone at
+ * both ends. The board edge never counts as a block. Overlines win unless
+ * double-blocked.
  */
 export function checkCaroWin(board: Board, row: number, col: number, player: Player): boolean {
   return findCaroWinLine(board, row, col, player) !== null;

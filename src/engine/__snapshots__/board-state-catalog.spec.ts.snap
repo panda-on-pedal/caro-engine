@@ -6,12 +6,7 @@ exports[`catalog #1 — extending X's diagonal to a three outranks the dual-purp
     {
       "col": 14,
       "row": 8,
-      "score": 242,
-    },
-    {
-      "col": 9,
-      "row": 13,
-      "score": 242,
+      "score": 240,
     },
     {
       "col": 13,
@@ -21,6 +16,11 @@ exports[`catalog #1 — extending X's diagonal to a three outranks the dual-purp
     {
       "col": 10,
       "row": 12,
+      "score": 240,
+    },
+    {
+      "col": 9,
+      "row": 13,
       "score": 240,
     },
     {
@@ -49,17 +49,17 @@ exports[`catalog #2 — O's dual-purpose 12,13 competes in the soft tier, behind
     {
       "col": 13,
       "row": 12,
-      "score": 252,
-    },
-    {
-      "col": 8,
-      "row": 12,
-      "score": 242,
+      "score": 250,
     },
     {
       "col": 12,
       "row": 12,
       "score": 242,
+    },
+    {
+      "col": 8,
+      "row": 12,
+      "score": 240,
     },
   ],
   "source": "tactical",
@@ -128,12 +128,12 @@ exports[`catalog #5 — O's open four is unstoppable; desperado ranks X's own op
     {
       "col": 8,
       "row": 8,
-      "score": 300,
+      "score": 250,
     },
     {
       "col": 14,
       "row": 14,
-      "score": 300,
+      "score": 250,
     },
   ],
   "source": "tactical",
@@ -159,20 +159,20 @@ exports[`catalog #7 — X's 9,9 is the sole urgent candidate: a recognized fork 
     {
       "col": 9,
       "row": 9,
-      "score": 484,
+      "score": 480,
     },
     {
       "col": 6,
       "row": 11,
-      "score": 252,
-    },
-    {
-      "col": 10,
-      "row": 11,
-      "score": 252,
+      "score": 250,
     },
     {
       "col": 8,
+      "row": 11,
+      "score": 250,
+    },
+    {
+      "col": 10,
       "row": 11,
       "score": 250,
     },
@@ -215,22 +215,22 @@ exports[`catalog #9 — X's 10,8 is the sole urgent candidate: a recognized fork
     {
       "col": 9,
       "row": 9,
-      "score": 262,
+      "score": 260,
     },
     {
       "col": 6,
       "row": 11,
-      "score": 252,
+      "score": 250,
     },
     {
       "col": 6,
       "row": 8,
-      "score": 244,
+      "score": 242,
     },
     {
       "col": 10,
       "row": 12,
-      "score": 244,
+      "score": 242,
     },
   ],
   "source": "tactical",
@@ -276,7 +276,7 @@ exports[`catalog #11 — O must answer X's row-10 open-three; all four blocks (c
     {
       "col": 5,
       "row": 10,
-      "score": 482,
+      "score": 480,
     },
     {
       "col": 6,
@@ -337,12 +337,12 @@ exports[`catalog #13 — O's real win is the two-move 6,11 fork; the tempting on
     {
       "col": 11,
       "row": 6,
-      "score": 492,
+      "score": 490,
     },
     {
-      "col": 12,
-      "row": 9,
-      "score": 224,
+      "col": 11,
+      "row": 5,
+      "score": 1000,
     },
     {
       "col": 12,
@@ -350,14 +350,14 @@ exports[`catalog #13 — O's real win is the two-move 6,11 fork; the tempting on
       "score": 200,
     },
     {
-      "col": 8,
-      "row": 11,
-      "score": 204,
-    },
-    {
       "col": 11,
       "row": 7,
       "score": 764,
+    },
+    {
+      "col": 11,
+      "row": 11,
+      "score": 500,
     },
   ],
   "source": "tactical",
@@ -368,9 +368,19 @@ exports[`catalog #14 — O's 9,6 is the sole urgent candidate: a recognized fork
 {
   "moves": [
     {
+      "col": 6,
+      "row": 10,
+      "score": 720,
+    },
+    {
       "col": 7,
       "row": 10,
-      "score": 84,
+      "score": 720,
+    },
+    {
+      "col": 8,
+      "row": 10,
+      "score": 720,
     },
     {
       "col": 2,
@@ -379,16 +389,6 @@ exports[`catalog #14 — O's 9,6 is the sole urgent candidate: a recognized fork
     },
     {
       "col": 3,
-      "row": 10,
-      "score": 240,
-    },
-    {
-      "col": 6,
-      "row": 10,
-      "score": 240,
-    },
-    {
-      "col": 8,
       "row": 10,
       "score": 240,
     },
@@ -426,12 +426,12 @@ exports[`catalog #16 — X to move after O's 13,10: must-answer keeps racing fou
     {
       "col": 9,
       "row": 10,
-      "score": 526,
+      "score": 480,
     },
     {
       "col": 11,
       "row": 10,
-      "score": 524,
+      "score": 478,
     },
     {
       "col": 10,
@@ -442,6 +442,52 @@ exports[`catalog #16 — X to move after O's 13,10: must-answer keeps racing fou
       "col": 12,
       "row": 13,
       "score": 220,
+    },
+  ],
+  "source": "tactical",
+}
+`;
+
+exports[`catalog #17 — X to move: O's row-13 OOOO.O is a live four (five-or-more); forced block at 13,12 narrowCandidates ranked output 1`] = `
+{
+  "moves": [
+    {
+      "col": 12,
+      "row": 13,
+      "score": 1012,
+    },
+  ],
+  "source": "forced",
+}
+`;
+
+exports[`catalog #18 — X to move: 13,11 is the fork that creates two open-threes narrowCandidates ranked output 1`] = `
+{
+  "moves": [
+    {
+      "col": 11,
+      "row": 13,
+      "score": 482,
+    },
+    {
+      "col": 6,
+      "row": 11,
+      "score": 10,
+    },
+    {
+      "col": 13,
+      "row": 13,
+      "score": 252,
+    },
+    {
+      "col": 11,
+      "row": 11,
+      "score": 252,
+    },
+    {
+      "col": 9,
+      "row": 13,
+      "score": 242,
     },
   ],
   "source": "tactical",

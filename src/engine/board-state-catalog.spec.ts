@@ -117,7 +117,7 @@ describe("catalog #2 — O's dual-purpose 12,13 competes in the soft tier, behin
       { row: 8, col: 14 },
     ]);
     expect(result.moves[2]).toEqual({ row: 12, col: 13 });
-    expect(scoreMove(board, 2, { row: 12, col: 13 })).toBe(252);
+    expect(scoreMove(board, 2, { row: 12, col: 13 })).toBe(250);
   });
 
   it("fills the remaining soft slots with the open-three-creating group, dropping the weaker two-gains", () => {
@@ -291,8 +291,8 @@ describe("catalog #6 — X's single block (9,7) works only because it combines w
   });
 
   it("scoreMove ranks 9,7 (fully defuses O) far above 14,12 (only downgrades to a one-sided four)", () => {
-    expect(scoreMove(board, 1, { row: 9, col: 7 })).toBe(2500);
-    expect(scoreMove(board, 1, { row: 14, col: 12 })).toBe(2012);
+    expect(scoreMove(board, 1, { row: 9, col: 7 })).toBe(1000);
+    expect(scoreMove(board, 1, { row: 14, col: 12 })).toBe(512);
   });
 
   it("the forced tier futility-filters to the single block that works: 9,7 alone — a single-candidate, no-search case", () => {
@@ -560,5 +560,67 @@ describe("catalog #16 — X to move after O's 13,10: must-answer keeps racing fo
     expect(result.source).toBe("tactical");
     const keys = result.moves.map((m) => `${m.row},${m.col}`);
     expect(keys).toContain("8,10");
+  });
+});
+
+describe("catalog #17 — X to move: O's row-13 OOOO.O is a live four (five-or-more); forced block at 13,12", () => {
+  // OOOO.O completes to six when the gap is filled. Under five-or-more that
+  // is a win unless both ends are boxed — here the left is X and the right
+  // is open, so 13,12 is a forced block. Same rule covers XOO.OOO / XOOO.OO.
+  const board = parseBoard(`
+       4  5  6  7  8  9 10 11 12 13 14
+    5  .  .  .  .  .  .  .  .  .  .  .
+    6  .  .  .  .  .  .  X  .  .  .  .
+    7  .  .  .  .  .  .  .  .  .  .  .
+    8  .  .  .  .  O  .  .  .  .  .  .
+    9  .  X  .  O  X  X  .  .  .  .  .
+   10  .  .  O  .  O  .  X  .  .  .  .
+   11  .  X  .  O  O  X  .  X  .  .  .
+   12  .  .  .  .  O  .  .  .  X  .  .
+   13  .  .  .  X  O  O  O  O  .  O  .
+   14  .  .  .  .  X  .  X  .  .  .  .
+   15  .  .  .  .  .  .  .  .  .  .  .
+  `);
+
+  it("narrowCandidates ranked output", () => {
+    expect(snapshotNarrow(board, 1, 24)).toMatchSnapshot();
+  });
+
+  it("forced tier returns the sole block that stops O's four: 13,12", () => {
+    const result = narrowCandidates(board, 1, 24, CFG);
+    expect(result.source).toBe("forced");
+    expect(result.moves).toEqual([{ row: 13, col: 12 }]);
+  });
+});
+
+describe("catalog #18 — X to move: 13,11 is the fork that creates two open-threes", () => {
+  // Catalog pick: 13,11 joins the row-13 open-two (13,10)/(13,12) and the
+  // col-11 open-two (10,11)/(12,11) into two open-threes at once.
+  // Regression: must-answer must not treat empty fork cells as exclusive
+  // blocks — O is not winning next turn if 11,6 is ignored.
+  const board = parseBoard(`
+     3  4  5  6  7  8  9 10 11 12 13 14
+  6  .  .  .  .  .  .  .  .  .  .  .  .
+  7  .  X  .  .  .  .  .  .  .  .  .  .
+  8  .  .  .  .  .  .  .  .  .  .  .  .
+  9  .  .  .  O  .  O  .  .  .  .  .  .
+ 10  .  .  .  .  O  X  X  X  X  .  O  .
+ 11  .  .  .  .  .  O  O  X  .  .  .  .
+ 12  .  .  .  .  .  .  O  O  X  .  .  .
+ 13  .  .  .  .  .  .  .  X  .  X  .  .
+ 14  .  .  .  .  .  .  .  .  .  .  O  .
+ 15  .  .  .  .  .  .  .  .  .  .  .  .
+  `);
+
+  it("narrowCandidates ranked output", () => {
+    expect(snapshotNarrow(board, 1, 18)).toMatchSnapshot();
+  });
+
+  it("ranks the double-open-three fork 13,11 first (ahead of the soft block at 11,6)", () => {
+    const result = narrowCandidates(board, 1, 18, CFG);
+    expect(result.source).toBe("tactical");
+    expect(result.moves[0]).toEqual({ row: 13, col: 11 });
+    const keys = result.moves.map((m) => `${m.row},${m.col}`);
+    expect(keys).toContain("13,11");
   });
 });

@@ -1,5 +1,11 @@
-import { PAIRINGS } from "../ui/tournament.ts";
-import { aggregateResults, isValidGameResult, type GameResult } from "./results.ts";
+import { PAIRINGS, TOURNAMENT_DIFFICULTIES } from "../ui/tournament.ts";
+import {
+  aggregateResults,
+  firstPlayerWinPct,
+  isValidGameResult,
+  playerLeaderboard,
+  type GameResult,
+} from "./results.ts";
 
 describe("isValidGameResult", () => {
   const good: GameResult = {
@@ -34,7 +40,7 @@ describe("isValidGameResult", () => {
 });
 
 describe("aggregateResults", () => {
-  it("returns 6 zero rows, one per PAIRINGS entry in order, for empty input", () => {
+  it("returns one zero row per PAIRINGS entry in order, for empty input", () => {
     const stats = aggregateResults([]);
     expect(stats).toHaveLength(PAIRINGS.length);
     stats.forEach((row, i) => {
@@ -84,5 +90,71 @@ describe("aggregateResults", () => {
     // game 1: 9 moves -> p1 made 5, p2 made 4. game 2: 20 moves -> p1 made 10, p2 made 10.
     expect(row.avgP1Moves).toBeCloseTo((5 + 10) / 2);
     expect(row.avgP2Moves).toBeCloseTo((4 + 10) / 2);
+  });
+});
+
+describe("firstPlayerWinPct", () => {
+  it("returns null when there are no games", () => {
+    expect(firstPlayerWinPct([])).toBeNull();
+  });
+
+  it("is P1 wins over all games (draws count against the rate)", () => {
+    const records: GameResult[] = [
+      { p1: "hard", p2: "easy", winner: 1, moves: 10, durationMs: 100, endedAt: "t1" },
+      { p1: "easy", p2: "hard", winner: 2, moves: 10, durationMs: 100, endedAt: "t2" },
+      { p1: "medium", p2: "hard", winner: "draw", moves: 400, durationMs: 100, endedAt: "t3" },
+      { p1: "expert", p2: "hard", winner: 1, moves: 12, durationMs: 100, endedAt: "t4" },
+    ];
+    // 2 P1 wins out of 4 games
+    expect(firstPlayerWinPct(records)).toBeCloseTo(50);
+  });
+});
+
+describe("playerLeaderboard", () => {
+  it("returns one zero row per difficulty when empty, in difficulty order", () => {
+    const board = playerLeaderboard([]);
+    expect(board.map((row) => row.player)).toEqual([...TOURNAMENT_DIFFICULTIES]);
+    for (const row of board) {
+      expect(row).toMatchObject({ wins: 0, games: 0, winPct: 0 });
+    }
+  });
+
+  it("counts wins and games across both seats; win% is wins/games", () => {
+    const records: GameResult[] = [
+      { p1: "hard", p2: "easy", winner: 1, moves: 10, durationMs: 100, endedAt: "t1" },
+      { p1: "easy", p2: "hard", winner: 2, moves: 10, durationMs: 100, endedAt: "t2" },
+      { p1: "hard", p2: "medium", winner: "draw", moves: 400, durationMs: 100, endedAt: "t3" },
+      { p1: "medium", p2: "easy", winner: 1, moves: 12, durationMs: 100, endedAt: "t4" },
+    ];
+    const board = playerLeaderboard(records);
+    const byPlayer = Object.fromEntries(board.map((row) => [row.player, row]));
+
+    // hard: played 3 (vs easy, vs easy, vs medium), won 2
+    expect(byPlayer.hard).toMatchObject({ wins: 2, games: 3, winPct: (2 / 3) * 100 });
+    // medium: played 2 (vs hard draw, vs easy win), won 1
+    expect(byPlayer.medium).toMatchObject({ wins: 1, games: 2, winPct: 50 });
+    // easy: played 3, won 0
+    expect(byPlayer.easy).toMatchObject({ wins: 0, games: 3, winPct: 0 });
+    // expert: played 0
+    expect(byPlayer.expert).toMatchObject({ wins: 0, games: 0, winPct: 0 });
+  });
+
+  it("sorts by wins desc, then win% desc, then difficulty order", () => {
+    const records: GameResult[] = [
+      // hard: 2 wins / 2 games = 100%
+      { p1: "hard", p2: "easy", winner: 1, moves: 10, durationMs: 100, endedAt: "t1" },
+      { p1: "easy", p2: "hard", winner: 2, moves: 10, durationMs: 100, endedAt: "t2" },
+      // medium: 1 win / 1 game = 100% (fewer wins than hard → after hard)
+      { p1: "medium", p2: "easy", winner: 1, moves: 10, durationMs: 100, endedAt: "t3" },
+      // expert: 1 win / 2 games = 50% (same wins as medium, lower % → after medium)
+      { p1: "expert", p2: "easy", winner: 1, moves: 10, durationMs: 100, endedAt: "t4" },
+      { p1: "easy", p2: "expert", winner: 1, moves: 10, durationMs: 100, endedAt: "t5" },
+    ];
+    expect(playerLeaderboard(records).map((row) => row.player)).toEqual([
+      "hard",
+      "medium",
+      "expert",
+      "easy",
+    ]);
   });
 });

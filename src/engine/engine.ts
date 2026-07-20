@@ -55,7 +55,7 @@ export const DIFFICULTY_PROFILES: Record<Difficulty, DifficultyProfile> = {
     timeBudgetMs: 10000,
     recognizedForkPatterns: ALL_FORK_PATTERN_NAMES,
     rootScoreJitter: 0.02,
-    threatSearch: true,
+    threatSearch: false,
     threatMaxPly: 16,
   },
 };

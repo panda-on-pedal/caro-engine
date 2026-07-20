@@ -134,6 +134,16 @@ async function handlePostResults(req: IncomingMessage, res: ServerResponse): Pro
   res.end(JSON.stringify(result));
 }
 
+async function handleDeleteResults(res: ServerResponse): Promise<void> {
+  const clearPromise = resultsWriteChain.catch(() => undefined).then(async () => {
+    await writeFile(RESULTS_PATH, '[]');
+  });
+  resultsWriteChain = clearPromise;
+  await clearPromise;
+  res.writeHead(204);
+  res.end();
+}
+
 async function handleStatic(pathname: string, res: ServerResponse): Promise<void> {
   const relativePath = STATIC_FILES[pathname];
   if (!relativePath) {
@@ -177,7 +187,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       await handlePostResults(req, res);
       return;
     }
-    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET, POST' });
+    if (req.method === 'DELETE') {
+      await handleDeleteResults(res);
+      return;
+    }
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET, POST, DELETE' });
     res.end('Method Not Allowed');
     return;
   }

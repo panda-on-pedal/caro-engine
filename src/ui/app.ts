@@ -2,11 +2,25 @@ import { BOARD_SIZE, type Board, type Player } from '../engine/board.ts';
 import { type Difficulty } from '../engine/engine.ts';
 import { PatternStore } from '../engine/patternStore.ts';
 import { applyMove, deserializeState, newGame, serializeState, type GameState, type Move } from '../engine/state.ts';
-import type { GameResult, PairingStats } from '../shared/results.ts';
-import { aggregateResults } from '../shared/results.ts';
+import type { GameResult } from '../shared/results.ts';
+import { aggregateResults, firstPlayerWinPct, playerLeaderboard } from '../shared/results.ts';
 import { logger } from '../utils/logger.ts';
 import { CancelledError, EnginePool } from './enginePool.ts';
-import { pairingAt, sessionTabLabel, TOURNAMENT_TIME_BUDGET_MS, type TournamentDifficulty } from './tournament.ts';
+import { applyStaticTranslations, isLocale, setLocale, t } from './i18n/index.ts';
+import {
+  DEFAULT_TOURNAMENT_BOARD_COUNT,
+  maxTournamentBoards,
+  pairingAt,
+  sessionTabLabel,
+  type TournamentDifficulty,
+} from './tournament.ts';
+import {
+  hydrateFromUrl,
+  installPopstateListener,
+  setUrlState,
+  subscribe,
+  type GameMode,
+} from './urlState.ts';
 
 const STATE_URL = '/api/state';
 const RESULTS_URL = '/api/results';
@@ -23,9 +37,11 @@ const boardEl = document.getElementById('board') as HTMLDivElement;
 const colHeadersEl = document.getElementById('col-headers') as HTMLDivElement;
 const rowHeadersEl = document.getElementById('row-headers') as HTMLDivElement;
 const statsPanelEl = document.getElementById('stats-panel') as HTMLDivElement;
+const controlsEl = document.getElementById('controls') as HTMLDivElement;
 const newGameButton = document.getElementById('new-game') as HTMLButtonElement;
 const undoButton = document.getElementById('undo') as HTMLButtonElement;
 const redoButton = document.getElementById('redo') as HTMLButtonElement;
+const langEl = document.getElementById('lang') as HTMLSelectElement;
 const gameModeEl = document.getElementById('game-mode') as HTMLSelectElement;
 const difficultyEl = document.getElementById('difficulty') as HTMLSelectElement;
 const boardCountEl = document.getElementById('board-count') as HTMLSelectElement;
@@ -33,8 +49,6 @@ const pauseButton = document.getElementById('pause') as HTMLButtonElement;
 const asciiToggleButton = document.getElementById('ascii-toggle') as HTMLButtonElement;
 const asciiPanelEl = document.getElementById('ascii-panel') as HTMLDivElement;
 const asciiTextEl = document.getElementById('ascii-text') as HTMLTextAreaElement;
-
-type GameMode = 'human-ai' | 'ai-human' | 'ai-ai';
 
 /** One board's worth of ai-ai tournament state. Human modes (human-ai /
  * ai-human) never use this — they keep the single global `state` below. */
@@ -72,8 +86,8 @@ let activeIndex = 0;
 let viewingResults = false;
 let pairingCounter = 0;
 let sessionIdCounter = 0;
-let boardCount = Number(boardCountEl.value);
-let pairingStats: PairingStats[] = aggregateResults([]);
+let boardCount = DEFAULT_TOURNAMENT_BOARD_COUNT;
+let gameResults: GameResult[] = [];
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -133,12 +147,39 @@ function historyLocked(): boolean {
   return mode === 'ai-ai' && !autoplayPaused;
 }
 
-/** `Math.max(1, Math.min(count, cores - 1))` — caps worker concurrency at
- * physical parallelism so oversubscription doesn't silently shallow
- * searches (which would bias the win rates the tournament measures). */
+/** Reads `navigator.hardwareConcurrency`, falling back to 4 when unavailable
+ * (e.g. some test / non-browser hosts). */
+function detectHardwareConcurrency(): number {
+  if (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) {
+    return navigator.hardwareConcurrency;
+  }
+  return 4;
+}
+
+/** Caps worker concurrency at `maxTournamentBoards` so oversubscription
+ * doesn't silently shallow searches (which would bias tournament win rates). */
 function desiredPoolSize(count: number): number {
-  const cores = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 4;
-  return Math.max(1, Math.min(count, cores - 1));
+  return Math.max(1, Math.min(count, maxTournamentBoards(detectHardwareConcurrency())));
+}
+
+/** Fills `#board-count` with `1..maxTournamentBoards` (consecutive). Default
+ * selection is `min(DEFAULT_TOURNAMENT_BOARD_COUNT, max)`. */
+function populateBoardCountOptions(): void {
+  const max = maxTournamentBoards(detectHardwareConcurrency());
+  const preferred = Math.min(DEFAULT_TOURNAMENT_BOARD_COUNT, max);
+  boardCountEl.replaceChildren();
+  for (let n = 1; n <= max; n += 1) {
+    const option = document.createElement('option');
+    option.value = String(n);
+    option.dataset.i18n = 'boards.n';
+    option.dataset.i18nParamN = String(n);
+    option.textContent = t('boards.n', { n });
+    if (n === preferred) {
+      option.selected = true;
+    }
+    boardCountEl.appendChild(option);
+  }
+  boardCount = preferred;
 }
 
 function resizePool(targetSize: number): void {
@@ -260,19 +301,19 @@ function boardToAscii(board: Board): string {
 
 function statusText(current: GameState): string {
   if (current.winner === 'draw') {
-    return "It's a draw!";
+    return t('status.draw');
   }
   const human = humanPlayer();
   if (current.winner !== null) {
     if (human !== null) {
-      return current.winner === human ? 'You win!' : 'AI wins!';
+      return current.winner === human ? t('status.youWin') : t('status.aiWins');
     }
-    return `Player ${current.winner} (AI) wins!`;
+    return t('status.playerAiWins', { player: current.winner });
   }
   if (human !== null) {
-    return current.nextPlayer === human ? 'Your turn' : 'AI thinking…';
+    return current.nextPlayer === human ? t('status.yourTurn') : t('status.aiThinking');
   }
-  return autoplayPaused ? 'Paused' : `Player ${current.nextPlayer} (AI) thinking…`;
+  return autoplayPaused ? t('status.paused') : t('status.playerAiThinking', { player: current.nextPlayer });
 }
 
 /** The board currently shown in the DOM: the active tournament session in
@@ -303,10 +344,11 @@ function updateHistoryButtons(): void {
 function render(): void {
   const showingResults = mode === 'ai-ai' && viewingResults;
   boardGridEl.hidden = showingResults;
+  controlsEl.hidden = showingResults;
   statsPanelEl.hidden = !showingResults;
   if (showingResults) {
-    statusEl.textContent = 'Tournament results';
-    delete statusEl.dataset.done;
+    asciiPanelEl.hidden = true;
+    asciiToggleButton.textContent = t('controls.showAscii');
     updateHistoryButtons();
     return;
   }
@@ -389,7 +431,7 @@ function buildBoard(): void {
       cell.className = 'cell';
       cell.dataset.row = String(row);
       cell.dataset.col = String(col);
-      cell.title = `Row ${row}, Col ${col}`;
+      cell.title = t('cell.title', { row, col });
 
       const mark = document.createElement('span');
       mark.className = 'mark';
@@ -526,12 +568,25 @@ async function postResult(session: BoardSession, winner: 1 | 2 | 'draw'): Promis
 async function refreshStats(): Promise<void> {
   try {
     const response = await fetch(RESULTS_URL);
-    const records = (await response.json()) as GameResult[];
-    pairingStats = aggregateResults(records);
+    gameResults = (await response.json()) as GameResult[];
   } catch (error) {
     logger.error(error);
   }
   renderStats();
+}
+
+async function clearResults(): Promise<void> {
+  try {
+    await fetch(RESULTS_URL, { method: 'DELETE' });
+  } catch (error) {
+    logger.error(error);
+  }
+  gameResults = [];
+  renderStats();
+}
+
+function formatPct(value: number | null): string {
+  return value === null ? '—' : `${value.toFixed(1)}%`;
 }
 
 function renderStats(): void {
@@ -539,38 +594,73 @@ function renderStats(): void {
     statsPanelEl.innerHTML = '';
     return;
   }
-  const rows = pairingStats
+  const pairingStats = aggregateResults(gameResults);
+  const pairingRows = pairingStats
     .map(
       (row) =>
         `<tr><td>${row.p1}×${row.p2}</td><td>${row.games}</td><td>${row.p1Wins}</td>` +
         `<td>${row.p2Wins}</td><td>${row.draws}</td>` +
-        `<td>${row.games === 0 ? '—' : row.p1WinPct.toFixed(1) + '%'}</td>` +
+        `<td>${row.games === 0 ? '—' : formatPct(row.p1WinPct)}</td>` +
         `<td>${row.games === 0 ? '—' : `${row.avgP1Moves.toFixed(1)} / ${row.avgP2Moves.toFixed(1)}`}</td></tr>`,
     )
     .join('');
+  const leaderboardRows = playerLeaderboard(gameResults)
+    .map(
+      (row) =>
+        `<tr><td>${row.player}</td><td>${row.wins}</td>` +
+        `<td>${row.games === 0 ? '—' : formatPct(row.winPct)}</td></tr>`,
+    )
+    .join('');
   statsPanelEl.innerHTML =
-    '<table><thead><tr><th>Pairing</th><th>Games</th><th>P1 wins</th><th>P2 wins</th>' +
-    '<th>Draws</th><th>P1 win%</th><th>Avg moves (P1 / P2)</th></tr></thead>' +
-    `<tbody>${rows}</tbody></table>`;
+    `<section class="stats-section">` +
+    `<h3>${t('stats.sectionPairings')}</h3>` +
+    `<table><thead><tr><th>${t('stats.pairing')}</th><th>${t('stats.games')}</th>` +
+    `<th>${t('stats.p1Wins')}</th><th>${t('stats.p2Wins')}</th>` +
+    `<th>${t('stats.draws')}</th><th>${t('stats.p1WinPct')}</th>` +
+    `<th>${t('stats.avgMoves')}</th></tr></thead>` +
+    `<tbody>${pairingRows}</tbody></table>` +
+    `</section>` +
+    `<section class="stats-section">` +
+    `<h3>${t('stats.sectionFirstPlayer')}</h3>` +
+    `<p class="stats-summary">${t('stats.firstPlayerWinPct', { pct: formatPct(firstPlayerWinPct(gameResults)) })}</p>` +
+    `</section>` +
+    `<section class="stats-section">` +
+    `<h3>${t('stats.sectionLeaderboard')}</h3>` +
+    `<table><thead><tr><th>${t('stats.player')}</th><th>${t('stats.wins')}</th>` +
+    `<th>${t('stats.winPct')}</th></tr></thead>` +
+    `<tbody>${leaderboardRows}</tbody></table>` +
+    `</section>` +
+    `<p class="stats-hint">${t('stats.hintCycle')}</p>` +
+    `<p class="stats-hint">${t('stats.hintReset')}</p>`;
+}
+function sessionTabStatus(session: BoardSession): string {
+  if (session.state.winner !== null) {
+    return 'restarting';
+  }
+  return session.busy ? 'thinking' : 'idle';
 }
 
-function renderTabs(): void {
-  const isAiAi = mode === 'ai-ai';
-  tabStripEl.hidden = !isAiAi;
-  tabStripEl.innerHTML = '';
-  if (!isAiAi) {
-    return;
+function updateTabButton(button: HTMLButtonElement, index: number, session: BoardSession): void {
+  button.textContent = sessionTabLabel(index, session.p1, session.p2, session.state.moveHistory.length);
+  button.dataset.status = sessionTabStatus(session);
+  if (!viewingResults && index === activeIndex) {
+    button.dataset.active = 'true';
+  } else {
+    delete button.dataset.active;
   }
+}
+
+/** Rebuilds the tab strip from scratch. Prefer `renderTabs` which updates
+ * existing buttons in place so clicks are not lost during rapid AI moves. */
+function rebuildTabs(): void {
+  tabStripEl.innerHTML = '';
   const fragment = document.createDocumentFragment();
   sessions.forEach((session, index) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'tab-button';
-    button.textContent = sessionTabLabel(index, session.p1, session.p2, session.state.moveHistory.length);
-    button.dataset.status = session.state.winner !== null ? 'restarting' : session.busy ? 'thinking' : 'idle';
-    if (!viewingResults && index === activeIndex) {
-      button.dataset.active = 'true';
-    }
+    button.dataset.boardIndex = String(index);
+    updateTabButton(button, index, session);
     button.addEventListener('click', () => {
       viewingResults = false;
       activeIndex = index;
@@ -583,7 +673,8 @@ function renderTabs(): void {
   const resultsButton = document.createElement('button');
   resultsButton.type = 'button';
   resultsButton.className = 'tab-button tab-button-results';
-  resultsButton.textContent = 'Results';
+  resultsButton.dataset.results = 'true';
+  resultsButton.textContent = t('tabs.results');
   if (viewingResults) {
     resultsButton.dataset.active = 'true';
   }
@@ -593,8 +684,34 @@ function renderTabs(): void {
     renderTabs();
   });
   fragment.appendChild(resultsButton);
-
   tabStripEl.appendChild(fragment);
+}
+
+function renderTabs(): void {
+  const isAiAi = mode === 'ai-ai';
+  tabStripEl.hidden = !isAiAi;
+  if (!isAiAi) {
+    tabStripEl.innerHTML = '';
+    return;
+  }
+
+  const expectedCount = sessions.length + 1;
+  if (tabStripEl.children.length !== expectedCount) {
+    rebuildTabs();
+    return;
+  }
+
+  for (let index = 0; index < sessions.length; index += 1) {
+    const button = tabStripEl.children[index] as HTMLButtonElement;
+    updateTabButton(button, index, sessions[index]);
+  }
+
+  const resultsButton = tabStripEl.children[sessions.length] as HTMLButtonElement;
+  if (viewingResults) {
+    resultsButton.dataset.active = 'true';
+  } else {
+    delete resultsButton.dataset.active;
+  }
 }
 
 /** Runs one AI move for `session`. Mirrors `runAiMove`'s cancellation
@@ -613,7 +730,7 @@ async function runSessionAiMove(session: BoardSession, myGeneration: number): Pr
   let move: Move;
   try {
     move = (
-      await pool.requestMove(session.state.board, player, difficulty, TOURNAMENT_TIME_BUDGET_MS[difficulty])
+      await pool.requestMove(session.state.board, player, difficulty)
     ).move;
   } catch (error) {
     session.busy = false;
@@ -706,7 +823,32 @@ function updateModeUI(): void {
   difficultyEl.hidden = isAiAi;
   boardCountEl.hidden = !isAiAi;
   pauseButton.hidden = !isAiAi;
-  pauseButton.textContent = autoplayPaused ? 'Resume' : 'Pause';
+  pauseButton.textContent = autoplayPaused ? t('controls.resume') : t('controls.pause');
+}
+
+function refreshCellTitles(): void {
+  const cells = boardEl.children;
+  for (let row = 0; row < BOARD_SIZE; row += 1) {
+    for (let col = 0; col < BOARD_SIZE; col += 1) {
+      const cell = cells[row * BOARD_SIZE + col] as HTMLButtonElement | undefined;
+      if (!cell) {
+        return;
+      }
+      cell.title = t('cell.title', { row, col });
+    }
+  }
+}
+
+function applyLocaleToUi(): void {
+  applyStaticTranslations();
+  asciiToggleButton.textContent = asciiPanelEl.hidden
+    ? t('controls.showAscii')
+    : t('controls.hideAscii');
+  updateModeUI();
+  refreshCellTitles();
+  render();
+  renderTabs();
+  renderStats();
 }
 
 /** Starts a fresh game (or, for ai-ai, a fresh tournament) under `newMode`.
@@ -802,6 +944,96 @@ async function handleRedo(): Promise<void> {
 async function init(): Promise<void> {
   logger.setDebug(true);
   buildBoard();
+  populateBoardCountOptions();
+  installPopstateListener();
+
+  const url = hydrateFromUrl();
+  setLocale(url.lang);
+  document.documentElement.lang = url.lang;
+  langEl.value = url.lang;
+  gameModeEl.value = url.mode;
+  mode = url.mode;
+  applyLocaleToUi();
+
+  subscribe((next, prev) => {
+    if (next.lang !== prev.lang) {
+      setLocale(next.lang);
+      document.documentElement.lang = next.lang;
+      langEl.value = next.lang;
+      applyLocaleToUi();
+    }
+    if (next.mode !== prev.mode) {
+      gameModeEl.value = next.mode;
+      resetForMode(next.mode).catch((error: unknown) => {
+        logger.error(error);
+      });
+    }
+  });
+
+  boardEl.addEventListener('click', (event) => {
+    handleCellClick(event).catch((error: unknown) => {
+      logger.error(error);
+    });
+  });
+
+  undoButton.addEventListener('click', () => {
+    handleUndo().catch((error: unknown) => {
+      logger.error(error);
+    });
+  });
+
+  redoButton.addEventListener('click', () => {
+    handleRedo().catch((error: unknown) => {
+      logger.error(error);
+    });
+  });
+
+  newGameButton.addEventListener('click', () => {
+    (async () => {
+      if (mode === 'ai-ai') {
+        await clearResults();
+      }
+      await resetForMode(mode);
+    })().catch((error: unknown) => {
+      logger.error(error);
+    });
+  });
+
+  langEl.addEventListener('change', () => {
+    const next = langEl.value;
+    if (isLocale(next)) {
+      setUrlState({ lang: next });
+    }
+  });
+
+  gameModeEl.addEventListener('change', () => {
+    setUrlState({ mode: gameModeEl.value as GameMode });
+  });
+
+  boardCountEl.addEventListener('change', () => {
+    boardCount = Number(boardCountEl.value);
+    if (mode === 'ai-ai') {
+      resetForMode('ai-ai').catch((error: unknown) => {
+        logger.error(error);
+      });
+    }
+  });
+
+  pauseButton.addEventListener('click', () => {
+    togglePause();
+  });
+
+  asciiToggleButton.addEventListener('click', () => {
+    asciiPanelEl.hidden = !asciiPanelEl.hidden;
+    asciiToggleButton.textContent = asciiPanelEl.hidden
+      ? t('controls.showAscii')
+      : t('controls.hideAscii');
+  });
+
+  if (url.mode === 'ai-ai') {
+    await resetForMode('ai-ai');
+    return;
+  }
 
   try {
     const loaded = await fetchState();
@@ -823,54 +1055,6 @@ async function init(): Promise<void> {
   patternStore = PatternStore.fromBoard(state.board);
   updateModeUI();
   render();
-
-  boardEl.addEventListener('click', (event) => {
-    handleCellClick(event).catch((error: unknown) => {
-      logger.error(error);
-    });
-  });
-
-  undoButton.addEventListener('click', () => {
-    handleUndo().catch((error: unknown) => {
-      logger.error(error);
-    });
-  });
-
-  redoButton.addEventListener('click', () => {
-    handleRedo().catch((error: unknown) => {
-      logger.error(error);
-    });
-  });
-
-  newGameButton.addEventListener('click', () => {
-    resetForMode(mode).catch((error: unknown) => {
-      logger.error(error);
-    });
-  });
-
-  gameModeEl.addEventListener('change', () => {
-    resetForMode(gameModeEl.value as GameMode).catch((error: unknown) => {
-      logger.error(error);
-    });
-  });
-
-  boardCountEl.addEventListener('change', () => {
-    boardCount = Number(boardCountEl.value);
-    if (mode === 'ai-ai') {
-      resetForMode('ai-ai').catch((error: unknown) => {
-        logger.error(error);
-      });
-    }
-  });
-
-  pauseButton.addEventListener('click', () => {
-    togglePause();
-  });
-
-  asciiToggleButton.addEventListener('click', () => {
-    asciiPanelEl.hidden = !asciiPanelEl.hidden;
-    asciiToggleButton.textContent = asciiPanelEl.hidden ? 'Show ASCII' : 'Hide ASCII';
-  });
 
   await advanceIfAiTurn();
 }
