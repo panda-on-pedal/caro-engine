@@ -56,4 +56,10 @@ Useful scripts:
 | `npm run typecheck` | TypeScript check |
 | `npm run lint` | Lint |
 
-Open the page, pick a mode (you first, computer first, or Tournament), choose difficulty or board count, and play — or watch the computers compete.
+Open the page, pick a mode (you first, computer first, or Tournament), choose difficulty or board count, and play - or watch the computers compete.
+
+## License
+
+This project is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
+
+You may use, modify, and share it, but if you distribute it or run a modified version as a network service, you must make the corresponding source available under the same license.
