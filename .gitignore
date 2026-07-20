@@ -1,6 +1,7 @@
 node_modules/
 main.js
 engineWorker.js
+dist/
 state.json
 results.json
 .claude/

@@ -6,6 +6,28 @@ Play against the computer, let the computer play first, or run a multi-board **T
 
 ![Tournament mode — several computer vs computer boards running at once](README.assets/tournament-games.png)
 
+## Quick start
+
+```bash
+npm install -g caro-tournament
+caro-tournament
+```
+
+Or without a global install:
+
+```bash
+npx caro-tournament
+```
+
+This starts a local server at [http://localhost:2026](http://localhost:2026) and opens it in your browser. Game data is stored under `~/.caro-tournament/`.
+
+Useful flags:
+
+```bash
+caro-tournament --port 3000   # use a different port
+caro-tournament --no-open     # start server without opening the browser
+```
+
 ## Tournament
 
 Tournament mode matches the four difficulty levels against each other: **easy**, **medium**, **hard**, and **expert**.
@@ -25,7 +47,7 @@ The engine is the computer opponent behind every computer-controlled seat. Stren
 
 Higher levels think longer and see more of the board. Lower levels move faster and play with more unpredictability.
 
-## Walkthrough
+## Develop from source
 
 ### Requirements
 
@@ -44,13 +66,13 @@ npm install
 npm start
 ```
 
-This builds the app and starts a local server at [http://localhost:3000](http://localhost:3000).
+This builds the app and starts the same local server (port 2026, opens the browser).
 
 Useful scripts:
 
 | Command | What it does |
 | --- | --- |
-| `npm start` | Build and serve on port 3000 |
+| `npm start` | Build and serve on port 2026 |
 | `npm run build` | Build only |
 | `npm test` | Run tests |
 | `npm run typecheck` | TypeScript check |

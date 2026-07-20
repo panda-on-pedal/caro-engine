@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  build:
+    name: Create Release and Attest Assets
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC for npm Trusted Publishing + GitHub attestations
+      contents: write
+      attestations: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Trusted Publishing needs Node >= 22.14 and npm >= 11.5.1
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          # Never cache package manager in release builds
+          cache: ''
+
+      - name: Ensure recent npm CLI
+        run: npm install -g npm@latest
+
+      - name: Install dependencies and build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Attest Build Provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            main.js
+            engineWorker.js
+            index.html
+            dist/cli.js
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            main.js
+            engineWorker.js
+            index.html
+            dist/cli.js
+            LICENSE
+            README.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Auth via OIDC Trusted Publishing — no NPM_TOKEN secret.
+      # Configure on npmjs.com → package → Settings → Trusted Publisher.
+      - name: Publish to npm
+        run: npm publish --access public

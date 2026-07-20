@@ -1,19 +1,52 @@
 {
-  "name": "caro-engine",
+  "name": "caro-tournament",
   "version": "1.0.0",
-  "description": "Gomoku (Caro) game with a pluggable AI engine",
-  "main": "index.js",
+  "description": "Caro (Gomoku) five-in-a-row with a local engine and AI tournament mode",
   "type": "module",
+  "bin": {
+    "caro-tournament": "./dist/cli.js"
+  },
+  "files": [
+    "dist/cli.js",
+    "index.html",
+    "main.js",
+    "engineWorker.js",
+    "LICENSE",
+    "README.md",
+    "README.assets"
+  ],
   "scripts": {
-    "build": "esbuild src/ui/app.ts --bundle --outfile=main.js && esbuild src/ui/engineWorker.ts --bundle --outfile=engineWorker.js",
+    "build": "npm run build:ui && npm run build:cli",
+    "build:ui": "esbuild src/ui/app.ts --bundle --outfile=main.js && esbuild src/ui/engineWorker.ts --bundle --outfile=engineWorker.js",
+    "build:cli": "esbuild src/cli.ts --bundle --platform=node --format=esm --outfile=dist/cli.js --banner:js=\"#!/usr/bin/env node\"",
+    "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "jest",
-    "start": "npm run build && node src/server/server.ts"
+    "start": "npm run build && node dist/cli.js"
   },
-  "keywords": [],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "caro",
+    "gomoku",
+    "five-in-a-row",
+    "tournament"
+  ],
   "author": "",
   "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/panda-on-pedal/caro-engine.git"
+  },
+  "homepage": "https://github.com/panda-on-pedal/caro-engine#readme",
+  "bugs": {
+    "url": "https://github.com/panda-on-pedal/caro-engine/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/jest": "^30.0.0",
