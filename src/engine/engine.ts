@@ -4,6 +4,7 @@ import {
   ALL_FORK_PATTERN_NAMES,
   type ForkPatternName,
 } from "./narrow.ts";
+import type { ExperienceEntry, ExperienceMode } from "./experience.ts";
 import type { GameState } from "./state.ts";
 
 export type Difficulty = "easy" | "medium" | "hard" | "expert";
@@ -13,9 +14,6 @@ export interface DifficultyProfile {
   timeBudgetMs: number;
   recognizedForkPatterns: ReadonlySet<ForkPatternName>;
   rootScoreJitter: number;
-  threatSearch: boolean;
-  /** Max plies for TSS (attacker+defender). Ignored when threatSearch is false. */
-  threatMaxPly: number;
 }
 
 /**
@@ -28,8 +26,6 @@ export const DIFFICULTY_PROFILES: Record<Difficulty, DifficultyProfile> = {
     timeBudgetMs: 500,
     recognizedForkPatterns: new Set(),
     rootScoreJitter: 0.15,
-    threatSearch: false,
-    threatMaxPly: 0,
   },
   medium: {
     maxDepth: 4,
@@ -39,24 +35,18 @@ export const DIFFICULTY_PROFILES: Record<Difficulty, DifficultyProfile> = {
       "double-four-trap",
     ]),
     rootScoreJitter: 0.1,
-    threatSearch: false,
-    threatMaxPly: 0,
   },
   hard: {
     maxDepth: 6,
     timeBudgetMs: 5000,
     recognizedForkPatterns: ALL_FORK_PATTERN_NAMES,
     rootScoreJitter: 0.05,
-    threatSearch: false,
-    threatMaxPly: 0,
   },
   expert: {
     maxDepth: 6,
     timeBudgetMs: 10000,
     recognizedForkPatterns: ALL_FORK_PATTERN_NAMES,
     rootScoreJitter: 0.02,
-    threatSearch: false,
-    threatMaxPly: 16,
   },
 };
 
@@ -65,8 +55,10 @@ export interface EngineConfig {
   timeBudgetMs?: number;
   /** Override the difficulty's default root-score jitter (0 disables). */
   rootScoreJitter?: number;
-  /** Override the difficulty's threat-search flag. */
-  threatSearch?: boolean;
+  /** When false, use `timeBudgetMs` as a hard cap (no move-count ramp). */
+  adaptiveTimeBudget?: boolean;
+  experienceMode?: ExperienceMode;
+  experienceBaseline?: ExperienceEntry;
 }
 
 const DEFAULT_CONFIG: EngineConfig = { difficulty: "medium" };
@@ -80,8 +72,9 @@ export function resolveEngineSearchConfig(config: EngineConfig): SearchConfig {
     recognizedForkPatterns: profile.recognizedForkPatterns,
     decay: DEFAULT_DECAY_CONFIG,
     rootScoreJitter: config.rootScoreJitter ?? profile.rootScoreJitter,
-    threatSearch: config.threatSearch ?? profile.threatSearch,
-    threatMaxPly: profile.threatMaxPly,
+    adaptiveTimeBudget: config.adaptiveTimeBudget,
+    experienceMode: config.experienceMode,
+    experienceBaseline: config.experienceBaseline,
   };
 }
 

@@ -1,9 +1,16 @@
+import { isLocale, type Locale } from './i18n/index.ts';
+
 export interface CaroSettings {
   highlightWhileThinking: boolean;
+  /** When true, human–AI games write new root experience entries. */
+  experienceImprovement: boolean;
+  lang: Locale;
 }
 
 export const DEFAULT_SETTINGS: CaroSettings = {
   highlightWhileThinking: true,
+  experienceImprovement: false,
+  lang: 'vi',
 };
 
 const STORAGE_KEY = 'caro.settings';
@@ -24,6 +31,11 @@ export function loadSettings(): CaroSettings {
         typeof record.highlightWhileThinking === 'boolean'
           ? record.highlightWhileThinking
           : DEFAULT_SETTINGS.highlightWhileThinking,
+      experienceImprovement:
+        typeof record.experienceImprovement === 'boolean'
+          ? record.experienceImprovement
+          : DEFAULT_SETTINGS.experienceImprovement,
+      lang: typeof record.lang === 'string' && isLocale(record.lang) ? record.lang : DEFAULT_SETTINGS.lang,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

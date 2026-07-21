@@ -1,12 +1,15 @@
 import type { Board, Player } from '../engine/board.ts';
 import type { Difficulty } from '../engine/engine.ts';
+import type { ExperienceMode } from '../engine/experience.ts';
 import type { SearchProgressEvent, SearchResult } from '../engine/search.ts';
 import { logger } from '../utils/logger.ts';
 import {
   isProgressMessage,
+  prepareExperienceForRequest,
   type EngineMessage,
   type EngineRequest,
 } from './engineProtocol.ts';
+import { PersistentExperienceStore } from './experiencePersist.ts';
 
 const WORKER_URL = '/engineWorker.js';
 
@@ -27,12 +30,18 @@ export class CancelledError extends Error {
 
 export interface RequestMoveOptions {
   onProgress?: (event: SearchProgressEvent) => void;
+  experienceMode?: ExperienceMode;
+  /** When false, skip writing the search result into the experience book. */
+  persistExperience?: boolean;
 }
 
 interface PendingEntry {
   resolve: (result: SearchResult) => void;
   reject: (error: Error) => void;
   onProgress?: (event: SearchProgressEvent) => void;
+  experienceKey?: string;
+  experienceMode?: ExperienceMode;
+  persistExperience?: boolean;
 }
 
 interface QueuedJob {
@@ -40,6 +49,9 @@ interface QueuedJob {
   resolve: (result: SearchResult) => void;
   reject: (error: Error) => void;
   onProgress?: (event: SearchProgressEvent) => void;
+  experienceKey?: string;
+  experienceMode?: ExperienceMode;
+  persistExperience?: boolean;
 }
 
 interface Slot {
@@ -57,13 +69,15 @@ export class EnginePool {
   private readonly queue: QueuedJob[] = [];
   private readonly pending = new Map<number, PendingEntry>();
   private nextId = 0;
+  private readonly experience: PersistentExperienceStore;
 
-  constructor(size: number) {
+  constructor(size: number, experience?: PersistentExperienceStore) {
     this.slots = Array.from({ length: size }, () => ({
       worker: null,
       busy: false,
       currentId: null,
     }));
+    this.experience = experience ?? new PersistentExperienceStore();
   }
 
   get size(): number {
@@ -77,6 +91,35 @@ export class EnginePool {
     timeBudgetMs?: number,
     options?: RequestMoveOptions,
   ): Promise<SearchResult> {
+    const experienceMode = options?.experienceMode ?? 'use';
+    const persistExperience = options?.persistExperience !== false;
+    const prepared = prepareExperienceForRequest({
+      board,
+      player,
+      difficulty,
+      experienceMode,
+      store: this.experience,
+    });
+
+    if (prepared.instant !== null) {
+      options?.onProgress?.({
+        type: 'experienceHit',
+        row: prepared.instant.move.row,
+        col: prepared.instant.move.col,
+        depth: prepared.instant.depth,
+      });
+      return Promise.resolve(prepared.instant);
+    }
+
+    if (prepared.baseline !== undefined) {
+      options?.onProgress?.({
+        type: 'experienceHit',
+        row: prepared.baseline.move.row,
+        col: prepared.baseline.move.col,
+        depth: prepared.baseline.depth,
+      });
+    }
+
     return new Promise((resolve, reject) => {
       const request: EngineRequest = {
         id: this.nextId,
@@ -84,6 +127,8 @@ export class EnginePool {
         player,
         difficulty,
         timeBudgetMs,
+        experienceMode,
+        experienceBaseline: prepared.baseline,
       };
       this.nextId += 1;
       const job: QueuedJob = {
@@ -91,6 +136,9 @@ export class EnginePool {
         resolve,
         reject,
         onProgress: options?.onProgress,
+        experienceKey: prepared.key,
+        experienceMode,
+        persistExperience,
       };
       const idleSlot = this.slots.find((slot) => !slot.busy);
       if (idleSlot) {
@@ -98,6 +146,22 @@ export class EnginePool {
       } else {
         this.queue.push(job);
       }
+    });
+  }
+
+  private rememberResult(
+    key: string | undefined,
+    mode: ExperienceMode | undefined,
+    result: SearchResult,
+    persist: boolean,
+  ): void {
+    if (!persist || key === undefined || mode === 'off' || mode === undefined) {
+      return;
+    }
+    this.experience.put(key, {
+      move: result.move,
+      score: result.score,
+      depth: result.depth,
     });
   }
 
@@ -133,6 +197,9 @@ export class EnginePool {
       resolve: job.resolve,
       reject: job.reject,
       onProgress: job.onProgress,
+      experienceKey: job.experienceKey,
+      experienceMode: job.experienceMode,
+      persistExperience: job.persistExperience,
     });
     this.ensureWorker(slot).postMessage(job.request);
   }
@@ -150,6 +217,12 @@ export class EnginePool {
     slot.currentId = null;
     if (entry) {
       if (message.ok) {
+        this.rememberResult(
+          entry.experienceKey,
+          entry.experienceMode,
+          message.result,
+          entry.persistExperience !== false,
+        );
         entry.resolve(message.result);
       } else {
         entry.reject(new Error(message.error));
@@ -201,6 +274,7 @@ export class EnginePool {
    * busy-slot requests, so no caller is left awaiting forever. */
   terminate(): void {
     this.cancelAll();
+    this.experience.flush();
     for (const slot of this.slots) {
       slot.worker?.terminate();
       slot.worker = null;

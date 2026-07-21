@@ -13,7 +13,9 @@ import type { SearchProgressEvent } from '../../engine/search.ts';
 import type { GameResult } from '../../shared/results.ts';
 import { aggregateResults, firstPlayerWinPct, playerLeaderboard } from '../../shared/results.ts';
 import { logger } from '../../utils/logger.ts';
+import type { ExperienceMode } from '../../engine/experience.ts';
 import { CancelledError, EnginePool } from '../enginePool.ts';
+import { PersistentExperienceStore } from '../experiencePersist.ts';
 import { fetchWithRetry } from '../apiClient.ts';
 import { isLocale, setLocale, t } from '../i18n/index.ts';
 import type { MessageKey } from '../i18n/index.ts';
@@ -29,6 +31,8 @@ import {
 import {
   hydrateFromUrl,
   installPopstateListener,
+  isMultiAiMode,
+  isTournamentMode,
   setUrlState,
   subscribe,
   type GameMode,
@@ -188,12 +192,13 @@ class GameSession {
   asciiOpen = $state(false);
   /** Bumped when locale or static copy must refresh. */
   localeTick = $state(0);
-  lang = $state<'en' | 'vi'>('en');
+  lang = $state<'en' | 'vi'>(loadSettings().lang);
   ready = $state(false);
 
   private patternStore = PatternStore.fromBoard(newGame().board);
   private generation = 0;
-  private pool = new EnginePool(1);
+  private readonly experienceStore = new PersistentExperienceStore();
+  private pool = new EnginePool(1, this.experienceStore);
   private pairingCounter = 0;
   private sessionIdCounter = 0;
   private unsubUrl: (() => void) | null = null;
@@ -210,25 +215,37 @@ class GameSession {
   }
 
   get historyLocked(): boolean {
-    return this.mode === 'ai-ai' && !this.autoplayPaused;
+    return isMultiAiMode(this.mode) && !this.autoplayPaused;
   }
 
   get activeGameState(): GameState {
-    if (this.mode === 'ai-ai') {
+    if (isMultiAiMode(this.mode)) {
       return this.sessions[this.activeIndex]?.state ?? newGame();
     }
     return this.state;
   }
 
   get activeBusy(): boolean {
-    if (this.mode === 'ai-ai') {
+    if (isMultiAiMode(this.mode)) {
       return this.sessions[this.activeIndex]?.busy ?? false;
     }
     return this.busy;
   }
 
   get showingResults(): boolean {
-    return this.mode === 'ai-ai' && this.viewingResults;
+    return isTournamentMode(this.mode) && this.viewingResults;
+  }
+
+  private experienceMode(): ExperienceMode {
+    return this.mode === 'practice' ? 'practice' : 'use';
+  }
+
+  /** Human games only write when the Settings toggle is on; Practice/Tournament always write. */
+  private persistExperience(): boolean {
+    if (this.mode === 'practice' || this.mode === 'ai-ai') {
+      return true;
+    }
+    return this.settings.experienceImprovement;
   }
 
   get canUndo(): boolean {
@@ -348,20 +365,12 @@ class GameSession {
     this.boardCount = Math.min(DEFAULT_TOURNAMENT_BOARD_COUNT, this.maxBoardCount);
 
     this.unsubPop = installPopstateListener();
+    this.settings = loadSettings();
+    this.applyLang(this.settings.lang);
     const url = hydrateFromUrl();
-    setLocale(url.lang);
-    document.documentElement.lang = url.lang;
-    this.lang = url.lang;
     this.mode = url.mode;
-    this.localeTick += 1;
 
     this.unsubUrl = subscribe((next, prev) => {
-      if (next.lang !== prev.lang) {
-        setLocale(next.lang);
-        document.documentElement.lang = next.lang;
-        this.lang = next.lang;
-        this.localeTick += 1;
-      }
       if (next.mode !== prev.mode) {
         this.resetForMode(next.mode).catch((error: unknown) => {
           logger.error(error);
@@ -369,8 +378,8 @@ class GameSession {
       }
     });
 
-    if (url.mode === 'ai-ai') {
-      await this.resetForMode('ai-ai');
+    if (isMultiAiMode(url.mode)) {
+      await this.resetForMode(url.mode);
       this.ready = true;
       return;
     }
@@ -409,9 +418,19 @@ class GameSession {
   }
 
   setLang(lang: string): void {
-    if (isLocale(lang)) {
-      setUrlState({ lang });
+    if (!isLocale(lang)) {
+      return;
     }
+    this.settings = { ...this.settings, lang };
+    saveSettings(this.settings);
+    this.applyLang(lang);
+  }
+
+  private applyLang(lang: 'en' | 'vi'): void {
+    setLocale(lang);
+    document.documentElement.lang = lang;
+    this.lang = lang;
+    this.localeTick += 1;
   }
 
   setDifficulty(value: Difficulty): void {
@@ -420,8 +439,8 @@ class GameSession {
 
   setBoardCount(count: number): void {
     this.boardCount = count;
-    if (this.mode === 'ai-ai') {
-      this.resetForMode('ai-ai').catch((error: unknown) => {
+    if (isMultiAiMode(this.mode)) {
+      this.resetForMode(this.mode).catch((error: unknown) => {
         logger.error(error);
       });
     }
@@ -435,12 +454,17 @@ class GameSession {
     }
   }
 
+  setExperienceImprovement(value: boolean): void {
+    this.settings = { ...this.settings, experienceImprovement: value };
+    saveSettings(this.settings);
+  }
+
   toggleAscii(): void {
     this.asciiOpen = !this.asciiOpen;
   }
 
   togglePause(): void {
-    if (this.mode !== 'ai-ai') {
+    if (!isMultiAiMode(this.mode)) {
       return;
     }
     this.autoplayPaused = !this.autoplayPaused;
@@ -455,11 +479,14 @@ class GameSession {
   }
 
   selectResults(): void {
+    if (!isTournamentMode(this.mode)) {
+      return;
+    }
     this.viewingResults = true;
   }
 
   async newGame(): Promise<void> {
-    if (this.mode === 'ai-ai') {
+    if (isTournamentMode(this.mode)) {
       await this.clearResults();
     }
     await this.resetForMode(this.mode);
@@ -576,7 +603,10 @@ class GameSession {
     this.thoughtLines = [...this.thoughtLines, formatThought(event)];
     if (
       this.settings.highlightWhileThinking &&
-      (event.type === 'examining' || event.type === 'insight' || event.type === 'bestSoFar')
+      (event.type === 'examining' ||
+        event.type === 'insight' ||
+        event.type === 'bestSoFar' ||
+        event.type === 'experienceHit')
     ) {
       this.thinkingCell = { row: event.row, col: event.col };
     }
@@ -679,7 +709,7 @@ class GameSession {
       return;
     }
     this.pool.terminate();
-    this.pool = new EnginePool(targetSize);
+    this.pool = new EnginePool(targetSize, this.experienceStore);
   }
 
   private async runAiMove(): Promise<void> {
@@ -698,6 +728,8 @@ class GameSession {
     try {
       move = (
         await this.pool.requestMove(this.state.board, player, this.difficulty, undefined, {
+          experienceMode: this.experienceMode(),
+          persistExperience: this.persistExperience(),
           onProgress: (event) => {
             if (myGeneration !== this.generation) {
               return;
@@ -815,7 +847,12 @@ class GameSession {
     const difficulty = player === 1 ? boardSession.p1 : boardSession.p2;
     let move: Move;
     try {
-      move = (await this.pool.requestMove(boardSession.state.board, player, difficulty)).move;
+      move = (
+        await this.pool.requestMove(boardSession.state.board, player, difficulty, undefined, {
+          experienceMode: this.experienceMode(),
+          persistExperience: this.persistExperience(),
+        })
+      ).move;
     } catch (error) {
       boardSession.busy = false;
       this.sessions = [...this.sessions];
@@ -839,12 +876,18 @@ class GameSession {
     boardSession.loopRunning = true;
     const myGeneration = this.generation;
     try {
-      while (myGeneration === this.generation && this.mode === 'ai-ai' && !this.autoplayPaused) {
+      while (
+        myGeneration === this.generation &&
+        isMultiAiMode(this.mode) &&
+        !this.autoplayPaused
+      ) {
         const winner = boardSession.state.winner;
         if (winner !== null) {
-          await this.postResult(boardSession, winner);
-          if (myGeneration !== this.generation) {
-            return;
+          if (isTournamentMode(this.mode)) {
+            await this.postResult(boardSession, winner);
+            if (myGeneration !== this.generation) {
+              return;
+            }
           }
           await delay(GAME_END_PAUSE_MS);
           if (myGeneration !== this.generation) {
@@ -903,12 +946,16 @@ class GameSession {
     this.mode = newMode;
     this.autoplayPaused = false;
 
-    if (newMode === 'ai-ai') {
+    if (isMultiAiMode(newMode)) {
       this.resizePool(desiredPoolSize(this.boardCount));
       this.pairingCounter = 0;
       this.viewingResults = false;
       this.startTournament(this.boardCount);
-      await this.refreshStats();
+      if (isTournamentMode(newMode)) {
+        await this.refreshStats();
+      } else {
+        this.gameResults = [];
+      }
       this.startAllSessionLoops();
       return;
     }
@@ -930,6 +977,10 @@ class GameSession {
 }
 
 export const session = new GameSession();
+setLocale(session.settings.lang);
+if (typeof document !== 'undefined') {
+  document.documentElement.lang = session.settings.lang;
+}
 
 /** Re-export for components that need BOARD_SIZE without importing engine. */
 export { BOARD_SIZE };

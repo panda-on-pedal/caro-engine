@@ -1,5 +1,6 @@
 <script lang="ts">
   import { session } from '../lib/gameSession.svelte.ts';
+  import { isMultiAiMode } from '../urlState.ts';
   import TabStrip from '../components/TabStrip.svelte';
   import Board from '../components/Board.svelte';
   import Matchup from '../components/Matchup.svelte';
@@ -9,7 +10,7 @@
   import AsciiPanel from '../components/AsciiPanel.svelte';
 </script>
 
-{#if session.mode === 'ai-ai'}
+{#if isMultiAiMode(session.mode)}
   <TabStrip />
 {/if}
 

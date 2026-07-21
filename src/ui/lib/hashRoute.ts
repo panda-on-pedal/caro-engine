@@ -1,4 +1,4 @@
-export type AppRoute = 'play' | 'settings';
+export type AppRoute = 'play' | 'settings' | 'instructions';
 
 /** Parse `location.hash` into an app route. Unknown hashes fall back to play. */
 export function parseHash(hash: string): AppRoute {
@@ -7,15 +7,19 @@ export function parseHash(hash: string): AppRoute {
   if (path === 'settings') {
     return 'settings';
   }
+  if (path === 'instructions') {
+    return 'instructions';
+  }
   return 'play';
 }
 
-/** Navigate via hash without touching `?lang=` / `?mode=` search params. */
+/** Navigate via hash without touching `?mode=` search params. */
 export function setHashRoute(route: AppRoute): void {
   if (typeof window === 'undefined') {
     return;
   }
-  const next = route === 'settings' ? '#/settings' : '#/';
+  const next =
+    route === 'settings' ? '#/settings' : route === 'instructions' ? '#/instructions' : '#/';
   const current = window.location.hash;
   if (route === 'play' && (current === '' || current === '#' || current === '#/')) {
     if (current !== '#/') {

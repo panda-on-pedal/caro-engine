@@ -17,12 +17,15 @@ import {
   type InsightKind,
   type SearchProgressEvent,
 } from "./searchProgress.ts";
-import {
-  collectDefenceMoves,
-  findForcedWin,
-} from "./threatSearch.ts";
 import { logger } from "../utils/logger.ts";
 import type { Move } from "./state.ts";
+import {
+  experienceBeatsBaseline,
+  isUsableExperienceMove,
+  type ExperienceEntry,
+  type ExperienceMode,
+} from "./experience.ts";
+import { resolveEffectiveTimeBudget } from "./timeBudget.ts";
 
 export type { InsightKind, SearchProgressEvent } from "./searchProgress.ts";
 
@@ -390,14 +393,19 @@ export interface SearchConfig {
   rng?: () => number;
   /** Shared pattern cache for this chooseMove/search call. */
   patternStore?: PatternStore;
-  /** When true, run threat-space search before negamax. */
-  threatSearch?: boolean;
-  /** Max plies for threat-space search (attacker + defender). */
-  threatMaxPly?: number;
   /** Optional structured progress sink (UI narration). */
   onProgress?: (event: SearchProgressEvent) => void;
   /** Root moves that are forced blocks — used for insight.kind === "block". */
   progressBlockKeys?: ReadonlySet<string>;
+  /**
+   * When true (default) and `timeBudgetMs` is set, scale the budget by stone
+   * count and snap to 100% on tactical/forced narrow sources.
+   */
+  adaptiveTimeBudget?: boolean;
+  /** Root experience policy for this call. Default: off inside search. */
+  experienceMode?: ExperienceMode;
+  /** Practice baseline (and optional move-ordering seed). */
+  experienceBaseline?: ExperienceEntry;
 }
 
 /**
@@ -554,6 +562,49 @@ export const patternOnlyStrategy: MoveSelectionStrategy = (
   nodesVisited: 0,
 });
 
+function seedBaselineMove(moves: Move[], baseline: Move | undefined): Move[] {
+  if (baseline === undefined) {
+    return moves;
+  }
+  const key = moveKey(baseline);
+  const rest: Move[] = [];
+  for (const move of moves) {
+    if (moveKey(move) !== key) {
+      rest.push(move);
+    }
+  }
+  return [baseline, ...rest];
+}
+
+function applyPracticeBaseline(
+  result: SearchResult,
+  config: SearchConfig,
+  board: Board,
+): SearchResult {
+  if (config.experienceMode !== "practice") {
+    return result;
+  }
+  const baseline = config.experienceBaseline;
+  if (!isUsableExperienceMove(board, baseline)) {
+    return result;
+  }
+  const candidate: ExperienceEntry = {
+    move: result.move,
+    score: result.score,
+    depth: result.depth,
+  };
+  if (experienceBeatsBaseline(candidate, baseline)) {
+    return result;
+  }
+  return {
+    move: baseline.move,
+    score: baseline.score,
+    depth: baseline.depth,
+    principalVariation: [baseline.move],
+    nodesVisited: result.nodesVisited,
+  };
+}
+
 export function search(
   board: Board,
   player: Player,
@@ -566,82 +617,53 @@ export function search(
   const store = config.patternStore ?? PatternStore.fromBoard(board);
   const baseNarrow = resolveNarrowConfig(config);
   const moveCount = countStones(store.board);
-  const deadline =
-    config.timeBudgetMs !== undefined
-      ? Date.now() + config.timeBudgetMs
-      : null;
-  const recognizedForkPatterns =
-    config.recognizedForkPatterns ?? ALL_FORK_PATTERN_NAMES;
-
-  let tssNodes = 0;
-  let forcedRootMoves: Move[] | null = null;
-
-  if (config.threatSearch) {
-    const threatOpts = {
-      maxPly: config.threatMaxPly ?? 16,
-      deadline,
-      recognizedForkPatterns,
-    };
-    const opponent = otherPlayer(player);
-
-    // Own force before must-block: an immediate (or forced) win beats defending.
-    const ownForce = findForcedWin(store, player, threatOpts);
-    tssNodes += ownForce.nodesVisited;
-    if (ownForce.won && ownForce.principalVariation.length > 0) {
-      logger.log("[search] TSS: own forced win", {
-        line: ownForce.principalVariation.map((m) => `${m.row},${m.col}`),
-      });
-      report.emit({ type: "phase", phase: "quiet" });
-      return {
-        move: ownForce.principalVariation[0],
-        score: WIN_SCORE,
-        depth: ownForce.principalVariation.length,
-        principalVariation: ownForce.principalVariation,
-        nodesVisited: tssNodes,
-      };
-    }
-
-    const oppForce = findForcedWin(store, opponent, threatOpts);
-    tssNodes += oppForce.nodesVisited;
-    if (oppForce.won) {
-      const defence = collectDefenceMoves(
-        store,
-        opponent,
-        player,
-        recognizedForkPatterns,
-      );
-      if (defence.length > 0) {
-        forcedRootMoves = defence;
-        logger.log("[search] TSS: must-block opponent forced win", {
-          defence: defence.map((m) => `${m.row},${m.col}`),
-        });
-      }
-    }
-  }
-
   const narrowConfig = narrowConfigForStore(store, player, baseNarrow);
-  const narrowed =
-    forcedRootMoves !== null
-      ? { moves: forcedRootMoves, source: "forced" as const }
-      : narrowCandidates(store.board, player, moveCount, narrowConfig);
+
+  // Narrow first so hybrid time can snap to full budget on fights.
+  const narrowed = narrowCandidates(
+    store.board,
+    player,
+    moveCount,
+    narrowConfig,
+  );
+  const adaptive = config.adaptiveTimeBudget !== false;
+  const effectiveTimeBudgetMs =
+    config.timeBudgetMs !== undefined && adaptive
+      ? resolveEffectiveTimeBudget({
+          maxBudgetMs: config.timeBudgetMs,
+          moveCount,
+          narrowSource: narrowed.source,
+        })
+      : config.timeBudgetMs;
 
   if (narrowed.moves.length === 0) {
     const fallbackMoves = findCandidateMoves(store.board);
     report.emit({ type: "phase", phase: "quiet" });
-    return {
-      move: fallbackMoves[0],
-      score: 0,
-      depth: 0,
-      principalVariation: [],
-      nodesVisited: tssNodes,
-    };
+    return applyPracticeBaseline(
+      {
+        move: fallbackMoves[0],
+        score: 0,
+        depth: 0,
+        principalVariation: [],
+        nodesVisited: 0,
+      },
+      config,
+      store.board,
+    );
   }
 
+  const baselineMove =
+    config.experienceMode === "practice" &&
+    isUsableExperienceMove(store.board, config.experienceBaseline)
+      ? config.experienceBaseline.move
+      : undefined;
+  const rootMoves = seedBaselineMove(narrowed.moves, baselineMove);
+
   const isQuietPath =
-    narrowed.moves.length === 1 || narrowed.source === "quiet";
+    rootMoves.length === 1 || narrowed.source === "quiet";
   report.emit({
     type: "candidates",
-    count: narrowed.moves.length,
+    count: rootMoves.length,
     source: narrowed.source,
   });
   report.emit({
@@ -651,11 +673,12 @@ export function search(
 
   const progressBlockKeys =
     narrowed.source === "forced"
-      ? new Set(narrowed.moves.map(moveKey))
+      ? new Set(rootMoves.map(moveKey))
       : undefined;
 
   const searchConfig: SearchConfig = {
     ...config,
+    timeBudgetMs: effectiveTimeBudgetMs,
     patternStore: store,
     progressBlockKeys,
   };
@@ -668,24 +691,22 @@ export function search(
     player,
     moveCount,
     source: narrowed.source,
+    effectiveTimeBudgetMs,
     strategy:
       resolvedStrategy === patternOnlyStrategy
         ? "patternOnly"
         : resolvedStrategy === negamaxStrategy
           ? "negamax"
           : "custom",
-    count: narrowed.moves.length,
-    moves: narrowed.moves.map((m) => `${m.row},${m.col}`),
+    count: rootMoves.length,
+    moves: rootMoves.map((m) => `${m.row},${m.col}`),
   });
 
   const result = resolvedStrategy(
     store.board,
     player,
-    narrowed.moves,
+    rootMoves,
     searchConfig,
   );
-  return {
-    ...result,
-    nodesVisited: result.nodesVisited + tssNodes,
-  };
+  return applyPracticeBaseline(result, config, store.board);
 }

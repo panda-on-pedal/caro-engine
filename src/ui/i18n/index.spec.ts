@@ -49,11 +49,20 @@ describe('t', () => {
     );
   });
 
-  it('exposes settings chrome in English and Vietnamese', () => {
-    expect(t('settings.open')).toBe('Settings');
+  it('exposes settings and instructions chrome in English and Vietnamese', () => {
+    expect(t('nav.settings')).toBe('Settings');
+    expect(t('nav.github')).toBe('GitHub repository');
+    expect(t('settings.language')).toBe('Language');
     expect(t('settings.highlightWhileThinking')).toBe('Highlight cells while thinking');
+    expect(t('settings.experienceImprovement')).toContain('Learn from Human');
+    expect(t('instructions.title')).toBe('Instructions');
+    expect(t('version.updateAvailable', { version: '1.2.0' })).toBe('Update available · v1.2.0');
     setLocale('vi');
     expect(t('settings.back')).toBe('Quay lại');
     expect(t('settings.title')).toBe('Cài đặt');
+    expect(t('settings.experienceImprovement')).toContain('Học từ');
+    expect(t('nav.instructions')).toBe('Hướng dẫn');
+    expect(t('instructions.tips.block')).toContain('chặn');
+    expect(t('version.updateAvailable', { version: '1.2.0' })).toBe('Có bản mới · v1.2.0');
   });
 });

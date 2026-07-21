@@ -1,5 +1,6 @@
 <script lang="ts">
   import { session } from '../lib/gameSession.svelte.ts';
+  import { isTournamentMode } from '../urlState.ts';
   import { t } from '../i18n/index.ts';
 </script>
 
@@ -16,13 +17,15 @@
       {session.tabLabel(index, boardSession)}
     </button>
   {/each}
-  <button
-    type="button"
-    class="tab-button tab-button-results"
-    data-results="true"
-    data-active={session.viewingResults ? 'true' : undefined}
-    onclick={() => session.selectResults()}
-  >
-    {session.localeTick >= 0 ? t('tabs.results') : ''}
-  </button>
+  {#if isTournamentMode(session.mode)}
+    <button
+      type="button"
+      class="tab-button tab-button-results"
+      data-results="true"
+      data-active={session.viewingResults ? 'true' : undefined}
+      onclick={() => session.selectResults()}
+    >
+      {session.localeTick >= 0 ? t('tabs.results') : ''}
+    </button>
+  {/if}
 </div>

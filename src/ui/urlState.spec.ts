@@ -1,21 +1,32 @@
 import {
   getUrlState,
   hydrateFromUrl,
+  isMultiAiMode,
+  isTournamentMode,
   parseUrlState,
   setUrlState,
   subscribe,
 } from './urlState.ts';
 
 describe('parseUrlState', () => {
-  it('reads valid lang and mode', () => {
-    expect(parseUrlState('?lang=vi&mode=ai-human')).toEqual({ lang: 'vi', mode: 'ai-human' });
+  it('reads valid mode and ignores lang', () => {
+    expect(parseUrlState('?lang=vi&mode=ai-human')).toEqual({ mode: 'ai-human' });
   });
 
   it('defaults invalid or missing params', () => {
-    expect(parseUrlState('')).toEqual({ lang: 'en', mode: 'human-ai' });
-    expect(parseUrlState('?lang=fr&mode=nope')).toEqual({ lang: 'en', mode: 'human-ai' });
-    expect(parseUrlState('?lang=vi')).toEqual({ lang: 'vi', mode: 'human-ai' });
-    expect(parseUrlState('?mode=ai-ai')).toEqual({ lang: 'en', mode: 'ai-ai' });
+    expect(parseUrlState('')).toEqual({ mode: 'human-ai' });
+    expect(parseUrlState('?lang=fr&mode=nope')).toEqual({ mode: 'human-ai' });
+    expect(parseUrlState('?lang=vi')).toEqual({ mode: 'human-ai' });
+    expect(parseUrlState('?mode=ai-ai')).toEqual({ mode: 'ai-ai' });
+    expect(parseUrlState('?mode=practice')).toEqual({ mode: 'practice' });
+  });
+});
+
+describe('mode helpers', () => {
+  it('treats practice as multi-AI but not tournament', () => {
+    expect(isMultiAiMode('practice')).toBe(true);
+    expect(isTournamentMode('practice')).toBe(false);
+    expect(isTournamentMode('ai-ai')).toBe(true);
   });
 });
 
@@ -23,7 +34,7 @@ describe('urlState store', () => {
   let href: string;
 
   beforeEach(() => {
-    href = 'http://localhost/?lang=en&mode=human-ai';
+    href = 'http://localhost/?mode=human-ai';
     const location = {
       get href() {
         return href;
@@ -54,31 +65,27 @@ describe('urlState store', () => {
     delete (globalThis as { window?: unknown }).window;
   });
 
-  it('hydrates from the current URL and canonicalizes missing params', () => {
+  it('hydrates from the current URL and strips legacy lang', () => {
     href = 'http://localhost/?lang=vi&mode=ai-ai';
     const state = hydrateFromUrl();
-    expect(state).toEqual({ lang: 'vi', mode: 'ai-ai' });
-    expect(getUrlState()).toEqual({ lang: 'vi', mode: 'ai-ai' });
-    expect(href).toContain('lang=vi');
+    expect(state).toEqual({ mode: 'ai-ai' });
+    expect(getUrlState()).toEqual({ mode: 'ai-ai' });
+    expect(href).not.toContain('lang=');
     expect(href).toContain('mode=ai-ai');
   });
 
-  it('notifies subscribers when setUrlState changes a field', () => {
+  it('notifies subscribers when setUrlState changes mode', () => {
     const seen: Array<{ next: string; prev: string }> = [];
     const unsubscribe = subscribe((next, prev) => {
-      seen.push({ next: `${next.lang}:${next.mode}`, prev: `${prev.lang}:${prev.mode}` });
+      seen.push({ next: next.mode, prev: prev.mode });
     });
 
-    setUrlState({ lang: 'vi' });
     setUrlState({ mode: 'ai-human' });
-    setUrlState({ lang: 'vi', mode: 'ai-human' });
+    setUrlState({ mode: 'ai-human' });
 
-    expect(seen).toEqual([
-      { next: 'vi:human-ai', prev: 'en:human-ai' },
-      { next: 'vi:ai-human', prev: 'vi:human-ai' },
-    ]);
-    expect(href).toContain('lang=vi');
+    expect(seen).toEqual([{ next: 'ai-human', prev: 'human-ai' }]);
     expect(href).toContain('mode=ai-human');
+    expect(href).not.toContain('lang=');
     unsubscribe();
   });
 
@@ -88,7 +95,7 @@ describe('urlState store', () => {
       seen.push(next.mode);
     });
 
-    href = 'http://localhost/?lang=en&mode=ai-ai';
+    href = 'http://localhost/?mode=ai-ai';
     hydrateFromUrl({ notify: true });
 
     expect(seen).toEqual(['ai-ai']);

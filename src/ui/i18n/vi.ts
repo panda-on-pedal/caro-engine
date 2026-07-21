@@ -6,6 +6,7 @@ export const vi: Messages = {
   'mode.humanAi': 'Người vs Máy tính',
   'mode.aiHuman': 'Máy tính vs Người',
   'mode.aiAi': 'Giải đấu',
+  'mode.practice': 'Luyện tập',
   'matchup.human': 'Người',
   'matchup.computer': 'Máy tính',
   'difficulty.easy': 'Dễ',
@@ -20,11 +21,38 @@ export const vi: Messages = {
   'controls.newGame': 'Ván mới',
   'controls.showAscii': 'Hiện ASCII',
   'controls.hideAscii': 'Ẩn ASCII',
+  'nav.label': 'Điều hướng',
+  'nav.instructions': 'Hướng dẫn',
+  'nav.settings': 'Cài đặt',
+  'nav.github': 'Kho mã nguồn GitHub',
   'settings.open': 'Cài đặt',
   'settings.title': 'Cài đặt',
   'settings.back': 'Quay lại',
+  'settings.language': 'Ngôn ngữ',
   'settings.highlightWhileThinking': 'Tô sáng ô khi máy đang nghĩ',
+  'settings.experienceImprovement':
+    'Học từ ván Người vs Máy (lưu kinh nghiệm mới)',
+  'instructions.title': 'Hướng dẫn',
+  'instructions.rulesTitle': 'Luật chơi',
+  'instructions.rules.place': 'Hai bên lần lượt đặt X và O trên bàn cờ.',
+  'instructions.rules.win':
+    'Thắng khi có năm quân trở lên liên tiếp theo hàng ngang, dọc hoặc chéo.',
+  'instructions.rules.block':
+    'Hàng bị đối thủ chặn ở cả hai đầu không tính thắng. Biên bàn cờ không tính là chặn.',
+  'instructions.modesTitle': 'Chế độ',
+  'instructions.modes.humanAi': 'Bạn đi trước với X, đấu với máy tính.',
+  'instructions.modes.aiHuman': 'Máy tính đi trước; bạn chơi O.',
+  'instructions.modes.aiAi':
+    'Các máy tính đấu với nhau trên nhiều bàn. Xem tab Kết quả để theo dõi thống kê.',
+  'instructions.modes.practice':
+    'Cùng thiết lập với Giải đấu, nhưng mọi máy tiếp tục tìm kiếm để cải thiện bộ nhớ kinh nghiệm dùng chung (lưu trên đĩa). Không ghi nhận kết quả.',
+  'instructions.tipsTitle': 'Mẹo chơi',
+  'instructions.tips.paths':
+    'Mỗi nước đi, hãy cố mở rộng hoặc tạo thêm đường đi về phía năm quân liên tiếp của bạn.',
+  'instructions.tips.block':
+    'Đồng thời chặn các đường nguy hiểm nhất của đối thủ trước khi chúng thành thế thắng.',
   'status.loading': 'Đang tải…',
+  'version.updateAvailable': 'Có bản mới · v{version}',
   'status.yourTurn': 'Lượt của bạn',
   'status.aiThinking': 'Máy tính đang nghĩ…',
   'status.youWin': 'Bạn thắng!',

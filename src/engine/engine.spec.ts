@@ -67,8 +67,12 @@ describe("chooseMove", () => {
     state = applyMove(state, { row: 10, col: 11 }, 1);
     state = applyMove(state, { row: 0, col: 2 }, 2);
 
-    const easy = chooseMove(state, { difficulty: "easy" });
-    const hard = chooseMove(state, { difficulty: "hard", timeBudgetMs: 2000 });
+    const easy = chooseMove(state, { difficulty: "easy", adaptiveTimeBudget: false });
+    const hard = chooseMove(state, {
+      difficulty: "hard",
+      timeBudgetMs: 2000,
+      adaptiveTimeBudget: false,
+    });
     expect(easy.depth).toBeGreaterThan(0);
     expect(hard.depth).toBeGreaterThanOrEqual(easy.depth);
   });
@@ -107,8 +111,16 @@ describe("chooseMove — difficulty-gated fork recognition", () => {
     state = applyMove(state, { row: 5, col: 8 }, 1);
     state = applyMove(state, { row: 3, col: 17 }, 2); // filler, far away
 
-    const easy = chooseMove(state, { difficulty: "easy", timeBudgetMs: 500 });
-    const hard = chooseMove(state, { difficulty: "hard", timeBudgetMs: 2000 });
+    const easy = chooseMove(state, {
+      difficulty: "easy",
+      timeBudgetMs: 500,
+      adaptiveTimeBudget: false,
+    });
+    const hard = chooseMove(state, {
+      difficulty: "hard",
+      timeBudgetMs: 2000,
+      adaptiveTimeBudget: false,
+    });
 
     // hard's narrowed candidate set includes the fork point (5,9); easy's
     // does not recognize forks at all, so it cannot even consider it as a
@@ -127,20 +139,11 @@ describe("DIFFICULTY_PROFILES", () => {
     }
   });
 
-  it("enables threat search only on expert", () => {
-    expect(DIFFICULTY_PROFILES.easy.threatSearch).toBe(false);
-    expect(DIFFICULTY_PROFILES.medium.threatSearch).toBe(false);
-    expect(DIFFICULTY_PROFILES.hard.threatSearch).toBe(false);
-    expect(DIFFICULTY_PROFILES.expert.threatSearch).toBe(true);
-    expect(DIFFICULTY_PROFILES.expert.threatMaxPly).toBe(16);
-  });
-
-  it("keeps prior depth / budget / fork / jitter values for easy-medium-hard", () => {
+  it("keeps depth / budget / fork / jitter values per difficulty", () => {
     expect(DIFFICULTY_PROFILES.easy).toMatchObject({
       maxDepth: 2,
       timeBudgetMs: 500,
       rootScoreJitter: 0.15,
-      threatMaxPly: 0,
     });
     expect(DIFFICULTY_PROFILES.easy.recognizedForkPatterns.size).toBe(0);
     expect(DIFFICULTY_PROFILES.medium).toMatchObject({
@@ -171,17 +174,13 @@ describe("DIFFICULTY_PROFILES", () => {
 
   it("resolveEngineSearchConfig merges profile with overrides", () => {
     const base = resolveEngineSearchConfig({ difficulty: "expert" });
-    expect(base.threatSearch).toBe(true);
-    expect(base.threatMaxPly).toBe(16);
     expect(base.maxDepth).toBe(6);
     expect(base.timeBudgetMs).toBe(10000);
 
     const overridden = resolveEngineSearchConfig({
       difficulty: "hard",
-      threatSearch: true,
       timeBudgetMs: 123,
     });
-    expect(overridden.threatSearch).toBe(true);
     expect(overridden.timeBudgetMs).toBe(123);
     expect(overridden.maxDepth).toBe(6);
   });

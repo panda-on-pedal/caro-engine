@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { setHashRoute } from '../lib/hashRoute.ts';
   import { session } from '../lib/gameSession.svelte.ts';
   import type { Difficulty, GameMode } from '../lib/gameSession.svelte.ts';
+  import { isMultiAiMode } from '../urlState.ts';
   import { t } from '../i18n/index.ts';
   import { logger } from '../../utils/logger.ts';
 
-  const isAiAi = $derived(session.mode === 'ai-ai');
+  const isMultiAi = $derived(isMultiAiMode(session.mode));
 
   function onMode(event: Event): void {
     const value = (event.currentTarget as HTMLSelectElement).value as GameMode;
@@ -18,10 +18,6 @@
 
   function onBoardCount(event: Event): void {
     session.setBoardCount(Number((event.currentTarget as HTMLSelectElement).value));
-  }
-
-  function onLang(event: Event): void {
-    session.setLang((event.currentTarget as HTMLSelectElement).value);
   }
 
   function onNewGame(): void {
@@ -47,9 +43,10 @@
   <option value="human-ai">{session.localeTick >= 0 ? t('mode.humanAi') : ''}</option>
   <option value="ai-human">{session.localeTick >= 0 ? t('mode.aiHuman') : ''}</option>
   <option value="ai-ai">{session.localeTick >= 0 ? t('mode.aiAi') : ''}</option>
+  <option value="practice">{session.localeTick >= 0 ? t('mode.practice') : ''}</option>
 </select>
 
-{#if !isAiAi}
+{#if !isMultiAi}
   <select id="difficulty" value={session.difficulty} onchange={onDifficulty}>
     <option value="easy">{session.localeTick >= 0 ? t('difficulty.easy') : ''}</option>
     <option value="medium">{session.localeTick >= 0 ? t('difficulty.medium') : ''}</option>
@@ -71,7 +68,7 @@
   </button>
 {/if}
 
-{#if !isAiAi}
+{#if !isMultiAi}
   <button id="undo" type="button" disabled={!session.canUndo} onclick={onUndo}>
     {session.localeTick >= 0 ? t('controls.undo') : ''}
   </button>
@@ -84,11 +81,6 @@
   {session.localeTick >= 0 ? t('controls.newGame') : ''}
 </button>
 
-<select id="lang" aria-label="Language" value={session.lang} onchange={onLang}>
-  <option value="en">{session.localeTick >= 0 ? t('lang.en') : ''}</option>
-  <option value="vi">{session.localeTick >= 0 ? t('lang.vi') : ''}</option>
-</select>
-
 <button id="ascii-toggle" type="button" onclick={() => session.toggleAscii()}>
   {session.localeTick >= 0
     ? session.asciiOpen
@@ -96,9 +88,3 @@
       : t('controls.showAscii')
     : ''}
 </button>
-
-{#if !isAiAi}
-  <button id="settings-open" type="button" onclick={() => setHashRoute('settings')}>
-    {session.localeTick >= 0 ? t('settings.open') : ''}
-  </button>
-{/if}

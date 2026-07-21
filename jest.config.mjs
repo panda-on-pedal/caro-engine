@@ -6,6 +6,9 @@ export default {
   haste: {
     retainAllFiles: false,
   },
+  globals: {
+    __APP_VERSION__: '1.0.0',
+  },
   transform: {
     '^.+\\.ts$': [
       'ts-jest',

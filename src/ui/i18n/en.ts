@@ -6,6 +6,7 @@ export const en: Messages = {
   'mode.humanAi': 'Human vs Computer',
   'mode.aiHuman': 'Computer vs Human',
   'mode.aiAi': 'Tournament',
+  'mode.practice': 'Practice',
   'matchup.human': 'Human',
   'matchup.computer': 'Computer',
   'difficulty.easy': 'Easy',
@@ -20,11 +21,38 @@ export const en: Messages = {
   'controls.newGame': 'New Game',
   'controls.showAscii': 'Show ASCII',
   'controls.hideAscii': 'Hide ASCII',
+  'nav.label': 'Site navigation',
+  'nav.instructions': 'Instructions',
+  'nav.settings': 'Settings',
+  'nav.github': 'GitHub repository',
   'settings.open': 'Settings',
   'settings.title': 'Settings',
   'settings.back': 'Back',
+  'settings.language': 'Language',
   'settings.highlightWhileThinking': 'Highlight cells while thinking',
+  'settings.experienceImprovement':
+    'Learn from Human vs Computer games (save new experience)',
+  'instructions.title': 'Instructions',
+  'instructions.rulesTitle': 'Rules',
+  'instructions.rules.place': 'Players take turns placing X and O on the board.',
+  'instructions.rules.win':
+    'Get five or more stones in a row — horizontally, vertically, or diagonally — to win.',
+  'instructions.rules.block':
+    'A line blocked by the opponent on both ends does not count. The board edge is not a block.',
+  'instructions.modesTitle': 'Modes',
+  'instructions.modes.humanAi': 'You play first as X against the computer.',
+  'instructions.modes.aiHuman': 'The computer plays first; you play as O.',
+  'instructions.modes.aiAi':
+    'Computers play each other across multiple boards. Use the Results tab for stats.',
+  'instructions.modes.practice':
+    'Same setup as Tournament, but every computer keeps searching to improve a shared experience cache on disk. Results are not recorded.',
+  'instructions.tipsTitle': 'Tips',
+  'instructions.tips.paths':
+    'On each move, try to open or extend your own paths toward five in a row.',
+  'instructions.tips.block':
+    'At the same time, block the opponent’s strongest threats before they become unstoppable.',
   'status.loading': 'Loading…',
+  'version.updateAvailable': 'Update available · v{version}',
   'status.yourTurn': 'Your turn',
   'status.aiThinking': 'Computer thinking…',
   'status.youWin': 'You win!',

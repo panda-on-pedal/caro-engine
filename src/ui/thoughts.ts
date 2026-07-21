@@ -21,6 +21,8 @@ export function formatThought(event: SearchProgressEvent): string {
       return `${event.row},${event.col} looks strongest so far…`;
     case 'deeper':
       return 'Looking a bit deeper…';
+    case 'experienceHit':
+      return `I remember this spot — ${event.row},${event.col} (depth ${event.depth})…`;
   }
 }
 
