@@ -38,9 +38,8 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
-            main.js
-            engineWorker.js
-            index.html
+            dist/ui/index.html
+            dist/ui/engineWorker.js
             dist/cli.js
 
       - name: Create release
@@ -48,9 +47,8 @@ jobs:
         with:
           draft: true
           files: |
-            main.js
-            engineWorker.js
-            index.html
+            dist/ui/index.html
+            dist/ui/engineWorker.js
             dist/cli.js
             LICENSE
             README.md

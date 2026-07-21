@@ -5,7 +5,27 @@ import {
   isProgressMessage,
   type EngineMessage,
 } from './engineProtocol.ts';
-import { CancelledError, EnginePool } from './enginePool.ts';
+import { CancelledError, EnginePool, toPlainBoard } from './enginePool.ts';
+
+describe('toPlainBoard', () => {
+  it('makes proxied boards structured-cloneable for Worker.postMessage', () => {
+    const plain = newGame().board;
+    plain[5][5] = 1;
+    const proxied = new Proxy(plain, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (typeof prop === 'string' && /^\d+$/.test(prop) && Array.isArray(value)) {
+          return new Proxy(value, {});
+        }
+        return value;
+      },
+    });
+
+    expect(() => structuredClone(proxied)).toThrow();
+    expect(() => structuredClone(toPlainBoard(proxied))).not.toThrow();
+    expect(toPlainBoard(proxied)[5][5]).toBe(1);
+  });
+});
 
 describe('handleEngineRequest progress', () => {
   it('forwards onProgress events while still returning a final result', () => {

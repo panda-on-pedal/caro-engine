@@ -79,7 +79,7 @@ async function main(): Promise<void> {
 
   try {
     await startServer({
-      assetRoot: packageRoot(),
+      assetRoot: join(packageRoot(), 'dist', 'ui'),
       dataDir: dataDir(),
       port: options.port,
     });

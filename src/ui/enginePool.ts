@@ -10,6 +10,14 @@ import {
 
 const WORKER_URL = '/engineWorker.js';
 
+/**
+ * Copy a board into plain nested arrays. Svelte `$state` boards are Proxies;
+ * `Worker.postMessage` cannot structured-clone them (DataCloneError).
+ */
+export function toPlainBoard(board: Board): Board {
+  return board.map((row) => Array.from(row));
+}
+
 export class CancelledError extends Error {
   constructor() {
     super('Engine request cancelled');
@@ -72,7 +80,7 @@ export class EnginePool {
     return new Promise((resolve, reject) => {
       const request: EngineRequest = {
         id: this.nextId,
-        board,
+        board: toPlainBoard(board),
         player,
         difficulty,
         timeBudgetMs,

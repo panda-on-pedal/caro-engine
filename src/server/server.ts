@@ -1,31 +1,31 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { extname, join } from 'node:path';
+import { extname, join, normalize, sep } from 'node:path';
 import { newGame, serializeState, type GameState } from '../engine/state.ts';
 import { isValidGameResult, type GameResult } from '../shared/results.ts';
 
 export const DEFAULT_PORT = 2026;
 
 export interface ServerOptions {
-  /** Directory that contains index.html, main.js, engineWorker.js. */
+  /** Directory that contains index.html and built UI assets. */
   assetRoot: string;
   /** Directory for state.json and results.json. */
   dataDir: string;
   port?: number;
 }
 
-const STATIC_FILES: Record<string, string> = {
-  '/': 'index.html',
-  '/index.html': 'index.html',
-  '/main.js': 'main.js',
-  '/engineWorker.js': 'engineWorker.js',
-};
-
 const CONTENT_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.map': 'application/json; charset=utf-8',
 };
 
 function isValidGameState(value: unknown): value is GameState {
@@ -52,6 +52,19 @@ async function readRequestBody(req: IncomingMessage): Promise<string> {
     chunks.push(chunk);
   }
   return Buffer.concat(chunks).toString('utf-8');
+}
+
+function resolveAssetPath(assetRoot: string, pathname: string): string | null {
+  const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
+  if (!relative || relative.includes('\0')) {
+    return null;
+  }
+  const resolved = normalize(join(assetRoot, relative));
+  const rootWithSep = assetRoot.endsWith(sep) ? assetRoot : `${assetRoot}${sep}`;
+  if (resolved !== assetRoot && !resolved.startsWith(rootWithSep)) {
+    return null;
+  }
+  return resolved;
 }
 
 /** Starts the Caro HTTP server. Resolves once listening. */
@@ -154,15 +167,15 @@ export async function startServer(options: ServerOptions): Promise<Server> {
   }
 
   async function handleStatic(pathname: string, res: ServerResponse): Promise<void> {
-    const relativePath = STATIC_FILES[pathname];
-    if (!relativePath) {
+    const filePath = resolveAssetPath(assetRoot, pathname);
+    if (!filePath) {
       sendText(res, 404, 'Not found');
       return;
     }
 
     try {
-      const content = await readFile(join(assetRoot, relativePath));
-      const contentType = CONTENT_TYPES[extname(relativePath)] ?? 'application/octet-stream';
+      const content = await readFile(filePath);
+      const contentType = CONTENT_TYPES[extname(filePath)] ?? 'application/octet-stream';
       res.writeHead(200, { 'Content-Type': contentType });
       res.end(content);
     } catch {
