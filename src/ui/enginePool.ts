@@ -1,8 +1,12 @@
 import type { Board, Player } from '../engine/board.ts';
 import type { Difficulty } from '../engine/engine.ts';
-import type { SearchResult } from '../engine/search.ts';
+import type { SearchProgressEvent, SearchResult } from '../engine/search.ts';
 import { logger } from '../utils/logger.ts';
-import type { EngineRequest, EngineResponse } from './engineProtocol.ts';
+import {
+  isProgressMessage,
+  type EngineMessage,
+  type EngineRequest,
+} from './engineProtocol.ts';
 
 const WORKER_URL = '/engineWorker.js';
 
@@ -13,15 +17,21 @@ export class CancelledError extends Error {
   }
 }
 
+export interface RequestMoveOptions {
+  onProgress?: (event: SearchProgressEvent) => void;
+}
+
 interface PendingEntry {
   resolve: (result: SearchResult) => void;
   reject: (error: Error) => void;
+  onProgress?: (event: SearchProgressEvent) => void;
 }
 
 interface QueuedJob {
   request: EngineRequest;
   resolve: (result: SearchResult) => void;
   reject: (error: Error) => void;
+  onProgress?: (event: SearchProgressEvent) => void;
 }
 
 interface Slot {
@@ -41,18 +51,39 @@ export class EnginePool {
   private nextId = 0;
 
   constructor(size: number) {
-    this.slots = Array.from({ length: size }, () => ({ worker: null, busy: false, currentId: null }));
+    this.slots = Array.from({ length: size }, () => ({
+      worker: null,
+      busy: false,
+      currentId: null,
+    }));
   }
 
   get size(): number {
     return this.slots.length;
   }
 
-  requestMove(board: Board, player: Player, difficulty: Difficulty, timeBudgetMs?: number): Promise<SearchResult> {
+  requestMove(
+    board: Board,
+    player: Player,
+    difficulty: Difficulty,
+    timeBudgetMs?: number,
+    options?: RequestMoveOptions,
+  ): Promise<SearchResult> {
     return new Promise((resolve, reject) => {
-      const request: EngineRequest = { id: this.nextId, board, player, difficulty, timeBudgetMs };
+      const request: EngineRequest = {
+        id: this.nextId,
+        board,
+        player,
+        difficulty,
+        timeBudgetMs,
+      };
       this.nextId += 1;
-      const job: QueuedJob = { request, resolve, reject };
+      const job: QueuedJob = {
+        request,
+        resolve,
+        reject,
+        onProgress: options?.onProgress,
+      };
       const idleSlot = this.slots.find((slot) => !slot.busy);
       if (idleSlot) {
         this.dispatch(idleSlot, job);
@@ -67,8 +98,8 @@ export class EnginePool {
       return slot.worker;
     }
     const worker = new Worker(WORKER_URL);
-    worker.onmessage = (event: MessageEvent<EngineResponse>): void => {
-      this.handleResponse(slot, event.data);
+    worker.onmessage = (event: MessageEvent<EngineMessage>): void => {
+      this.handleMessage(slot, event.data);
     };
     worker.onerror = (event: ErrorEvent): void => {
       logger.error('Engine worker error:', event.message);
@@ -90,20 +121,30 @@ export class EnginePool {
   private dispatch(slot: Slot, job: QueuedJob): void {
     slot.busy = true;
     slot.currentId = job.request.id;
-    this.pending.set(job.request.id, { resolve: job.resolve, reject: job.reject });
+    this.pending.set(job.request.id, {
+      resolve: job.resolve,
+      reject: job.reject,
+      onProgress: job.onProgress,
+    });
     this.ensureWorker(slot).postMessage(job.request);
   }
 
-  private handleResponse(slot: Slot, response: EngineResponse): void {
-    const entry = this.pending.get(response.id);
-    this.pending.delete(response.id);
+  private handleMessage(slot: Slot, message: EngineMessage): void {
+    if (isProgressMessage(message)) {
+      const entry = this.pending.get(message.id);
+      entry?.onProgress?.(message.event);
+      return;
+    }
+
+    const entry = this.pending.get(message.id);
+    this.pending.delete(message.id);
     slot.busy = false;
     slot.currentId = null;
     if (entry) {
-      if (response.ok) {
-        entry.resolve(response.result);
+      if (message.ok) {
+        entry.resolve(message.result);
       } else {
-        entry.reject(new Error(response.error));
+        entry.reject(new Error(message.error));
       }
     }
     this.pump();

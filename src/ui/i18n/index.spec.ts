@@ -48,4 +48,12 @@ describe('t', () => {
       'Máy chủ không phản hồi. Thay đổi có thể chưa được lưu.',
     );
   });
+
+  it('exposes settings chrome in English and Vietnamese', () => {
+    expect(t('settings.open')).toBe('Settings');
+    expect(t('settings.highlightWhileThinking')).toBe('Highlight cells while thinking');
+    setLocale('vi');
+    expect(t('settings.back')).toBe('Quay lại');
+    expect(t('settings.title')).toBe('Cài đặt');
+  });
 });

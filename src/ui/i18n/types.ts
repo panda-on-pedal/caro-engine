@@ -20,6 +20,10 @@ export type Messages = {
   'controls.newGame': string;
   'controls.showAscii': string;
   'controls.hideAscii': string;
+  'settings.open': string;
+  'settings.title': string;
+  'settings.back': string;
+  'settings.highlightWhileThinking': string;
   'status.loading': string;
   'status.yourTurn': string;
   'status.aiThinking': string;

@@ -9,6 +9,9 @@ import { CancelledError, EnginePool } from './enginePool.ts';
 import { fetchWithRetry } from './apiClient.ts';
 import { applyStaticTranslations, isLocale, setLocale, t } from './i18n/index.ts';
 import type { MessageKey } from './i18n/index.ts';
+import { loadSettings, saveSettings, type CaroSettings } from './prefs.ts';
+import { formatThought } from './thoughts.ts';
+import type { SearchProgressEvent } from '../engine/search.ts';
 import {
   DEFAULT_TOURNAMENT_BOARD_COUNT,
   maxTournamentBoards,
@@ -36,6 +39,12 @@ const statusEl = document.getElementById('status') as HTMLParagraphElement;
 const statusDetailEl = document.getElementById('status-detail') as HTMLParagraphElement;
 const tabStripEl = document.getElementById('tab-strip') as HTMLDivElement;
 const boardColumnEl = document.getElementById('board-column') as HTMLDivElement;
+const settingsPanelEl = document.getElementById('settings-panel') as HTMLDivElement;
+const settingsOpenButton = document.getElementById('settings-open') as HTMLButtonElement;
+const settingsBackButton = document.getElementById('settings-back') as HTMLButtonElement;
+const highlightThinkingInput = document.getElementById(
+  'pref-highlight-thinking',
+) as HTMLInputElement;
 const boardEl = document.getElementById('board') as HTMLDivElement;
 const matchupP1El = document.getElementById('matchup-p1') as HTMLSpanElement;
 const matchupP2El = document.getElementById('matchup-p2') as HTMLSpanElement;
@@ -199,6 +208,13 @@ function resizePool(targetSize: number): void {
 let serverNotice: { key: MessageKey; params?: Record<string, string | number>; error?: boolean } | null =
   null;
 
+/** Full English thought log for the latest AI turn (human modes). Kept after
+ * the move commits so it can be read; cleared when the next search starts. */
+let thoughtLines: string[] = [];
+let thinkingCell: { row: number; col: number } | null = null;
+let settingsOpen = false;
+let settings: CaroSettings = loadSettings();
+
 function setServerRetryNotice(attempt: number, maxAttempts: number): void {
   serverNotice = {
     key: 'status.serverRetry',
@@ -217,20 +233,91 @@ function clearServerNotice(): void {
   updateStatusDetail();
 }
 
+function clearThinkingHighlight(): void {
+  thinkingCell = null;
+  updateThinkingHighlight();
+}
+
+function clearThoughtFeed(): void {
+  thoughtLines = [];
+  clearThinkingHighlight();
+  updateStatusDetail();
+}
+
+function appendThought(event: SearchProgressEvent): void {
+  thoughtLines.push(formatThought(event));
+  if (
+    settings.highlightWhileThinking &&
+    (event.type === 'examining' ||
+      event.type === 'insight' ||
+      event.type === 'bestSoFar')
+  ) {
+    thinkingCell = { row: event.row, col: event.col };
+  }
+  updateStatusDetail();
+  updateThinkingHighlight();
+  statusDetailEl.scrollTop = statusDetailEl.scrollHeight;
+}
+
 function updateStatusDetail(): void {
-  if (!serverNotice) {
-    statusDetailEl.hidden = true;
-    statusDetailEl.textContent = '';
+  if (serverNotice) {
+    statusDetailEl.hidden = false;
+    statusDetailEl.textContent = t(serverNotice.key, serverNotice.params);
+    if (serverNotice.error) {
+      statusDetailEl.dataset.severity = 'error';
+    } else {
+      delete statusDetailEl.dataset.severity;
+    }
+    return;
+  }
+  if (thoughtLines.length > 0) {
+    statusDetailEl.hidden = false;
+    statusDetailEl.textContent = thoughtLines.join('\n');
     delete statusDetailEl.dataset.severity;
     return;
   }
-  statusDetailEl.hidden = false;
-  statusDetailEl.textContent = t(serverNotice.key, serverNotice.params);
-  if (serverNotice.error) {
-    statusDetailEl.dataset.severity = 'error';
-  } else {
-    delete statusDetailEl.dataset.severity;
+  statusDetailEl.hidden = true;
+  statusDetailEl.textContent = '';
+  delete statusDetailEl.dataset.severity;
+}
+
+function updateThinkingHighlight(): void {
+  const cells = boardEl.children;
+  for (let i = 0; i < cells.length; i += 1) {
+    const cell = cells[i] as HTMLButtonElement;
+    const row = Number(cell.dataset.row);
+    const col = Number(cell.dataset.col);
+    if (
+      thinkingCell &&
+      settings.highlightWhileThinking &&
+      thinkingCell.row === row &&
+      thinkingCell.col === col
+    ) {
+      cell.dataset.thinking = 'true';
+    } else {
+      delete cell.dataset.thinking;
+    }
   }
+}
+
+function openSettings(): void {
+  settingsOpen = true;
+  updateSettingsVisibility();
+}
+
+function closeSettings(): void {
+  settingsOpen = false;
+  updateSettingsVisibility();
+}
+
+function updateSettingsVisibility(): void {
+  const showingResults = mode === 'ai-ai' && viewingResults;
+  settingsPanelEl.hidden = !settingsOpen || showingResults;
+  if (settingsOpen && !showingResults) {
+    boardColumnEl.hidden = true;
+  }
+  settingsOpenButton.hidden = mode === 'ai-ai';
+  highlightThinkingInput.checked = settings.highlightWhileThinking;
 }
 
 function apiRetryHandler(attempt: number, maxAttempts: number): void {
@@ -439,12 +526,20 @@ function updateHistoryButtons(): void {
 
 function render(): void {
   const showingResults = mode === 'ai-ai' && viewingResults;
-  boardColumnEl.hidden = showingResults;
+  updateSettingsVisibility();
+  if (!settingsOpen || showingResults) {
+    boardColumnEl.hidden = showingResults;
+  }
   controlsEl.hidden = showingResults;
   statsPanelEl.hidden = !showingResults;
   if (showingResults) {
     asciiPanelEl.hidden = true;
     asciiToggleButton.textContent = t('controls.showAscii');
+    updateHistoryButtons();
+    return;
+  }
+
+  if (settingsOpen) {
     updateHistoryButtons();
     return;
   }
@@ -493,6 +588,7 @@ function render(): void {
       }
     }
   }
+  updateThinkingHighlight();
   updateHistoryButtons();
   asciiTextEl.value = boardToAscii(current.board);
 }
@@ -585,6 +681,7 @@ async function runAiMove(): Promise<void> {
   }
   const myGeneration = generation;
   busy = true;
+  clearThoughtFeed();
   render();
   await delay(AI_THINK_DELAY_MS);
   if (myGeneration !== generation) {
@@ -593,8 +690,18 @@ async function runAiMove(): Promise<void> {
   const player = state.nextPlayer;
   let move: Move;
   try {
-    move = (await pool.requestMove(state.board, player, currentDifficulty())).move;
+    move = (
+      await pool.requestMove(state.board, player, currentDifficulty(), undefined, {
+        onProgress: (event) => {
+          if (myGeneration !== generation) {
+            return;
+          }
+          appendThought(event);
+        },
+      })
+    ).move;
   } catch (error) {
+    clearThoughtFeed();
     if (error instanceof CancelledError || myGeneration !== generation) {
       return;
     }
@@ -603,9 +710,11 @@ async function runAiMove(): Promise<void> {
     throw error;
   }
   if (myGeneration !== generation) {
+    clearThoughtFeed();
     return;
   }
   busy = false;
+  clearThinkingHighlight();
   await commitAndSave(applyMove(state, move, player), { move, player });
 }
 
@@ -935,6 +1044,11 @@ function updateModeUI(): void {
   boardCountEl.hidden = !isAiAi;
   pauseButton.hidden = !isAiAi;
   pauseButton.textContent = autoplayPaused ? t('controls.resume') : t('controls.pause');
+  settingsOpenButton.hidden = isAiAi;
+  if (isAiAi) {
+    settingsOpen = false;
+    settingsPanelEl.hidden = true;
+  }
 }
 
 function refreshCellTitles(): void {
@@ -971,8 +1085,10 @@ function applyLocaleToUi(): void {
 async function resetForMode(newMode: GameMode): Promise<void> {
   generation += 1;
   pool.cancelAll();
+  clearThoughtFeed();
   mode = newMode;
   autoplayPaused = false;
+  settingsOpen = false;
 
   if (newMode === 'ai-ai') {
     resizePool(desiredPoolSize(boardCount));
@@ -1152,6 +1268,28 @@ async function init(): Promise<void> {
     asciiToggleButton.textContent = asciiPanelEl.hidden
       ? t('controls.showAscii')
       : t('controls.hideAscii');
+  });
+
+  settingsOpenButton.addEventListener('click', () => {
+    openSettings();
+    render();
+  });
+
+  settingsBackButton.addEventListener('click', () => {
+    closeSettings();
+    render();
+  });
+
+  highlightThinkingInput.addEventListener('change', () => {
+    settings = {
+      ...settings,
+      highlightWhileThinking: highlightThinkingInput.checked,
+    };
+    saveSettings(settings);
+    if (!settings.highlightWhileThinking) {
+      thinkingCell = null;
+    }
+    updateThinkingHighlight();
   });
 
   if (url.mode === 'ai-ai') {

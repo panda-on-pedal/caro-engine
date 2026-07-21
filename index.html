@@ -110,9 +110,12 @@
 
     #status-detail {
       margin: -4px 0 0;
+      max-height: 9.5em;
+      overflow-y: auto;
       font-size: 0.85rem;
       line-height: 1.35;
       color: var(--muted);
+      white-space: pre-line;
     }
 
     #status-detail[data-severity="error"] {
@@ -305,6 +308,14 @@
       background-color: rgba(246, 214, 90, 0.9);
     }
 
+    .cell[data-thinking="true"] {
+      background-color: rgba(47, 93, 156, 0.12);
+    }
+
+    .cell[data-thinking="true"] .mark:not([data-last-move]):not([data-winning-cell]) {
+      box-shadow: inset 0 0 0 2px rgba(47, 93, 156, 0.35);
+    }
+
     .cell:focus {
       outline: none;
     }
@@ -335,7 +346,9 @@
     #undo,
     #redo,
     #pause,
-    #ascii-toggle {
+    #ascii-toggle,
+    #settings-open,
+    #settings-back {
       padding: 10px 20px;
       font-family: inherit;
       font-size: 1rem;
@@ -345,6 +358,40 @@
       border-radius: 3px 3px 0 0;
       box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.1);
       cursor: pointer;
+    }
+
+    #settings-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 14px;
+      min-width: min(320px, 100%);
+      margin-top: var(--cell-size, 28px);
+      margin-left: var(--cell-size, 28px);
+    }
+
+    #settings-panel[hidden] {
+      display: none;
+    }
+
+    #settings-panel h2 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: var(--graphite);
+    }
+
+    .settings-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 0.95rem;
+      color: var(--graphite);
+      cursor: pointer;
+    }
+
+    .settings-row input {
+      margin-top: 3px;
     }
 
     #new-game:hover,
@@ -502,6 +549,14 @@
           <span id="matchup-p2" class="matchup-side" data-player="2">Computer (O)</span>
         </p>
       </div>
+      <div id="settings-panel" hidden>
+        <h2 data-i18n="settings.title">Settings</h2>
+        <label class="settings-row">
+          <input id="pref-highlight-thinking" type="checkbox" checked />
+          <span data-i18n="settings.highlightWhileThinking">Highlight cells while thinking</span>
+        </label>
+        <button id="settings-back" type="button" data-i18n="settings.back">Back</button>
+      </div>
       <div id="stats-panel" hidden></div>
       <div id="controls" class="controls">
         <select id="game-mode">
@@ -525,6 +580,7 @@
           <option value="vi" data-i18n="lang.vi">Tiếng Việt</option>
         </select>
         <button id="ascii-toggle" type="button" data-i18n="controls.showAscii">Show ASCII</button>
+        <button id="settings-open" type="button" data-i18n="settings.open">Settings</button>
         <p id="status" data-i18n="status.loading">Loading&hellip;</p>
         <p id="status-detail" hidden></p>
       </div>

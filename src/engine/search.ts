@@ -6,17 +6,25 @@ import {
   ALL_FORK_PATTERN_NAMES,
   findCandidateMoves,
   narrowCandidates,
+  recognizedForkPoints,
   type ForkPatternName,
   type NarrowConfig,
 } from "./narrow.ts";
 import { PatternStore } from "./patternStore.ts";
 import type { DecayConfig } from "./randomize.ts";
 import {
+  ProgressReporter,
+  type InsightKind,
+  type SearchProgressEvent,
+} from "./searchProgress.ts";
+import {
   collectDefenceMoves,
   findForcedWin,
 } from "./threatSearch.ts";
 import { logger } from "../utils/logger.ts";
 import type { Move } from "./state.ts";
+
+export type { InsightKind, SearchProgressEvent } from "./searchProgress.ts";
 
 export const DEFAULT_DECAY_CONFIG: DecayConfig = {
   startDecay: 0.8,
@@ -73,6 +81,53 @@ function evaluateStore(store: PatternStore, player: Player): number {
   );
 }
 
+function moveKey(move: Move): string {
+  return `${move.row},${move.col}`;
+}
+
+/** Cheap root-only insight from patterns / forced-block set. */
+function classifyRootInsight(params: {
+  store: PatternStore;
+  player: Player;
+  move: Move;
+  isWin: boolean;
+  blockKeys: ReadonlySet<string>;
+  forkKeys: ReadonlySet<string>;
+}): InsightKind | null {
+  if (params.isWin) {
+    return "win";
+  }
+  const key = moveKey(params.move);
+  const involving = params.store
+    .patterns(params.player)
+    .filter((pattern) =>
+      pattern.cells.some(
+        (cell) => cell.row === params.move.row && cell.col === params.move.col,
+      ),
+    );
+  if (involving.some((pattern) => pattern.type === "open-four")) {
+    return "open-four";
+  }
+  if (involving.some((pattern) => pattern.type === "four")) {
+    return "four";
+  }
+  if (params.forkKeys.has(key)) {
+    return "fork";
+  }
+  if (involving.some((pattern) => pattern.type === "open-three")) {
+    return "open-three";
+  }
+  if (params.blockKeys.has(key)) {
+    return "block";
+  }
+  return null;
+}
+
+interface RootProgress {
+  report: ProgressReporter;
+  blockKeys: ReadonlySet<string>;
+}
+
 function negamax(
   store: PatternStore,
   player: Player,
@@ -87,6 +142,7 @@ function negamax(
   rootJitter?: (score: number) => number,
   path: Move[] = [],
   rootPlayer: Player = player,
+  rootProgress?: RootProgress,
 ): SearchNode {
   nodeCounter.count += 1;
   logger.log("[search] node visited", {
@@ -125,6 +181,16 @@ function negamax(
     });
   }
 
+  const forkKeys =
+    isRootFrame && rootProgress
+      ? new Set(
+          recognizedForkPoints(
+            store.patterns(player),
+            narrowConfig.recognizedForkPatterns,
+          ).map((forkPoint) => moveKey(forkPoint.move)),
+        )
+      : null;
+
   let examinedCount = 0;
   let rootIncomplete = false;
   for (const move of moves) {
@@ -143,8 +209,35 @@ function negamax(
       break;
     }
 
+    if (isRootFrame && rootProgress) {
+      rootProgress.report.emit({
+        type: "examining",
+        row: move.row,
+        col: move.col,
+      });
+    }
+
     store.place(move, player);
     const isWin = checkCaroWin(store.board, move.row, move.col, player);
+
+    if (isRootFrame && rootProgress && forkKeys) {
+      const kind = classifyRootInsight({
+        store,
+        player,
+        move,
+        isWin,
+        blockKeys: rootProgress.blockKeys,
+        forkKeys,
+      });
+      if (kind) {
+        rootProgress.report.emit({
+          type: "insight",
+          row: move.row,
+          col: move.col,
+          kind,
+        });
+      }
+    }
 
     const node: SearchNode = isWin
       ? { score: WIN_SCORE + depth, principalVariation: [] }
@@ -189,6 +282,13 @@ function negamax(
         score: node.score,
         principalVariation: [move, ...node.principalVariation],
       };
+      if (isRootFrame && rootProgress) {
+        rootProgress.report.emit({
+          type: "bestSoFar",
+          row: move.row,
+          col: move.col,
+        });
+      }
     }
     currentAlpha = Math.max(currentAlpha, node.score);
     if (currentAlpha >= beta) {
@@ -294,6 +394,10 @@ export interface SearchConfig {
   threatSearch?: boolean;
   /** Max plies for threat-space search (attacker + defender). */
   threatMaxPly?: number;
+  /** Optional structured progress sink (UI narration). */
+  onProgress?: (event: SearchProgressEvent) => void;
+  /** Root moves that are forced blocks — used for insight.kind === "block". */
+  progressBlockKeys?: ReadonlySet<string>;
 }
 
 /**
@@ -340,6 +444,12 @@ export const negamaxStrategy: MoveSelectionStrategy = (
       ? (score: number) => jitteredScore(score, jitterFraction, rng)
       : undefined;
 
+  const report = new ProgressReporter(config.onProgress);
+  const rootProgress: RootProgress = {
+    report,
+    blockKeys: config.progressBlockKeys ?? new Set(),
+  };
+
   let bestNode: SearchNode | null = null;
   let depthReached = 0;
 
@@ -347,6 +457,7 @@ export const negamaxStrategy: MoveSelectionStrategy = (
     if (deadline !== null && Date.now() > deadline) {
       break;
     }
+    report.emit({ type: "deeper", depth });
     const result = negamax(
       store,
       player,
@@ -359,6 +470,9 @@ export const negamaxStrategy: MoveSelectionStrategy = (
       narrowConfig,
       candidates,
       rootJitter,
+      [],
+      player,
+      rootProgress,
     );
     if (result.principalVariation.length === 0) {
       break;
@@ -446,6 +560,9 @@ export function search(
   config: SearchConfig,
   strategy?: MoveSelectionStrategy,
 ): SearchResult {
+  const report = new ProgressReporter(config.onProgress);
+  report.emit({ type: "phase", phase: "scanning" });
+
   const store = config.patternStore ?? PatternStore.fromBoard(board);
   const baseNarrow = resolveNarrowConfig(config);
   const moveCount = countStones(store.board);
@@ -474,6 +591,7 @@ export function search(
       logger.log("[search] TSS: own forced win", {
         line: ownForce.principalVariation.map((m) => `${m.row},${m.col}`),
       });
+      report.emit({ type: "phase", phase: "quiet" });
       return {
         move: ownForce.principalVariation[0],
         score: WIN_SCORE,
@@ -509,6 +627,7 @@ export function search(
 
   if (narrowed.moves.length === 0) {
     const fallbackMoves = findCandidateMoves(store.board);
+    report.emit({ type: "phase", phase: "quiet" });
     return {
       move: fallbackMoves[0],
       score: 0,
@@ -518,13 +637,32 @@ export function search(
     };
   }
 
-  const searchConfig: SearchConfig = { ...config, patternStore: store };
+  const isQuietPath =
+    narrowed.moves.length === 1 || narrowed.source === "quiet";
+  report.emit({
+    type: "candidates",
+    count: narrowed.moves.length,
+    source: narrowed.source,
+  });
+  report.emit({
+    type: "phase",
+    phase: isQuietPath ? "quiet" : "searching",
+  });
+
+  const progressBlockKeys =
+    narrowed.source === "forced"
+      ? new Set(narrowed.moves.map(moveKey))
+      : undefined;
+
+  const searchConfig: SearchConfig = {
+    ...config,
+    patternStore: store,
+    progressBlockKeys,
+  };
 
   const resolvedStrategy =
     strategy ??
-    (narrowed.moves.length === 1 || narrowed.source === "quiet"
-      ? patternOnlyStrategy
-      : negamaxStrategy);
+    (isQuietPath ? patternOnlyStrategy : negamaxStrategy);
 
   logger.log("[search] root candidates", {
     player,
