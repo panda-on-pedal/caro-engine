@@ -6,6 +6,8 @@ export type Messages = {
   'mode.humanAi': string;
   'mode.aiHuman': string;
   'mode.aiAi': string;
+  'matchup.human': string;
+  'matchup.computer': string;
   'difficulty.easy': string;
   'difficulty.medium': string;
   'difficulty.hard': string;
@@ -27,6 +29,8 @@ export type Messages = {
   'status.paused': string;
   'status.playerAiWins': string;
   'status.playerAiThinking': string;
+  'status.serverRetry': string;
+  'status.serverUnavailable': string;
   'tabs.results': string;
   'tabs.board': string;
   'stats.pairing': string;

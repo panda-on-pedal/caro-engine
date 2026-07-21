@@ -64,6 +64,9 @@ npm install
 
 ```bash
 npm start
+
+# Custom port, no browser
+npm start -- --port 3000 --no-open
 ```
 
 This builds the app and starts the same local server (port 2026, opens the browser).

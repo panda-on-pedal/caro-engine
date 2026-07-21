@@ -262,5 +262,23 @@ X's moves:
  15  .  .  .  .  .  .  .  .  .  .  .  .
 ```
 
+# 19
+O's moves:
+- 14,9 - Create a four and open-two
+
+```
+     7  8  9 10 11 12
+  6  .  .  .  .  .  .
+  7  .  .  .  X  .  .
+  8  X  X  O  .  .  .
+  9  .  O  X  .  X  .
+ 10  .  .  O  .  .  .
+ 11  .  X  O  .  .  .
+ 12  .  .  .  .  .  .
+ 13  .  .  O  .  .  .
+ 14  .  O  .  .  .  .
+ 15  .  .  .  .  .  .
+ ```
+
 So, with above scenarios:
 - If cases with only one candidate: Just play it, no search needed.

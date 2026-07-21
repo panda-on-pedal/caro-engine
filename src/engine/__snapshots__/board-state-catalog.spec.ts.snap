@@ -493,3 +493,36 @@ exports[`catalog #18 — X to move: 13,11 is the fork that creates two open-thre
   "source": "tactical",
 }
 `;
+
+exports[`catalog #19 — O's 14,9 creates a four and open-two narrowCandidates ranked output 1`] = `
+{
+  "moves": [
+    {
+      "col": 9,
+      "row": 14,
+      "score": 460,
+    },
+    {
+      "col": 9,
+      "row": 12,
+      "score": 450,
+    },
+    {
+      "col": 10,
+      "row": 12,
+      "score": 250,
+    },
+    {
+      "col": 11,
+      "row": 11,
+      "score": 242,
+    },
+    {
+      "col": 7,
+      "row": 15,
+      "score": 240,
+    },
+  ],
+  "source": "tactical",
+}
+`;

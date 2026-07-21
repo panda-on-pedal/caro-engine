@@ -624,3 +624,23 @@ describe("catalog #18 — X to move: 13,11 is the fork that creates two open-thr
     expect(keys).toContain("13,11");
   });
 });
+
+describe("catalog #19 — O's 14,9 creates a four and open-two", () => {
+  const board = parseBoard(`
+       7  8  9 10 11 12
+    6  .  .  .  .  .  .
+    7  .  .  .  X  .  .
+    8  X  X  O  .  .  .
+    9  .  O  X  .  X  .
+   10  .  .  O  .  .  .
+   11  .  X  O  .  .  .
+   12  .  .  .  .  .  .
+   13  .  .  O  .  .  .
+   14  .  O  .  .  .  .
+   15  .  .  .  .  .  .
+  `);
+
+  it("narrowCandidates ranked output", () => {
+    expect(snapshotNarrow(board, 2, 12)).toMatchSnapshot();
+  });
+});

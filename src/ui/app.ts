@@ -6,7 +6,9 @@ import type { GameResult } from '../shared/results.ts';
 import { aggregateResults, firstPlayerWinPct, playerLeaderboard } from '../shared/results.ts';
 import { logger } from '../utils/logger.ts';
 import { CancelledError, EnginePool } from './enginePool.ts';
+import { fetchWithRetry } from './apiClient.ts';
 import { applyStaticTranslations, isLocale, setLocale, t } from './i18n/index.ts';
+import type { MessageKey } from './i18n/index.ts';
 import {
   DEFAULT_TOURNAMENT_BOARD_COUNT,
   maxTournamentBoards,
@@ -31,9 +33,12 @@ const CELL_SIZE_PX = 28;
 const GAME_END_PAUSE_MS = 2000;
 
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
+const statusDetailEl = document.getElementById('status-detail') as HTMLParagraphElement;
 const tabStripEl = document.getElementById('tab-strip') as HTMLDivElement;
-const boardGridEl = document.getElementById('board-grid') as HTMLDivElement;
+const boardColumnEl = document.getElementById('board-column') as HTMLDivElement;
 const boardEl = document.getElementById('board') as HTMLDivElement;
+const matchupP1El = document.getElementById('matchup-p1') as HTMLSpanElement;
+const matchupP2El = document.getElementById('matchup-p2') as HTMLSpanElement;
 const colHeadersEl = document.getElementById('col-headers') as HTMLDivElement;
 const rowHeadersEl = document.getElementById('row-headers') as HTMLDivElement;
 const statsPanelEl = document.getElementById('stats-panel') as HTMLDivElement;
@@ -190,17 +195,70 @@ function resizePool(targetSize: number): void {
   pool = new EnginePool(targetSize);
 }
 
+/** Shown under `#status` while retrying or after the server stays unreachable. */
+let serverNotice: { key: MessageKey; params?: Record<string, string | number>; error?: boolean } | null =
+  null;
+
+function setServerRetryNotice(attempt: number, maxAttempts: number): void {
+  serverNotice = {
+    key: 'status.serverRetry',
+    params: { attempt, max: maxAttempts },
+  };
+  updateStatusDetail();
+}
+
+function setServerUnavailableNotice(): void {
+  serverNotice = { key: 'status.serverUnavailable', error: true };
+  updateStatusDetail();
+}
+
+function clearServerNotice(): void {
+  serverNotice = null;
+  updateStatusDetail();
+}
+
+function updateStatusDetail(): void {
+  if (!serverNotice) {
+    statusDetailEl.hidden = true;
+    statusDetailEl.textContent = '';
+    delete statusDetailEl.dataset.severity;
+    return;
+  }
+  statusDetailEl.hidden = false;
+  statusDetailEl.textContent = t(serverNotice.key, serverNotice.params);
+  if (serverNotice.error) {
+    statusDetailEl.dataset.severity = 'error';
+  } else {
+    delete statusDetailEl.dataset.severity;
+  }
+}
+
+function apiRetryHandler(attempt: number, maxAttempts: number): void {
+  setServerRetryNotice(attempt, maxAttempts);
+}
+
 async function fetchState(): Promise<GameState> {
-  const response = await fetch(STATE_URL);
+  const response = await fetchWithRetry(STATE_URL, undefined, { onRetry: apiRetryHandler });
+  clearServerNotice();
   return deserializeState(await response.text());
 }
 
 async function saveState(next: GameState): Promise<void> {
-  await fetch(STATE_URL, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: serializeState(next),
-  });
+  try {
+    await fetchWithRetry(
+      STATE_URL,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: serializeState(next),
+      },
+      { onRetry: apiRetryHandler },
+    );
+    clearServerNotice();
+  } catch (error) {
+    setServerUnavailableNotice();
+    throw error;
+  }
 }
 
 /** Small deterministic per-cell tilt so ink marks read as hand-drawn rather than printed. */
@@ -316,6 +374,44 @@ function statusText(current: GameState): string {
   return autoplayPaused ? t('status.paused') : t('status.playerAiThinking', { player: current.nextPlayer });
 }
 
+function difficultyLabel(difficulty: Difficulty): string {
+  if (difficulty === 'easy') {
+    return t('difficulty.easy');
+  }
+  if (difficulty === 'medium') {
+    return t('difficulty.medium');
+  }
+  if (difficulty === 'hard') {
+    return t('difficulty.hard');
+  }
+  return t('difficulty.expert');
+}
+
+/** Side labels for the under-board matchup line (names only; marks added in
+ * `updateMatchup`). Tournament mode uses the active board's pairing. */
+function matchupSideLabels(): { p1: string; p2: string } {
+  if (mode === 'human-ai') {
+    return { p1: t('matchup.human'), p2: t('matchup.computer') };
+  }
+  if (mode === 'ai-human') {
+    return { p1: t('matchup.computer'), p2: t('matchup.human') };
+  }
+  const session = sessions[activeIndex];
+  if (!session) {
+    return { p1: t('matchup.computer'), p2: t('matchup.computer') };
+  }
+  return {
+    p1: difficultyLabel(session.p1),
+    p2: difficultyLabel(session.p2),
+  };
+}
+
+function updateMatchup(): void {
+  const sides = matchupSideLabels();
+  matchupP1El.textContent = `${sides.p1} (X)`;
+  matchupP2El.textContent = `${sides.p2} (O)`;
+}
+
 /** The board currently shown in the DOM: the active tournament session in
  * ai-ai, otherwise the single global `state`. */
 function activeGameState(): GameState {
@@ -343,7 +439,7 @@ function updateHistoryButtons(): void {
 
 function render(): void {
   const showingResults = mode === 'ai-ai' && viewingResults;
-  boardGridEl.hidden = showingResults;
+  boardColumnEl.hidden = showingResults;
   controlsEl.hidden = showingResults;
   statsPanelEl.hidden = !showingResults;
   if (showingResults) {
@@ -356,6 +452,7 @@ function render(): void {
   const current = activeGameState();
   const isBusy = activeBusy();
 
+  updateMatchup();
   statusEl.textContent = statusText(current);
   if (current.winner === null) {
     delete statusEl.dataset.done;
@@ -470,7 +567,11 @@ async function commitAndSave(
   commitState(next, placed);
   render();
   logPatterns();
-  await saveState(persistedState());
+  try {
+    await saveState(persistedState());
+  } catch (error) {
+    logger.error(error);
+  }
 }
 
 /** Runs one AI move for whichever player is currently on the clock. Aborts
@@ -554,32 +655,42 @@ async function postResult(session: BoardSession, winner: 1 | 2 | 'draw'): Promis
     endedAt: new Date().toISOString(),
   };
   try {
-    await fetch(RESULTS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(result),
-    });
+    await fetchWithRetry(
+      RESULTS_URL,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(result),
+      },
+      { onRetry: apiRetryHandler },
+    );
+    clearServerNotice();
   } catch (error) {
     logger.error(error);
+    setServerUnavailableNotice();
   }
   await refreshStats();
 }
 
 async function refreshStats(): Promise<void> {
   try {
-    const response = await fetch(RESULTS_URL);
+    const response = await fetchWithRetry(RESULTS_URL, undefined, { onRetry: apiRetryHandler });
     gameResults = (await response.json()) as GameResult[];
+    clearServerNotice();
   } catch (error) {
     logger.error(error);
+    setServerUnavailableNotice();
   }
   renderStats();
 }
 
 async function clearResults(): Promise<void> {
   try {
-    await fetch(RESULTS_URL, { method: 'DELETE' });
+    await fetchWithRetry(RESULTS_URL, { method: 'DELETE' }, { onRetry: apiRetryHandler });
+    clearServerNotice();
   } catch (error) {
     logger.error(error);
+    setServerUnavailableNotice();
   }
   gameResults = [];
   renderStats();
@@ -846,6 +957,7 @@ function applyLocaleToUi(): void {
     : t('controls.hideAscii');
   updateModeUI();
   refreshCellTitles();
+  updateStatusDetail();
   render();
   renderTabs();
   renderStats();
@@ -885,7 +997,11 @@ async function resetForMode(newMode: GameMode): Promise<void> {
   updateModeUI();
   render();
   renderTabs();
-  await saveState(persistedState());
+  try {
+    await saveState(persistedState());
+  } catch (error) {
+    logger.error(error);
+  }
   await advanceIfAiTurn();
 }
 
@@ -928,7 +1044,11 @@ async function handleUndo(): Promise<void> {
   stepHistory(past, future, past.length >= 2 ? 2 : 1);
   render();
   logPatterns();
-  await saveState(persistedState());
+  try {
+    await saveState(persistedState());
+  } catch (error) {
+    logger.error(error);
+  }
 }
 
 async function handleRedo(): Promise<void> {
@@ -938,7 +1058,11 @@ async function handleRedo(): Promise<void> {
   stepHistory(future, past, future.length >= 2 ? 2 : 1);
   render();
   logPatterns();
-  await saveState(persistedState());
+  try {
+    await saveState(persistedState());
+  } catch (error) {
+    logger.error(error);
+  }
 }
 
 async function init(): Promise<void> {
@@ -1048,6 +1172,7 @@ async function init(): Promise<void> {
       future = [];
     }
   } catch {
+    setServerUnavailableNotice();
     state = newGame();
     past = [];
     future = [];
