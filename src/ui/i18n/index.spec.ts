@@ -54,6 +54,7 @@ describe('t', () => {
     expect(t('nav.github')).toBe('GitHub repository');
     expect(t('settings.language')).toBe('Language');
     expect(t('settings.highlightWhileThinking')).toBe('Highlight cells while thinking');
+    expect(t('settings.showThoughts')).toBe('Show computer thoughts');
     expect(t('settings.experienceImprovement')).toContain('Learn from Human');
     expect(t('instructions.title')).toBe('Instructions');
     expect(t('version.updateAvailable', { version: '1.2.0' })).toBe('Update available · v1.2.0');

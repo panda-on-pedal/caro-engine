@@ -30,6 +30,7 @@ export const vi: Messages = {
   'settings.back': 'Quay lại',
   'settings.language': 'Ngôn ngữ',
   'settings.highlightWhileThinking': 'Tô sáng ô khi máy đang nghĩ',
+  'settings.showThoughts': 'Hiện suy nghĩ của máy',
   'settings.experienceImprovement':
     'Học từ ván Người vs Máy (lưu kinh nghiệm mới)',
   'instructions.title': 'Hướng dẫn',

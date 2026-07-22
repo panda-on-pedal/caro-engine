@@ -314,7 +314,16 @@ main {
   }
 }
 
+.status-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 4px;
+}
+
 #status {
+  flex: 0 0 auto;
   font-size: 1.05rem;
   min-height: 1.4em;
   margin: 0;
@@ -327,8 +336,9 @@ main {
 }
 
 #status-detail {
-  margin: -4px 0 0;
-  max-height: 9.5em;
+  flex: 1;
+  min-height: 0;
+  margin: 0;
   overflow-y: auto;
   font-size: 0.85rem;
   line-height: 1.35;
@@ -398,15 +408,28 @@ main {
   align-items: flex-start;
 }
 
-.board-column {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
+.play-layout {
+  display: grid;
+  grid-template-columns: max-content 170px;
+  grid-template-rows: auto auto;
+  column-gap: 18px;
+  row-gap: 8px;
+  align-items: stretch;
 }
 
-.board-column[hidden] {
-  display: none;
+.play-layout > #board-grid {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.play-layout > .controls {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.play-layout > #matchup {
+  grid-column: 1;
+  grid-row: 2;
 }
 
 #board-grid {
@@ -549,7 +572,13 @@ main {
   align-items: stretch;
   gap: 10px;
   width: 170px;
-  margin-top: var(--cell-size, 28px);
+  /* Fill board row height without letting thought content expand the row. */
+  box-sizing: border-box;
+  height: 0;
+  min-height: 100%;
+  padding-top: var(--cell-size, 28px);
+  overflow: hidden;
+  min-width: 0;
 }
 
 .controls[hidden] {

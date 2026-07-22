@@ -28,7 +28,16 @@ export function resolveEffectiveTimeBudget(params: {
   maxBudgetMs: number;
   moveCount: number;
   step?: TimeBudgetStepConfig;
+  /**
+   * When false, skip own-stone stepping and use `maxBudgetMs` as-is.
+   * Used for practice and background experience improvement — no human is
+   * waiting on these searches. Default true.
+   */
+  stepTimeByOwnStones?: boolean;
 }): number {
+  if (params.stepTimeByOwnStones === false) {
+    return Math.max(1, params.maxBudgetMs);
+  }
   const step = params.step ?? DEFAULT_TIME_BUDGET_STEP;
   const ownStones = Math.floor(params.moveCount / 2);
   const raw =

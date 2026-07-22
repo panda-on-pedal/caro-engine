@@ -18,23 +18,15 @@ export interface ExperienceEntry {
   move: Move;
   score: number;
   depth: number;
+  /** True once a background re-search failed to out-depth this entry —
+   * it is fully reinvested and skips further background improvement. Cleared
+   * whenever a strictly better entry replaces it. */
+  settled?: boolean;
 }
 
 export interface StoredExperienceEntry extends ExperienceEntry {
   key: string;
   updatedAt: number;
-}
-
-/**
- * Namespace a shape key so difficulties keep separate books — we don't want a
- * move learned at one level served at another. The empty-board key is never
- * stored, so it is left unprefixed and the storage skip-guard still matches it.
- */
-export function namespaceExperienceKey(
-  namespace: string,
-  shapeKey: string,
-): string {
-  return shapeKey === EMPTY_POSITION_KEY ? shapeKey : `${namespace}|${shapeKey}`;
 }
 
 /** Maps a move between real board coordinates and the canonical frame. */
@@ -240,7 +232,12 @@ export class ExperienceStore {
     // LRU bump
     this.map.delete(key);
     this.map.set(key, entry);
-    return { move: entry.move, score: entry.score, depth: entry.depth };
+    return {
+      move: entry.move,
+      score: entry.score,
+      depth: entry.depth,
+      settled: entry.settled,
+    };
   }
 
   put(key: string, entry: ExperienceEntry, updatedAt = Date.now()): boolean {
@@ -251,15 +248,33 @@ export class ExperienceStore {
     ) {
       return false;
     }
+    // A strictly better entry re-opens background improvement; an equal
+    // refresh keeps the existing settled verdict.
+    const settled =
+      existing !== undefined && !experienceBeatsBaseline(entry, existing)
+        ? existing.settled
+        : undefined;
     this.map.delete(key);
     this.map.set(key, {
       key,
       move: entry.move,
       score: entry.score,
       depth: entry.depth,
+      settled,
       updatedAt,
     });
     this.evictIfNeeded();
+    return true;
+  }
+
+  /** Flag an entry as fully reinvested. Returns false when the key is missing
+   * or the entry is already settled (nothing changed → nothing to save). */
+  markSettled(key: string): boolean {
+    const entry = this.map.get(key);
+    if (entry === undefined || entry.settled === true) {
+      return false;
+    }
+    entry.settled = true;
     return true;
   }
 
@@ -275,6 +290,7 @@ export class ExperienceStore {
         move: { row: entry.move.row, col: entry.move.col },
         score: entry.score,
         depth: entry.depth,
+        settled: entry.settled === true ? true : undefined,
         updatedAt: entry.updatedAt,
       });
     }
@@ -288,6 +304,7 @@ export class ExperienceStore {
       move: { row: entry.move.row, col: entry.move.col },
       score: entry.score,
       depth: entry.depth,
+      settled: entry.settled,
       updatedAt: entry.updatedAt,
     }));
   }
@@ -317,6 +334,7 @@ function isStoredEntry(value: unknown): value is StoredExperienceEntry {
     typeof row.score === "number" &&
     typeof row.depth === "number" &&
     typeof row.updatedAt === "number" &&
+    (row.settled === undefined || typeof row.settled === "boolean") &&
     row.move !== null &&
     typeof row.move === "object" &&
     typeof row.move.row === "number" &&

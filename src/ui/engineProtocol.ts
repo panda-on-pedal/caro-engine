@@ -12,10 +12,7 @@ import {
   experienceKeyFor,
   tryUseExperienceHit,
 } from '../engine/experienceLookup.ts';
-import {
-  isUsableExperienceMove,
-  namespaceExperienceKey,
-} from '../engine/experience.ts';
+import { isUsableExperienceMove } from '../engine/experience.ts';
 import {
   search,
   type SearchProgressEvent,
@@ -31,6 +28,8 @@ export interface EngineRequest {
   player: Player;
   difficulty: Difficulty;
   timeBudgetMs?: number;
+  /** When false, skip own-stone time stepping (practice / background reinvest). */
+  stepTimeByOwnStones?: boolean;
   experienceMode?: ExperienceMode;
   experienceBaseline?: ExperienceEntry;
 }
@@ -63,6 +62,7 @@ export function handleEngineRequest(
         ...resolveEngineSearchConfig({
           difficulty: request.difficulty,
           timeBudgetMs: request.timeBudgetMs,
+          stepTimeByOwnStones: request.stepTimeByOwnStones,
           experienceMode: request.experienceMode,
           experienceBaseline: request.experienceBaseline,
         }),
@@ -89,16 +89,13 @@ export function prepareExperienceForRequest(params: {
 }): {
   instant: SearchResult | null;
   baseline?: ExperienceEntry;
+  settled: boolean;
   key: string;
   transform: ExperienceTransform;
 } {
-  const { key: shapeKey, transform } = experienceKeyFor(
-    params.board,
-    params.player,
-  );
-  // Keep each difficulty's learned moves in its own namespace.
-  const key = namespaceExperienceKey(params.difficulty, shapeKey);
-  const stored = params.store.get(key);
+  const { key, transform } = experienceKeyFor(params.board, params.player);
+  // Books are already split by difficulty in PersistentExperienceStore.
+  const stored = params.store.get(params.difficulty, key);
   // Stored moves live in the canonical frame; project back to this board.
   const entry =
     stored !== undefined
@@ -110,9 +107,11 @@ export function prepareExperienceForRequest(params: {
     mode: params.experienceMode,
     entry,
   });
+  // Any non-off mode seeds/floors the search on a usable hit; `use` mode
+  // additionally replays it instantly while a background search improves it.
   const baseline =
-    params.experienceMode === 'practice' && isUsableExperienceMove(params.board, entry)
+    params.experienceMode !== 'off' && isUsableExperienceMove(params.board, entry)
       ? entry
       : undefined;
-  return { instant, baseline, key, transform };
+  return { instant, baseline, settled: stored?.settled === true, key, transform };
 }

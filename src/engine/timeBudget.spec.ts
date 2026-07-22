@@ -89,3 +89,16 @@ describe("resolveEffectiveTimeBudget", () => {
     expect(minBudgetMs).toBe(DEFAULT_MIN_TIME_BUDGET_MS);
   });
 });
+
+describe("resolveEffectiveTimeBudget stepTimeByOwnStones", () => {
+  it("uses the full maxBudgetMs when stepping is disabled", () => {
+    // Opening moveCount would otherwise floor at 500.
+    expect(
+      resolveEffectiveTimeBudget({
+        maxBudgetMs: 10000,
+        moveCount: 0,
+        stepTimeByOwnStones: false,
+      }),
+    ).toBe(10000);
+  });
+});

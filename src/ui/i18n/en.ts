@@ -30,6 +30,7 @@ export const en: Messages = {
   'settings.back': 'Back',
   'settings.language': 'Language',
   'settings.highlightWhileThinking': 'Highlight cells while thinking',
+  'settings.showThoughts': 'Show computer thoughts',
   'settings.experienceImprovement':
     'Learn from Human vs Computer games (save new experience)',
   'instructions.title': 'Instructions',

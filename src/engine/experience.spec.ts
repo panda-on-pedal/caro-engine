@@ -1,11 +1,9 @@
 import { createEmptyBoard, placeMove, type Board, type Player } from "./board.ts";
 import {
   canonicalExperienceKey,
-  EMPTY_POSITION_KEY,
   ExperienceStore,
   experienceBeatsBaseline,
   isStrongExperienceHit,
-  namespaceExperienceKey,
   shouldReplaceExperience,
 } from "./experience.ts";
 import { tryUseExperienceHit } from "./experienceLookup.ts";
@@ -105,21 +103,6 @@ describe("canonicalExperienceKey", () => {
     // geometrically-consistent cell.
     const replayed = rotCanon.transform.fromCanonical(canonicalMove);
     expect(rot90[replayed.row][replayed.col]).toBe(0);
-  });
-});
-
-describe("namespaceExperienceKey", () => {
-  it("separates the same shape across difficulties", () => {
-    const shape = canonicalExperienceKey(build(15, [[6, 6, 1]]), 2).key;
-    expect(namespaceExperienceKey("easy", shape)).not.toBe(
-      namespaceExperienceKey("expert", shape),
-    );
-  });
-
-  it("leaves the empty-board key unprefixed", () => {
-    expect(namespaceExperienceKey("expert", EMPTY_POSITION_KEY)).toBe(
-      EMPTY_POSITION_KEY,
-    );
   });
 });
 
@@ -236,5 +219,40 @@ describe("tryUseExperienceHit", () => {
         entry: { move: { row: 2, col: 3 }, score: 5, depth: 0 },
       }),
     ).toBeNull();
+  });
+});
+
+describe("settled entries", () => {
+  it("marks an entry settled and round-trips it through entries/loadAll", () => {
+    const store = new ExperienceStore();
+    store.put("k", { move: { row: 1, col: 1 }, score: 5, depth: 3 });
+    expect(store.markSettled("k")).toBe(true);
+    expect(store.get("k")?.settled).toBe(true);
+
+    const copy = new ExperienceStore();
+    copy.loadAll(store.entries());
+    expect(copy.get("k")?.settled).toBe(true);
+  });
+
+  it("keeps settled on an equal refresh, clears it when a better entry replaces", () => {
+    const store = new ExperienceStore();
+    store.put("k", { move: { row: 1, col: 1 }, score: 5, depth: 3 });
+    store.markSettled("k");
+
+    // Equal depth+score refresh (what a floored background result stores).
+    store.put("k", { move: { row: 1, col: 1 }, score: 5, depth: 3 });
+    expect(store.get("k")?.settled).toBe(true);
+
+    // Deeper entry re-opens improvement.
+    store.put("k", { move: { row: 2, col: 2 }, score: 9, depth: 4 });
+    expect(store.get("k")?.settled).toBeUndefined();
+  });
+
+  it("markSettled is a no-op for missing or already-settled keys", () => {
+    const store = new ExperienceStore();
+    expect(store.markSettled("nope")).toBe(false);
+    store.put("k", { move: { row: 1, col: 1 }, score: 5, depth: 3 });
+    store.markSettled("k");
+    expect(store.markSettled("k")).toBe(false);
   });
 });

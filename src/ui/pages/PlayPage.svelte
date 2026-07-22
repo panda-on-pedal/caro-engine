@@ -18,13 +18,13 @@
   {#if session.showingResults}
     <StatsPanel />
   {:else}
-    <div id="board-column" class="board-column">
+    <div class="play-layout">
       <Board />
+      <div id="controls" class="controls">
+        <Controls />
+        <Status />
+      </div>
       <Matchup />
-    </div>
-    <div id="controls" class="controls">
-      <Controls />
-      <Status />
     </div>
   {/if}
 </div>

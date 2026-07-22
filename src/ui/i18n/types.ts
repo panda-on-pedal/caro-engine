@@ -30,6 +30,7 @@ export type Messages = {
   'settings.back': string;
   'settings.language': string;
   'settings.highlightWhileThinking': string;
+  'settings.showThoughts': string;
   'settings.experienceImprovement': string;
   'instructions.title': string;
   'instructions.rulesTitle': string;

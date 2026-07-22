@@ -54,6 +54,11 @@ export const DIFFICULTY_PROFILES: Record<Difficulty, DifficultyProfile> = {
 export interface EngineConfig {
   difficulty: Difficulty;
   timeBudgetMs?: number;
+  /**
+   * When false, skip own-stone time stepping (practice / background reinvest).
+   * Practice defaults to false when unset.
+   */
+  stepTimeByOwnStones?: boolean;
   /** Override the difficulty's default root-score jitter (0 disables). */
   rootScoreJitter?: number;
   experienceMode?: ExperienceMode;
@@ -68,6 +73,10 @@ export function resolveEngineSearchConfig(config: EngineConfig): SearchConfig {
   return {
     maxDepth: profile.maxDepth,
     timeBudgetMs: config.timeBudgetMs ?? profile.timeBudgetMs,
+    // Practice has no human waiting — use the full difficulty budget.
+    stepTimeByOwnStones:
+      config.stepTimeByOwnStones ??
+      (config.experienceMode === "practice" ? false : undefined),
     recognizedForkPatterns: profile.recognizedForkPatterns,
     decay: DEFAULT_DECAY_CONFIG,
     rootScoreJitter: config.rootScoreJitter ?? profile.rootScoreJitter,

@@ -3,6 +3,8 @@ import type { Difficulty } from '../engine/engine.ts';
 import {
   EMPTY_POSITION_KEY,
   MIN_EXPERIENCE_DEPTH,
+  experienceBeatsBaseline,
+  type ExperienceEntry,
   type ExperienceMode,
   type ExperienceTransform,
 } from '../engine/experience.ts';
@@ -44,10 +46,15 @@ interface PendingEntry {
   resolve: (result: SearchResult) => void;
   reject: (error: Error) => void;
   onProgress?: (event: SearchProgressEvent) => void;
+  difficulty: Difficulty;
   experienceKey?: string;
   experienceTransform?: ExperienceTransform;
   experienceMode?: ExperienceMode;
   persistExperience?: boolean;
+  /** True for fire-and-forget hit-improvement jobs (preemptible). */
+  background?: boolean;
+  /** Cached depth the background search must out-depth, else the entry settles. */
+  baselineDepth?: number;
 }
 
 interface QueuedJob {
@@ -55,10 +62,15 @@ interface QueuedJob {
   resolve: (result: SearchResult) => void;
   reject: (error: Error) => void;
   onProgress?: (event: SearchProgressEvent) => void;
+  difficulty: Difficulty;
   experienceKey?: string;
   experienceTransform?: ExperienceTransform;
   experienceMode?: ExperienceMode;
   persistExperience?: boolean;
+  /** True for fire-and-forget hit-improvement jobs (preemptible). */
+  background?: boolean;
+  /** Cached depth the background search must out-depth, else the entry settles. */
+  baselineDepth?: number;
 }
 
 interface Slot {
@@ -115,6 +127,23 @@ export class EnginePool {
         col: prepared.instant.move.col,
         depth: prepared.instant.depth,
       });
+      logger.log('experience hit', {
+        key: prepared.key,
+        move: prepared.instant.move,
+        depth: prepared.instant.depth,
+        settled: prepared.settled,
+      });
+      // Reinvest: replay instantly, but keep improving the entry in the
+      // background until a full-budget search can no longer out-depth it.
+      if (!prepared.settled && persistExperience) {
+        this.enqueueBackgroundImprovement(
+          board,
+          player,
+          difficulty,
+          prepared,
+          experienceMode,
+        );
+      }
       return Promise.resolve(prepared.instant);
     }
 
@@ -143,12 +172,16 @@ export class EnginePool {
         resolve,
         reject,
         onProgress: options?.onProgress,
+        difficulty,
         experienceKey: prepared.key,
         experienceTransform: prepared.transform,
         experienceMode,
         persistExperience,
       };
-      const idleSlot = this.slots.find((slot) => !slot.busy);
+      let idleSlot = this.slots.find((slot) => !slot.busy);
+      if (!idleSlot) {
+        idleSlot = this.preemptBackgroundSlot();
+      }
       if (idleSlot) {
         this.dispatch(idleSlot, job);
       } else {
@@ -157,7 +190,92 @@ export class EnginePool {
     });
   }
 
+  /** Fire-and-forget: re-search a hit position with the full difficulty
+   * budget so the stored entry keeps improving. Runs only in an already-idle
+   * slot (never queued — it is opportunistic) and is preempted by any
+   * foreground request. Its promise is consumed here; rejections
+   * (preemption, cancelAll) are expected and swallowed. */
+  private enqueueBackgroundImprovement(
+    board: Board,
+    player: Player,
+    difficulty: Difficulty,
+    prepared: {
+      baseline?: ExperienceEntry;
+      key: string;
+      transform: ExperienceTransform;
+    },
+    experienceMode: ExperienceMode,
+  ): void {
+    const baseline = prepared.baseline;
+    if (baseline === undefined) {
+      return;
+    }
+    const idleSlot = this.slots.find((slot) => !slot.busy);
+    if (!idleSlot) {
+      return;
+    }
+    const request: EngineRequest = {
+      id: this.nextId,
+      board: toPlainBoard(board),
+      player,
+      difficulty,
+      // Background reinvest is not user-facing — use the full difficulty budget.
+      stepTimeByOwnStones: false,
+      experienceMode,
+      experienceBaseline: baseline,
+    };
+    this.nextId += 1;
+    new Promise<SearchResult>((resolve, reject) => {
+      logger.log('enqueueBackgroundImprovement', {
+        request,
+        idleSlot,
+      });
+      this.dispatch(idleSlot, {
+        request,
+        resolve,
+        reject,
+        difficulty,
+        experienceKey: prepared.key,
+        experienceTransform: prepared.transform,
+        experienceMode,
+        persistExperience: true,
+        background: true,
+        baselineDepth: baseline.depth,
+      });
+    }).catch((error) => {
+      if (!(error instanceof CancelledError)) {
+        logger.error('Background experience search failed:', error);
+      }
+    });
+  }
+
+  /** Terminate a slot running a background improvement so a foreground move
+   * request never waits behind one. Returns the freed slot, if any. */
+  private preemptBackgroundSlot(): Slot | undefined {
+    const slot = this.slots.find(
+      (candidate) =>
+        candidate.busy &&
+        candidate.currentId !== null &&
+        this.pending.get(candidate.currentId)?.background === true,
+    );
+    if (!slot) {
+      return undefined;
+    }
+    const id = slot.currentId;
+    slot.worker?.terminate();
+    slot.worker = null;
+    slot.busy = false;
+    slot.currentId = null;
+    if (id !== null) {
+      const entry = this.pending.get(id);
+      this.pending.delete(id);
+      entry?.reject(new CancelledError());
+    }
+    return slot;
+  }
+
   private rememberResult(
+    difficulty: Difficulty,
     key: string | undefined,
     transform: ExperienceTransform | undefined,
     mode: ExperienceMode | undefined,
@@ -178,11 +296,24 @@ export class EnginePool {
       return;
     }
     // Store the move in the canonical frame so any symmetric position replays it.
-    this.experience.put(key, {
+    const previous = this.experience.get(difficulty, key);
+    const next = {
       move: transform.toCanonical(result.move),
       score: result.score,
       depth: result.depth,
-    });
+    };
+    const changed = this.experience.put(difficulty, key, next);
+    if (changed && previous !== undefined && experienceBeatsBaseline(next, previous)) {
+      logger.log('experience improved', {
+        difficulty,
+        key,
+        move: next.move,
+        depth: next.depth,
+        score: next.score,
+        previousDepth: previous.depth,
+        previousScore: previous.score,
+      });
+    }
   }
 
   private ensureWorker(slot: Slot): Worker {
@@ -217,10 +348,13 @@ export class EnginePool {
       resolve: job.resolve,
       reject: job.reject,
       onProgress: job.onProgress,
+      difficulty: job.difficulty,
       experienceKey: job.experienceKey,
       experienceTransform: job.experienceTransform,
       experienceMode: job.experienceMode,
       persistExperience: job.persistExperience,
+      background: job.background,
+      baselineDepth: job.baselineDepth,
     });
     this.ensureWorker(slot).postMessage(job.request);
   }
@@ -239,12 +373,30 @@ export class EnginePool {
     if (entry) {
       if (message.ok) {
         this.rememberResult(
+          entry.difficulty,
           entry.experienceKey,
           entry.experienceTransform,
           entry.experienceMode,
           message.result,
           entry.persistExperience !== false,
         );
+        if (
+          entry.background === true &&
+          entry.baselineDepth !== undefined &&
+          entry.experienceKey !== undefined &&
+          message.result.depth <= entry.baselineDepth
+        ) {
+          // The background re-search failed to out-depth the entry: it is as
+          // verified as this device can make it. Stop reinvesting until a
+          // better entry replaces it (which clears the flag).
+          logger.log('experience settled', {
+            difficulty: entry.difficulty,
+            key: entry.experienceKey,
+            baselineDepth: entry.baselineDepth,
+            resultDepth: message.result.depth,
+          });
+          this.experience.markSettled(entry.difficulty, entry.experienceKey);
+        }
         entry.resolve(message.result);
       } else {
         entry.reject(new Error(message.error));

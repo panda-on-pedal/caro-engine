@@ -7,6 +7,11 @@
     session.setHighlightWhileThinking(checked);
   }
 
+  function onToggleShowThoughts(event: Event): void {
+    const checked = (event.currentTarget as HTMLInputElement).checked;
+    session.setShowThoughts(checked);
+  }
+
   function onToggleExperience(event: Event): void {
     const checked = (event.currentTarget as HTMLInputElement).checked;
     session.setExperienceImprovement(checked);
@@ -26,6 +31,18 @@
   />
   <span>
     {session.localeTick >= 0 ? t('settings.highlightWhileThinking') : ''}
+  </span>
+</label>
+
+<label class="settings-row">
+  <input
+    id="pref-show-thoughts"
+    type="checkbox"
+    checked={session.settings.showThoughts}
+    onchange={onToggleShowThoughts}
+  />
+  <span>
+    {session.localeTick >= 0 ? t('settings.showThoughts') : ''}
   </span>
 </label>
 

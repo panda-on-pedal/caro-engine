@@ -46,20 +46,6 @@ function otherPlayer(player: Player): Player {
   return player === 1 ? 2 : 1;
 }
 
-/** "Root -> O(7,12) -> X(9,9) -> O(...)" — the alternating turn-by-turn
- * line a root candidate's principalVariation represents, for logging.
- * `moves` starts with the root candidate itself, played by
- * `startPlayer`; every following move alternates player. */
-function formatLine(startPlayer: Player, moves: Move[]): string {
-  let mover = startPlayer;
-  const segments = moves.map((move) => {
-    const label = mover === 1 ? "X" : "O";
-    mover = otherPlayer(mover);
-    return `${label}(${move.row},${move.col})`;
-  });
-  return ["Root", ...segments].join(" -> ");
-}
-
 interface NodeCounter {
   count: number;
 }
@@ -148,12 +134,6 @@ function negamax(
   rootProgress?: RootProgress,
 ): SearchNode {
   nodeCounter.count += 1;
-  logger.log("[search] node visited", {
-    node: nodeCounter.count,
-    depth,
-    toMove: player === 1 ? "X" : "O",
-    path: formatLine(rootPlayer, path),
-  });
 
   if (depth === 0) {
     return { score: evaluateStore(store, player), principalVariation: [] };
@@ -269,16 +249,6 @@ function negamax(
     examinedCount += 1;
 
     const compareScore = rootJitter ? rootJitter(node.score) : node.score;
-    if (isRootFrame) {
-      logger.log("[search] root: candidate examined", {
-        depth,
-        move: `${move.row},${move.col}`,
-        score: node.score,
-        comparedScore: compareScore,
-        isWin,
-        line: formatLine(player, [move, ...node.principalVariation]),
-      });
-    }
     if (compareScore > bestCompare) {
       bestCompare = compareScore;
       best = {
@@ -297,17 +267,6 @@ function negamax(
     if (currentAlpha >= beta) {
       break;
     }
-  }
-  if (isRootFrame && examinedCount === moves.length) {
-    logger.log("[search] root: examined all candidates", {
-      depth,
-      count: examinedCount,
-      bestMove: best.principalVariation[0]
-        ? `${best.principalVariation[0].row},${best.principalVariation[0].col}`
-        : null,
-      bestScore: best.score,
-      bestLine: formatLine(player, best.principalVariation),
-    });
   }
 
   if (best.score === -Infinity) {
@@ -375,6 +334,11 @@ export interface SearchResult {
 export interface SearchConfig {
   maxDepth: number;
   timeBudgetMs?: number;
+  /**
+   * When false, skip own-stone time stepping (practice / background reinvest).
+   * Default true.
+   */
+  stepTimeByOwnStones?: boolean;
   recognizedForkPatterns?: ReadonlySet<ForkPatternName>;
   decay?: DecayConfig;
   /**
@@ -507,15 +471,6 @@ export const negamaxStrategy: MoveSelectionStrategy = (
       }
       break;
     }
-    logger.log("[search] depth iteration complete", {
-      depth,
-      chosenMove: result.principalVariation[0]
-        ? `${result.principalVariation[0].row},${result.principalVariation[0].col}`
-        : null,
-      chosenLine: formatLine(player, result.principalVariation),
-      score: result.score,
-      nodesVisitedSoFar: nodeCounter.count,
-    });
     bestNode = result;
     depthReached = depth;
     if (Math.abs(result.score) >= WIN_SCORE) {
@@ -571,12 +526,12 @@ function seedBaselineMove(moves: Move[], baseline: Move | undefined): Move[] {
   return [baseline, ...rest];
 }
 
-function applyPracticeBaseline(
+function applyExperienceBaseline(
   result: SearchResult,
   config: SearchConfig,
   board: Board,
 ): SearchResult {
-  if (config.experienceMode !== "practice") {
+  if (config.experienceMode === "off" || config.experienceMode === undefined) {
     return result;
   }
   const baseline = config.experienceBaseline;
@@ -625,13 +580,14 @@ export function search(
       ? resolveEffectiveTimeBudget({
           maxBudgetMs: config.timeBudgetMs,
           moveCount,
+          stepTimeByOwnStones: config.stepTimeByOwnStones,
         })
       : config.timeBudgetMs;
 
   if (narrowed.moves.length === 0) {
     const fallbackMoves = findCandidateMoves(store.board);
     report.emit({ type: "phase", phase: "quiet" });
-    return applyPracticeBaseline(
+    return applyExperienceBaseline(
       {
         move: fallbackMoves[0],
         score: 0,
@@ -645,7 +601,8 @@ export function search(
   }
 
   const baselineMove =
-    config.experienceMode === "practice" &&
+    config.experienceMode !== undefined &&
+    config.experienceMode !== "off" &&
     isUsableExperienceMove(store.board, config.experienceBaseline)
       ? config.experienceBaseline.move
       : undefined;
@@ -700,5 +657,5 @@ export function search(
     rootMoves,
     searchConfig,
   );
-  return applyPracticeBaseline(result, config, store.board);
+  return applyExperienceBaseline(result, config, store.board);
 }

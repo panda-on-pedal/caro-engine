@@ -4,12 +4,15 @@ export interface CaroSettings {
   highlightWhileThinking: boolean;
   /** When true, human–AI games write new root experience entries. */
   experienceImprovement: boolean;
+  /** When true, show engine thought lines in the status detail panel. */
+  showThoughts: boolean;
   lang: Locale;
 }
 
 export const DEFAULT_SETTINGS: CaroSettings = {
-  highlightWhileThinking: true,
-  experienceImprovement: false,
+  highlightWhileThinking: false,
+  experienceImprovement: true,
+  showThoughts: true,
   lang: 'vi',
 };
 
@@ -35,6 +38,10 @@ export function loadSettings(): CaroSettings {
         typeof record.experienceImprovement === 'boolean'
           ? record.experienceImprovement
           : DEFAULT_SETTINGS.experienceImprovement,
+      showThoughts:
+        typeof record.showThoughts === 'boolean'
+          ? record.showThoughts
+          : DEFAULT_SETTINGS.showThoughts,
       lang: typeof record.lang === 'string' && isLocale(record.lang) ? record.lang : DEFAULT_SETTINGS.lang,
     };
   } catch {

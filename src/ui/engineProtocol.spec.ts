@@ -1,6 +1,10 @@
 import { isLegalMove } from "../engine/board.ts";
 import { applyMove, newGame } from "../engine/state.ts";
-import { handleEngineRequest } from "./engineProtocol.ts";
+import {
+  handleEngineRequest,
+  prepareExperienceForRequest,
+} from "./engineProtocol.ts";
+import { PersistentExperienceStore } from "./experiencePersist.ts";
 
 describe("handleEngineRequest", () => {
   it("returns a legal move and echoes the request id on a mid-game board", () => {
@@ -37,5 +41,44 @@ describe("handleEngineRequest", () => {
     if (response.ok) {
       expect(isLegalMove(state.board, response.result.move.row, response.result.move.col)).toBe(true);
     }
+  });
+});
+
+describe("prepareExperienceForRequest", () => {
+  it("returns a use-mode hit as instant AND baseline, with the settled flag", () => {
+    const store = new PersistentExperienceStore();
+    let state = newGame();
+    state = applyMove(state, { row: 5, col: 5 }, 1);
+    state = applyMove(state, { row: 5, col: 6 }, 2);
+    const params = {
+      board: state.board,
+      player: state.nextPlayer,
+      difficulty: "easy" as const,
+      experienceMode: "use" as const,
+      store,
+    };
+
+    const miss = prepareExperienceForRequest(params);
+    expect(miss.instant).toBeNull();
+    expect(miss.baseline).toBeUndefined();
+    expect(miss.settled).toBe(false);
+
+    // Store in the canonical frame, exactly as EnginePool.rememberResult does.
+    store.put('easy', miss.key, {
+      move: miss.transform.toCanonical({ row: 4, col: 4 }),
+      score: 10,
+      depth: 3,
+    });
+
+    const hit = prepareExperienceForRequest(params);
+    expect(hit.instant?.move).toEqual({ row: 4, col: 4 });
+    expect(hit.baseline?.move).toEqual({ row: 4, col: 4 });
+    expect(hit.baseline?.depth).toBe(3);
+    expect(hit.settled).toBe(false);
+
+    store.markSettled('easy', miss.key);
+    const settledHit = prepareExperienceForRequest(params);
+    expect(settledHit.instant?.move).toEqual({ row: 4, col: 4 });
+    expect(settledHit.settled).toBe(true);
   });
 });

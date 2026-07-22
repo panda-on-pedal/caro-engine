@@ -29,30 +29,35 @@ describe('prefs', () => {
     });
   });
 
-  it('defaults language to Vietnamese and experience improvement off', () => {
+  it('defaults language to Vietnamese, thoughts on, and experience improvement on', () => {
     expect(DEFAULT_SETTINGS.lang).toBe('vi');
-    expect(DEFAULT_SETTINGS.experienceImprovement).toBe(false);
+    expect(DEFAULT_SETTINGS.showThoughts).toBe(true);
+    expect(DEFAULT_SETTINGS.experienceImprovement).toBe(true);
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
   });
 
-  it('round-trips highlightWhileThinking, experienceImprovement, and lang', () => {
+  it('round-trips highlightWhileThinking, showThoughts, experienceImprovement, and lang', () => {
     saveSettings({
       highlightWhileThinking: false,
+      showThoughts: true,
       experienceImprovement: true,
       lang: 'en',
     });
     expect(loadSettings()).toEqual({
       highlightWhileThinking: false,
+      showThoughts: true,
       experienceImprovement: true,
       lang: 'en',
     });
     saveSettings({
       highlightWhileThinking: true,
+      showThoughts: false,
       experienceImprovement: false,
       lang: 'vi',
     });
     expect(loadSettings()).toEqual({
       highlightWhileThinking: true,
+      showThoughts: false,
       experienceImprovement: false,
       lang: 'vi',
     });
@@ -70,7 +75,8 @@ describe('prefs', () => {
     store['caro.settings'] = JSON.stringify({ highlightWhileThinking: false });
     expect(loadSettings()).toEqual({
       highlightWhileThinking: false,
-      experienceImprovement: false,
+      showThoughts: true,
+      experienceImprovement: true,
       lang: 'vi',
     });
   });

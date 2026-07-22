@@ -181,4 +181,18 @@ describe("DIFFICULTY_PROFILES", () => {
     expect(overridden.timeBudgetMs).toBe(123);
     expect(overridden.maxDepth).toBe(6);
   });
+
+  it("disables own-stone time stepping in practice mode", () => {
+    const practice = resolveEngineSearchConfig({
+      difficulty: "expert",
+      experienceMode: "practice",
+    });
+    expect(practice.stepTimeByOwnStones).toBe(false);
+
+    const use = resolveEngineSearchConfig({
+      difficulty: "expert",
+      experienceMode: "use",
+    });
+    expect(use.stepTimeByOwnStones).toBeUndefined();
+  });
 });

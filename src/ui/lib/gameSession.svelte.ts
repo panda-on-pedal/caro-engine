@@ -270,7 +270,7 @@ class GameSession {
     if (this.serverNotice) {
       return t(this.serverNotice.key, this.serverNotice.params);
     }
-    if (this.thoughtLines.length > 0) {
+    if (this.settings.showThoughts && this.thoughtLines.length > 0) {
       return this.thoughtLines.join('\n');
     }
     return '';
@@ -403,6 +403,7 @@ class GameSession {
       this.future = [];
     }
     this.patternStore = PatternStore.fromBoard(this.state.board);
+    this.resizePool(desiredPoolSize(this.boardCount));
     this.ready = true;
     await this.advanceIfAiTurn();
   }
@@ -452,6 +453,11 @@ class GameSession {
     if (!this.settings.highlightWhileThinking) {
       this.thinkingCell = null;
     }
+  }
+
+  setShowThoughts(value: boolean): void {
+    this.settings = { ...this.settings, showThoughts: value };
+    saveSettings(this.settings);
   }
 
   setExperienceImprovement(value: boolean): void {
@@ -953,7 +959,7 @@ class GameSession {
     }
 
     this.sessions = [];
-    this.resizePool(1);
+    this.resizePool(desiredPoolSize(this.boardCount));
     this.busy = false;
     this.past = [];
     this.future = [];
