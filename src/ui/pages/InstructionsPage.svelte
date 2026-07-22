@@ -24,20 +24,16 @@
     <h3>{session.localeTick >= 0 ? t('instructions.modesTitle') : ''}</h3>
     <ul>
       <li>
-        <strong>{session.localeTick >= 0 ? t('mode.humanAi') : ''}</strong>
-        — {session.localeTick >= 0 ? t('instructions.modes.humanAi') : ''}
+        <strong>{session.localeTick >= 0 ? t('mode.humanAi') : ''}</strong>: {session.localeTick >= 0 ? t('instructions.modes.humanAi') : ''}
       </li>
       <li>
-        <strong>{session.localeTick >= 0 ? t('mode.aiHuman') : ''}</strong>
-        — {session.localeTick >= 0 ? t('instructions.modes.aiHuman') : ''}
+        <strong>{session.localeTick >= 0 ? t('mode.aiHuman') : ''}</strong>: {session.localeTick >= 0 ? t('instructions.modes.aiHuman') : ''}
       </li>
       <li>
-        <strong>{session.localeTick >= 0 ? t('mode.aiAi') : ''}</strong>
-        — {session.localeTick >= 0 ? t('instructions.modes.aiAi') : ''}
+        <strong>{session.localeTick >= 0 ? t('mode.aiAi') : ''}</strong>: {session.localeTick >= 0 ? t('instructions.modes.aiAi') : ''}
       </li>
       <li>
-        <strong>{session.localeTick >= 0 ? t('mode.practice') : ''}</strong>
-        — {session.localeTick >= 0 ? t('instructions.modes.practice') : ''}
+        <strong>{session.localeTick >= 0 ? t('mode.practice') : ''}</strong>: {session.localeTick >= 0 ? t('instructions.modes.practice') : ''}
       </li>
     </ul>
   </section>

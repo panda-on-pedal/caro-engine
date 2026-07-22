@@ -1,15 +1,21 @@
 import type { Board, Player } from '../engine/board.ts';
 import {
-  DIFFICULTY_PROFILES,
   resolveEngineSearchConfig,
   type Difficulty,
 } from '../engine/engine.ts';
-import type { ExperienceEntry, ExperienceMode } from '../engine/experience.ts';
+import type {
+  ExperienceEntry,
+  ExperienceMode,
+  ExperienceTransform,
+} from '../engine/experience.ts';
 import {
   experienceKeyFor,
   tryUseExperienceHit,
 } from '../engine/experienceLookup.ts';
-import { isUsableExperienceMove } from '../engine/experience.ts';
+import {
+  isUsableExperienceMove,
+  namespaceExperienceKey,
+} from '../engine/experience.ts';
 import {
   search,
   type SearchProgressEvent,
@@ -80,14 +86,27 @@ export function prepareExperienceForRequest(params: {
   difficulty: Difficulty;
   experienceMode: ExperienceMode;
   store: PersistentExperienceStore;
-}): { instant: SearchResult | null; baseline?: ExperienceEntry; key: string } {
-  const key = experienceKeyFor(params.board, params.player);
-  const entry = params.store.get(key);
-  const plannedDepth = DIFFICULTY_PROFILES[params.difficulty].maxDepth;
+}): {
+  instant: SearchResult | null;
+  baseline?: ExperienceEntry;
+  key: string;
+  transform: ExperienceTransform;
+} {
+  const { key: shapeKey, transform } = experienceKeyFor(
+    params.board,
+    params.player,
+  );
+  // Keep each difficulty's learned moves in its own namespace.
+  const key = namespaceExperienceKey(params.difficulty, shapeKey);
+  const stored = params.store.get(key);
+  // Stored moves live in the canonical frame; project back to this board.
+  const entry =
+    stored !== undefined
+      ? { ...stored, move: transform.fromCanonical(stored.move) }
+      : undefined;
   const instant = tryUseExperienceHit({
     board: params.board,
     player: params.player,
-    plannedDepth,
     mode: params.experienceMode,
     entry,
   });
@@ -95,5 +114,5 @@ export function prepareExperienceForRequest(params: {
     params.experienceMode === 'practice' && isUsableExperienceMove(params.board, entry)
       ? entry
       : undefined;
-  return { instant, baseline, key };
+  return { instant, baseline, key, transform };
 }

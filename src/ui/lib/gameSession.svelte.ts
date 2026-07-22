@@ -514,7 +514,6 @@ class GameSession {
       return;
     }
     this.stepHistory('past', this.past.length >= 2 ? 2 : 1);
-    this.logPatterns();
     try {
       await this.saveState(this.persistedState());
     } catch (error) {
@@ -527,7 +526,6 @@ class GameSession {
       return;
     }
     this.stepHistory('future', this.future.length >= 2 ? 2 : 1);
-    this.logPatterns();
     try {
       await this.saveState(this.persistedState());
     } catch (error) {
@@ -640,11 +638,6 @@ class GameSession {
     }
   }
 
-  private logPatterns(): void {
-    logger.log('[patterns] player 1 (X):', this.patternStore.patterns(1));
-    logger.log('[patterns] player 2 (O):', this.patternStore.patterns(2));
-  }
-
   private syncPatternStore(prev: GameState, next: GameState): void {
     const prevLen = prev.moveHistory.length;
     const nextLen = next.moveHistory.length;
@@ -696,7 +689,6 @@ class GameSession {
     placed: { move: Move; player: Player },
   ): Promise<void> {
     this.commitState(next, placed);
-    this.logPatterns();
     try {
       await this.saveState(this.persistedState());
     } catch (error) {

@@ -67,11 +67,10 @@ describe("chooseMove", () => {
     state = applyMove(state, { row: 10, col: 11 }, 1);
     state = applyMove(state, { row: 0, col: 2 }, 2);
 
-    const easy = chooseMove(state, { difficulty: "easy", adaptiveTimeBudget: false });
+    const easy = chooseMove(state, { difficulty: "easy" });
     const hard = chooseMove(state, {
       difficulty: "hard",
       timeBudgetMs: 2000,
-      adaptiveTimeBudget: false,
     });
     expect(easy.depth).toBeGreaterThan(0);
     expect(hard.depth).toBeGreaterThanOrEqual(easy.depth);
@@ -114,12 +113,10 @@ describe("chooseMove — difficulty-gated fork recognition", () => {
     const easy = chooseMove(state, {
       difficulty: "easy",
       timeBudgetMs: 500,
-      adaptiveTimeBudget: false,
     });
     const hard = chooseMove(state, {
       difficulty: "hard",
       timeBudgetMs: 2000,
-      adaptiveTimeBudget: false,
     });
 
     // hard's narrowed candidate set includes the fork point (5,9); easy's

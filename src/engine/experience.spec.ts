@@ -1,19 +1,124 @@
-import { createEmptyBoard, placeMove } from "./board.ts";
+import { createEmptyBoard, placeMove, type Board, type Player } from "./board.ts";
 import {
+  canonicalExperienceKey,
+  EMPTY_POSITION_KEY,
   ExperienceStore,
   experienceBeatsBaseline,
-  experiencePositionKey,
   isStrongExperienceHit,
+  namespaceExperienceKey,
   shouldReplaceExperience,
 } from "./experience.ts";
 import { tryUseExperienceHit } from "./experienceLookup.ts";
 
-describe("experiencePositionKey", () => {
+/** Rotate/reflect a stone list onto a fresh board of the same size. */
+function build(size: number, stones: Array<[number, number, Player]>): Board {
+  let board = createEmptyBoard(size);
+  for (const [r, c, p] of stones) {
+    board = placeMove(board, r, c, p);
+  }
+  return board;
+}
+
+describe("canonicalExperienceKey", () => {
   it("differs by side to move on the same board", () => {
-    let board = createEmptyBoard(5);
-    board = placeMove(board, 2, 2, 1);
-    expect(experiencePositionKey(board, 1)).not.toBe(
-      experiencePositionKey(board, 2),
+    const board = build(5, [[2, 2, 1]]);
+    expect(canonicalExperienceKey(board, 1).key).not.toBe(
+      canonicalExperienceKey(board, 2).key,
+    );
+  });
+
+  it("collapses the 8 symmetries onto one key", () => {
+    // An L-shaped cluster near the center (away from every edge).
+    const base = build(15, [
+      [6, 6, 1],
+      [6, 7, 1],
+      [7, 6, 2],
+    ]);
+    const baseKey = canonicalExperienceKey(base, 1).key;
+
+    // rot90 of the same cluster around the board center.
+    const rot90 = build(15, [
+      [6, 8, 1],
+      [7, 8, 1],
+      [6, 7, 2],
+    ]);
+    expect(canonicalExperienceKey(rot90, 1).key).toBe(baseKey);
+  });
+
+  it("is translation invariant away from edges", () => {
+    const a = build(15, [
+      [5, 5, 1],
+      [5, 6, 2],
+    ]);
+    const b = build(15, [
+      [9, 9, 1],
+      [9, 10, 2],
+    ]);
+    expect(canonicalExperienceKey(a, 1).key).toBe(
+      canonicalExperienceKey(b, 1).key,
+    );
+  });
+
+  it("distinguishes an edge-blocked shape from the same shape in open space", () => {
+    const openShape = build(15, [
+      [7, 7, 1],
+      [7, 8, 1],
+    ]);
+    const edgeShape = build(15, [
+      [0, 7, 1],
+      [0, 8, 1],
+    ]);
+    expect(canonicalExperienceKey(openShape, 1).key).not.toBe(
+      canonicalExperienceKey(edgeShape, 1).key,
+    );
+  });
+
+  it("round-trips a move through the chosen transform", () => {
+    const board = build(15, [
+      [6, 6, 1],
+      [6, 7, 2],
+    ]);
+    const { transform } = canonicalExperienceKey(board, 1);
+    const move = { row: 6, col: 8 };
+    const back = transform.fromCanonical(transform.toCanonical(move));
+    expect(back).toEqual(move);
+  });
+
+  it("replays a stored move correctly onto a rotated position", () => {
+    const base = build(15, [
+      [6, 6, 1],
+      [6, 7, 1],
+      [7, 6, 2],
+    ]);
+    const baseCanon = canonicalExperienceKey(base, 1);
+    // The move we would store, expressed in the canonical frame.
+    const canonicalMove = baseCanon.transform.toCanonical({ row: 6, col: 8 });
+
+    const rot90 = build(15, [
+      [6, 8, 1],
+      [7, 8, 1],
+      [6, 7, 2],
+    ]);
+    const rotCanon = canonicalExperienceKey(rot90, 1);
+    expect(rotCanon.key).toBe(baseCanon.key);
+    // Projecting the same canonical move onto the rotated board yields a legal,
+    // geometrically-consistent cell.
+    const replayed = rotCanon.transform.fromCanonical(canonicalMove);
+    expect(rot90[replayed.row][replayed.col]).toBe(0);
+  });
+});
+
+describe("namespaceExperienceKey", () => {
+  it("separates the same shape across difficulties", () => {
+    const shape = canonicalExperienceKey(build(15, [[6, 6, 1]]), 2).key;
+    expect(namespaceExperienceKey("easy", shape)).not.toBe(
+      namespaceExperienceKey("expert", shape),
+    );
+  });
+
+  it("leaves the empty-board key unprefixed", () => {
+    expect(namespaceExperienceKey("expert", EMPTY_POSITION_KEY)).toBe(
+      EMPTY_POSITION_KEY,
     );
   });
 });
@@ -40,13 +145,14 @@ describe("experience comparison helpers", () => {
     ).toBe(false);
   });
 
-  it("gates strong hits by planned depth", () => {
+  it("trusts any entry backed by a real search, rejects depth-0", () => {
     expect(
-      isStrongExperienceHit({ move: { row: 0, col: 0 }, score: 1, depth: 6 }, 6),
+      isStrongExperienceHit({ move: { row: 0, col: 0 }, score: 1, depth: 1 }),
     ).toBe(true);
     expect(
-      isStrongExperienceHit({ move: { row: 0, col: 0 }, score: 1, depth: 5 }, 6),
+      isStrongExperienceHit({ move: { row: 0, col: 0 }, score: 1, depth: 0 }),
     ).toBe(false);
+    expect(isStrongExperienceHit(undefined)).toBe(false);
   });
 
   it("replaces when next is at least as good", () => {
@@ -97,15 +203,14 @@ describe("ExperienceStore", () => {
 });
 
 describe("tryUseExperienceHit", () => {
-  it("returns instantly only in use mode with a strong legal hit", () => {
+  it("returns instantly only in use mode with a real legal hit", () => {
     let board = createEmptyBoard(5);
     board = placeMove(board, 2, 2, 1);
-    const entry = { move: { row: 2, col: 3 }, score: 5, depth: 6 };
+    const entry = { move: { row: 2, col: 3 }, score: 5, depth: 2 };
     expect(
       tryUseExperienceHit({
         board,
         player: 2,
-        plannedDepth: 6,
         mode: "use",
         entry,
       })?.move,
@@ -114,9 +219,21 @@ describe("tryUseExperienceHit", () => {
       tryUseExperienceHit({
         board,
         player: 2,
-        plannedDepth: 6,
         mode: "practice",
         entry,
+      }),
+    ).toBeNull();
+  });
+
+  it("does not fire on a depth-0 entry", () => {
+    let board = createEmptyBoard(5);
+    board = placeMove(board, 2, 2, 1);
+    expect(
+      tryUseExperienceHit({
+        board,
+        player: 2,
+        mode: "use",
+        entry: { move: { row: 2, col: 3 }, score: 5, depth: 0 },
       }),
     ).toBeNull();
   });

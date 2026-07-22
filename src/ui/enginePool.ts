@@ -1,6 +1,11 @@
 import type { Board, Player } from '../engine/board.ts';
 import type { Difficulty } from '../engine/engine.ts';
-import type { ExperienceMode } from '../engine/experience.ts';
+import {
+  EMPTY_POSITION_KEY,
+  MIN_EXPERIENCE_DEPTH,
+  type ExperienceMode,
+  type ExperienceTransform,
+} from '../engine/experience.ts';
 import type { SearchProgressEvent, SearchResult } from '../engine/search.ts';
 import { logger } from '../utils/logger.ts';
 import {
@@ -40,6 +45,7 @@ interface PendingEntry {
   reject: (error: Error) => void;
   onProgress?: (event: SearchProgressEvent) => void;
   experienceKey?: string;
+  experienceTransform?: ExperienceTransform;
   experienceMode?: ExperienceMode;
   persistExperience?: boolean;
 }
@@ -50,6 +56,7 @@ interface QueuedJob {
   reject: (error: Error) => void;
   onProgress?: (event: SearchProgressEvent) => void;
   experienceKey?: string;
+  experienceTransform?: ExperienceTransform;
   experienceMode?: ExperienceMode;
   persistExperience?: boolean;
 }
@@ -137,6 +144,7 @@ export class EnginePool {
         reject,
         onProgress: options?.onProgress,
         experienceKey: prepared.key,
+        experienceTransform: prepared.transform,
         experienceMode,
         persistExperience,
       };
@@ -151,15 +159,27 @@ export class EnginePool {
 
   private rememberResult(
     key: string | undefined,
+    transform: ExperienceTransform | undefined,
     mode: ExperienceMode | undefined,
     result: SearchResult,
     persist: boolean,
   ): void {
-    if (!persist || key === undefined || mode === 'off' || mode === undefined) {
+    if (
+      !persist ||
+      key === undefined ||
+      transform === undefined ||
+      mode === 'off' ||
+      mode === undefined ||
+      // Skip the opening (empty board) and depth-0 quiet/fallback moves — no
+      // real search backs them, so they only add noise to the book.
+      key === EMPTY_POSITION_KEY ||
+      result.depth < MIN_EXPERIENCE_DEPTH
+    ) {
       return;
     }
+    // Store the move in the canonical frame so any symmetric position replays it.
     this.experience.put(key, {
-      move: result.move,
+      move: transform.toCanonical(result.move),
       score: result.score,
       depth: result.depth,
     });
@@ -198,6 +218,7 @@ export class EnginePool {
       reject: job.reject,
       onProgress: job.onProgress,
       experienceKey: job.experienceKey,
+      experienceTransform: job.experienceTransform,
       experienceMode: job.experienceMode,
       persistExperience: job.persistExperience,
     });
@@ -219,6 +240,7 @@ export class EnginePool {
       if (message.ok) {
         this.rememberResult(
           entry.experienceKey,
+          entry.experienceTransform,
           entry.experienceMode,
           message.result,
           entry.persistExperience !== false,

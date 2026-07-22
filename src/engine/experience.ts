@@ -1,8 +1,18 @@
 import type { Board, Player } from "./board.ts";
-import { isLegalMove } from "./board.ts";
+import { isLegalMove, WIN_LENGTH } from "./board.ts";
 import type { Move } from "./state.ts";
 
 export type ExperienceMode = "use" | "practice" | "off";
+
+/** Key for the empty board — the opening move is not worth recording. */
+export const EMPTY_POSITION_KEY = "EMPTY";
+
+/**
+ * Minimum search depth an entry must carry to be trusted. Depth-0 entries come
+ * from the quiet/fallback path (no real search) and are neither stored nor
+ * replayed.
+ */
+export const MIN_EXPERIENCE_DEPTH = 1;
 
 export interface ExperienceEntry {
   move: Move;
@@ -15,20 +25,160 @@ export interface StoredExperienceEntry extends ExperienceEntry {
   updatedAt: number;
 }
 
-/** Stable root-position key: side to move + full board occupancy. */
-export function experiencePositionKey(board: Board, sideToMove: Player): string {
-  const rows: string[] = [];
-  for (let r = 0; r < board.length; r += 1) {
-    rows.push(board[r].join(""));
-  }
-  return `${sideToMove}|${rows.join("/")}`;
+/**
+ * Namespace a shape key so difficulties keep separate books — we don't want a
+ * move learned at one level served at another. The empty-board key is never
+ * stored, so it is left unprefixed and the storage skip-guard still matches it.
+ */
+export function namespaceExperienceKey(
+  namespace: string,
+  shapeKey: string,
+): string {
+  return shapeKey === EMPTY_POSITION_KEY ? shapeKey : `${namespace}|${shapeKey}`;
 }
 
+/** Maps a move between real board coordinates and the canonical frame. */
+export interface ExperienceTransform {
+  toCanonical(move: Move): Move;
+  fromCanonical(move: Move): Move;
+}
+
+export interface CanonicalPosition {
+  key: string;
+  transform: ExperienceTransform;
+}
+
+/**
+ * Distance-to-wall beyond this can't affect a five-in-a-row, so it is clamped:
+ * identical shapes far from every edge collapse onto one key regardless of
+ * where they sit, while shapes touching a wall keep the wall in their key.
+ */
+const EDGE_CLAMP = WIN_LENGTH - 1;
+
+type CoordMap = (r: number, c: number, n: number) => [number, number];
+
+interface Symmetry {
+  apply: CoordMap;
+  invert: CoordMap;
+}
+
+/** The 8 board-aware dihedral symmetries (4 rotations x 2 reflections). */
+const SYMMETRIES: readonly Symmetry[] = [
+  { apply: (r, c) => [r, c], invert: (r, c) => [r, c] }, // identity
+  { apply: (r, c, n) => [c, n - 1 - r], invert: (r, c, n) => [n - 1 - c, r] }, // rot90
+  {
+    apply: (r, c, n) => [n - 1 - r, n - 1 - c],
+    invert: (r, c, n) => [n - 1 - r, n - 1 - c],
+  }, // rot180
+  { apply: (r, c, n) => [n - 1 - c, r], invert: (r, c, n) => [c, n - 1 - r] }, // rot270
+  { apply: (r, c) => [c, r], invert: (r, c) => [c, r] }, // transpose
+  {
+    apply: (r, c, n) => [n - 1 - c, n - 1 - r],
+    invert: (r, c, n) => [n - 1 - c, n - 1 - r],
+  }, // anti-transpose
+  { apply: (r, c, n) => [n - 1 - r, c], invert: (r, c, n) => [n - 1 - r, c] }, // flip rows
+  { apply: (r, c, n) => [r, n - 1 - c], invert: (r, c, n) => [r, n - 1 - c] }, // flip cols
+];
+
+const IDENTITY_TRANSFORM: ExperienceTransform = {
+  toCanonical: (m) => ({ row: m.row, col: m.col }),
+  fromCanonical: (m) => ({ row: m.row, col: m.col }),
+};
+
+function makeTransform(
+  sym: Symmetry,
+  offRow: number,
+  offCol: number,
+  n: number,
+): ExperienceTransform {
+  return {
+    toCanonical(move) {
+      const [tr, tc] = sym.apply(move.row, move.col, n);
+      return { row: tr - offRow, col: tc - offCol };
+    },
+    fromCanonical(move) {
+      const [rr, rc] = sym.invert(move.row + offRow, move.col + offCol, n);
+      return { row: rr, col: rc };
+    },
+  };
+}
+
+/**
+ * Canonical shape key: collapses the 8 board symmetries, the two color
+ * labelings (side to move is always "1"), and translation (edge-aware) so that
+ * the same shape hits one entry no matter its orientation or position. Returns
+ * the transform needed to store/replay a move in real board coordinates.
+ */
+export function canonicalExperienceKey(
+  board: Board,
+  sideToMove: Player,
+): CanonicalPosition {
+  const n = board.length;
+  const stones: Array<{ r: number; c: number; owner: 1 | 2 }> = [];
+  for (let r = 0; r < n; r += 1) {
+    for (let c = 0; c < n; c += 1) {
+      const cell = board[r][c];
+      if (cell !== 0) {
+        stones.push({ r, c, owner: cell === sideToMove ? 1 : 2 });
+      }
+    }
+  }
+
+  if (stones.length === 0) {
+    return { key: EMPTY_POSITION_KEY, transform: IDENTITY_TRANSFORM };
+  }
+
+  let bestKey = "";
+  let bestSym: Symmetry = SYMMETRIES[0];
+  let bestOffRow = 0;
+  let bestOffCol = 0;
+
+  for (const sym of SYMMETRIES) {
+    let minR = Infinity;
+    let minC = Infinity;
+    let maxR = -Infinity;
+    let maxC = -Infinity;
+    const pts = stones.map(({ r, c, owner }) => {
+      const [tr, tc] = sym.apply(r, c, n);
+      if (tr < minR) minR = tr;
+      if (tc < minC) minC = tc;
+      if (tr > maxR) maxR = tr;
+      if (tc > maxC) maxC = tc;
+      return { r: tr, c: tc, owner };
+    });
+    const eTop = Math.min(minR, EDGE_CLAMP);
+    const eRight = Math.min(n - 1 - maxC, EDGE_CLAMP);
+    const eBottom = Math.min(n - 1 - maxR, EDGE_CLAMP);
+    const eLeft = Math.min(minC, EDGE_CLAMP);
+    const body = pts
+      .map((p) => `${p.r - minR},${p.c - minC},${p.owner}`)
+      .sort()
+      .join(";");
+    const key = `${body}#${eTop},${eRight},${eBottom},${eLeft}`;
+    if (bestKey === "" || key < bestKey) {
+      bestKey = key;
+      bestSym = sym;
+      bestOffRow = minR;
+      bestOffCol = minC;
+    }
+  }
+
+  return {
+    key: bestKey,
+    transform: makeTransform(bestSym, bestOffRow, bestOffCol, n),
+  };
+}
+
+/**
+ * An entry is replayable when it carries a real search (depth >= floor). We no
+ * longer gate on the planned depth: under a time budget a fresh search reaches
+ * roughly the same depth as the stored one, so re-searching a matched position
+ * buys nothing.
+ */
 export function isStrongExperienceHit(
   entry: ExperienceEntry | undefined,
-  plannedDepth: number,
 ): entry is ExperienceEntry {
-  return entry !== undefined && entry.depth >= plannedDepth;
+  return entry !== undefined && entry.depth >= MIN_EXPERIENCE_DEPTH;
 }
 
 export function experienceBeatsBaseline(

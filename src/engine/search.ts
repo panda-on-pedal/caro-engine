@@ -397,11 +397,6 @@ export interface SearchConfig {
   onProgress?: (event: SearchProgressEvent) => void;
   /** Root moves that are forced blocks — used for insight.kind === "block". */
   progressBlockKeys?: ReadonlySet<string>;
-  /**
-   * When true (default) and `timeBudgetMs` is set, scale the budget by stone
-   * count and snap to 100% on tactical/forced narrow sources.
-   */
-  adaptiveTimeBudget?: boolean;
   /** Root experience policy for this call. Default: off inside search. */
   experienceMode?: ExperienceMode;
   /** Practice baseline (and optional move-ordering seed). */
@@ -619,20 +614,17 @@ export function search(
   const moveCount = countStones(store.board);
   const narrowConfig = narrowConfigForStore(store, player, baseNarrow);
 
-  // Narrow first so hybrid time can snap to full budget on fights.
   const narrowed = narrowCandidates(
     store.board,
     player,
     moveCount,
     narrowConfig,
   );
-  const adaptive = config.adaptiveTimeBudget !== false;
   const effectiveTimeBudgetMs =
-    config.timeBudgetMs !== undefined && adaptive
+    config.timeBudgetMs !== undefined
       ? resolveEffectiveTimeBudget({
           maxBudgetMs: config.timeBudgetMs,
           moveCount,
-          narrowSource: narrowed.source,
         })
       : config.timeBudgetMs;
 

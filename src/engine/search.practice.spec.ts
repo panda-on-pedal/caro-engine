@@ -13,7 +13,6 @@ describe("search practice baseline", () => {
     const result = search(board, 1, {
       maxDepth: 2,
       timeBudgetMs: 50,
-      adaptiveTimeBudget: false,
       experienceMode: "practice",
       experienceBaseline: baseline,
       rootScoreJitter: 0,

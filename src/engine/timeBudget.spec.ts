@@ -1,67 +1,91 @@
 import {
-  DEFAULT_TIME_BUDGET_RAMP,
+  DEFAULT_MIN_TIME_BUDGET_MS,
+  DEFAULT_TIME_BUDGET_STEP,
   resolveEffectiveTimeBudget,
 } from "./timeBudget.ts";
 
 describe("resolveEffectiveTimeBudget", () => {
   const maxBudgetMs = 10000;
+  const { minBudgetMs, stepMs, startOwnStones } = DEFAULT_TIME_BUDGET_STEP;
 
-  it("snaps to 100% on tactical and forced sources", () => {
+  it("uses floor(moveCount / 2) as own stones", () => {
+    // 4 total stones → 2 own → still at floor (startOwnStones)
+    expect(
+      resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 4 }),
+    ).toBe(minBudgetMs);
+    // 5 total → 2 own (same)
+    expect(
+      resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 5 }),
+    ).toBe(minBudgetMs);
+    // 6 total → 3 own → one step
+    expect(
+      resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 6 }),
+    ).toBe(minBudgetMs + stepMs);
+  });
+
+  it("stays at minBudget before startOwnStones", () => {
+    // 0–1 own (0–3 total)
+    expect(
+      resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 0 }),
+    ).toBe(minBudgetMs);
+    expect(
+      resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 1 }),
+    ).toBe(minBudgetMs);
+    expect(
+      resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 3 }),
+    ).toBe(minBudgetMs);
+  });
+
+  it("starts stepping at startOwnStones", () => {
+    // own == startOwnStones → total 4
     expect(
       resolveEffectiveTimeBudget({
         maxBudgetMs,
+        moveCount: startOwnStones * 2,
+      }),
+    ).toBe(minBudgetMs);
+    // own == startOwnStones + 1 → total 6
+    expect(
+      resolveEffectiveTimeBudget({
+        maxBudgetMs,
+        moveCount: (startOwnStones + 1) * 2,
+      }),
+    ).toBe(minBudgetMs + stepMs);
+    // own == startOwnStones + 2 → total 8
+    expect(
+      resolveEffectiveTimeBudget({
+        maxBudgetMs,
+        moveCount: (startOwnStones + 2) * 2,
+      }),
+    ).toBe(minBudgetMs + 2 * stepMs);
+  });
+
+  it("caps at maxBudgetMs", () => {
+    expect(
+      resolveEffectiveTimeBudget({
+        maxBudgetMs,
+        moveCount: 100,
+      }),
+    ).toBe(maxBudgetMs);
+  });
+
+  it("never exceeds a tiny maxBudgetMs override", () => {
+    expect(
+      resolveEffectiveTimeBudget({
+        maxBudgetMs: 50,
         moveCount: 0,
-        narrowSource: "tactical",
       }),
-    ).toBe(maxBudgetMs);
+    ).toBe(50);
     expect(
       resolveEffectiveTimeBudget({
-        maxBudgetMs,
-        moveCount: 2,
-        narrowSource: "forced",
+        maxBudgetMs: 50,
+        moveCount: 40,
       }),
-    ).toBe(maxBudgetMs);
+    ).toBe(50);
   });
 
-  it("uses minFraction before rampStart on quiet boards", () => {
-    expect(
-      resolveEffectiveTimeBudget({
-        maxBudgetMs,
-        moveCount: 0,
-        narrowSource: "quiet",
-      }),
-    ).toBe(Math.round(maxBudgetMs * DEFAULT_TIME_BUDGET_RAMP.minFraction));
-    expect(
-      resolveEffectiveTimeBudget({
-        maxBudgetMs,
-        moveCount: 3,
-        narrowSource: "quiet",
-      }),
-    ).toBe(Math.round(maxBudgetMs * DEFAULT_TIME_BUDGET_RAMP.minFraction));
-  });
-
-  it("reaches full budget at rampFull on quiet boards", () => {
-    expect(
-      resolveEffectiveTimeBudget({
-        maxBudgetMs,
-        moveCount: DEFAULT_TIME_BUDGET_RAMP.rampFull,
-        narrowSource: "quiet",
-      }),
-    ).toBe(maxBudgetMs);
-  });
-
-  it("ramps linearly between start and full", () => {
-    const mid = resolveEffectiveTimeBudget({
-      maxBudgetMs,
-      moveCount: 12,
-      narrowSource: "quiet",
-    });
-    const low = resolveEffectiveTimeBudget({
-      maxBudgetMs,
-      moveCount: 4,
-      narrowSource: "quiet",
-    });
-    expect(mid).toBeGreaterThan(low);
-    expect(mid).toBeLessThan(maxBudgetMs);
+  it("keeps default min in sync with easy profile constant", () => {
+    expect(DEFAULT_MIN_TIME_BUDGET_MS).toBe(500);
+    expect(minBudgetMs).toBe(DEFAULT_MIN_TIME_BUDGET_MS);
   });
 });

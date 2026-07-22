@@ -6,6 +6,7 @@ import {
 } from "./narrow.ts";
 import type { ExperienceEntry, ExperienceMode } from "./experience.ts";
 import type { GameState } from "./state.ts";
+import { DEFAULT_MIN_TIME_BUDGET_MS } from "./timeBudget.ts";
 
 export type Difficulty = "easy" | "medium" | "hard" | "expert";
 
@@ -23,7 +24,7 @@ export interface DifficultyProfile {
 export const DIFFICULTY_PROFILES: Record<Difficulty, DifficultyProfile> = {
   easy: {
     maxDepth: 2,
-    timeBudgetMs: 500,
+    timeBudgetMs: DEFAULT_MIN_TIME_BUDGET_MS,
     recognizedForkPatterns: new Set(),
     rootScoreJitter: 0.15,
   },
@@ -55,8 +56,6 @@ export interface EngineConfig {
   timeBudgetMs?: number;
   /** Override the difficulty's default root-score jitter (0 disables). */
   rootScoreJitter?: number;
-  /** When false, use `timeBudgetMs` as a hard cap (no move-count ramp). */
-  adaptiveTimeBudget?: boolean;
   experienceMode?: ExperienceMode;
   experienceBaseline?: ExperienceEntry;
 }
@@ -72,7 +71,6 @@ export function resolveEngineSearchConfig(config: EngineConfig): SearchConfig {
     recognizedForkPatterns: profile.recognizedForkPatterns,
     decay: DEFAULT_DECAY_CONFIG,
     rootScoreJitter: config.rootScoreJitter ?? profile.rootScoreJitter,
-    adaptiveTimeBudget: config.adaptiveTimeBudget,
     experienceMode: config.experienceMode,
     experienceBaseline: config.experienceBaseline,
   };

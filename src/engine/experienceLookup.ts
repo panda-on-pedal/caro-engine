@@ -1,8 +1,9 @@
 import type { Board, Player } from "./board.ts";
 import {
-  experiencePositionKey,
+  canonicalExperienceKey,
   isStrongExperienceHit,
   isUsableExperienceMove,
+  type CanonicalPosition,
   type ExperienceEntry,
   type ExperienceMode,
 } from "./experience.ts";
@@ -15,14 +16,13 @@ import type { SearchResult } from "./search.ts";
 export function tryUseExperienceHit(params: {
   board: Board;
   player: Player;
-  plannedDepth: number;
   mode: ExperienceMode;
   entry: ExperienceEntry | undefined;
 }): SearchResult | null {
   if (params.mode !== "use") {
     return null;
   }
-  if (!isStrongExperienceHit(params.entry, params.plannedDepth)) {
+  if (!isStrongExperienceHit(params.entry)) {
     return null;
   }
   if (!isUsableExperienceMove(params.board, params.entry)) {
@@ -40,6 +40,6 @@ export function tryUseExperienceHit(params: {
 export function experienceKeyFor(
   board: Board,
   player: Player,
-): string {
-  return experiencePositionKey(board, player);
+): CanonicalPosition {
+  return canonicalExperienceKey(board, player);
 }

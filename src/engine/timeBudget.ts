@@ -1,44 +1,40 @@
-import type { NarrowSource } from "./narrow.ts";
-
-export interface TimeBudgetRampConfig {
-  /** Stones below this use `minFraction` of max budget. */
-  rampStart: number;
-  /** Stones at/above this use 100% (unless already snapped by source). */
-  rampFull: number;
-  /** Fraction of max budget used before `rampStart`. */
-  minFraction: number;
+interface TimeBudgetStepConfig {
+  /** Floor budget used before `startOwnStones` (and at the first step). */
+  minBudgetMs: number;
+  /** Extra ms added per own stone after `startOwnStones`. */
+  stepMs: number;
+  /** Own stones below this stay at `minBudgetMs`. */
+  startOwnStones: number;
 }
 
-export const DEFAULT_TIME_BUDGET_RAMP: TimeBudgetRampConfig = {
-  rampStart: 4,
-  rampFull: 20,
-  minFraction: 0.15,
+/**
+ * Keep `minBudgetMs` in sync with `DIFFICULTY_PROFILES.easy.timeBudgetMs`
+ * (engine.ts imports this constant).
+ */
+export const DEFAULT_MIN_TIME_BUDGET_MS = 500;
+
+export const DEFAULT_TIME_BUDGET_STEP: TimeBudgetStepConfig = {
+  minBudgetMs: DEFAULT_MIN_TIME_BUDGET_MS,
+  stepMs: 500,
+  startOwnStones: 2,
 };
 
 /**
- * Hybrid time budget: ramp with stone count on quiet/soft positions;
- * snap to 100% of `maxBudgetMs` when narrowing is already tactical or forced.
+ * Step time budget by the side-to-move's stone count toward `maxBudgetMs`.
+ * `moveCount` is total stones; own stones ≈ floor(moveCount / 2) under
+ * alternating play.
  */
 export function resolveEffectiveTimeBudget(params: {
   maxBudgetMs: number;
   moveCount: number;
-  narrowSource: NarrowSource;
-  ramp?: TimeBudgetRampConfig;
+  step?: TimeBudgetStepConfig;
 }): number {
-  const ramp = params.ramp ?? DEFAULT_TIME_BUDGET_RAMP;
-  if (params.narrowSource === "tactical" || params.narrowSource === "forced") {
-    return params.maxBudgetMs;
-  }
-
-  const { rampStart, rampFull, minFraction } = ramp;
-  if (params.moveCount < rampStart) {
-    return Math.max(1, Math.round(params.maxBudgetMs * minFraction));
-  }
-  if (params.moveCount >= rampFull || rampFull <= rampStart) {
-    return params.maxBudgetMs;
-  }
-
-  const t = (params.moveCount - rampStart) / (rampFull - rampStart);
-  const fraction = minFraction + (1 - minFraction) * t;
-  return Math.max(1, Math.round(params.maxBudgetMs * fraction));
+  const step = params.step ?? DEFAULT_TIME_BUDGET_STEP;
+  const ownStones = Math.floor(params.moveCount / 2);
+  const raw =
+    ownStones < step.startOwnStones
+      ? step.minBudgetMs
+      : step.minBudgetMs +
+        (ownStones - step.startOwnStones) * step.stepMs;
+  return Math.max(1, Math.min(params.maxBudgetMs, raw));
 }
