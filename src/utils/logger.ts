@@ -1,4 +1,4 @@
-const PREFIX = 'Caro:';
+const PREFIX = "Caro:";
 
 /**
  * Logger utility class for consistent logging with debug toggle

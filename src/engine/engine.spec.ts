@@ -13,9 +13,7 @@ describe("chooseMove", () => {
   it("returns a SearchResult whose move is legal on an empty board", () => {
     const state = newGame();
     const result = chooseMove(state, { difficulty: "easy" });
-    expect(isLegalMove(state.board, result.move.row, result.move.col)).toBe(
-      true,
-    );
+    expect(isLegalMove(state.board, result.move.row, result.move.col)).toBe(true);
     expect(result.depth).toBe(0);
     expect(result.nodesVisited).toBe(0);
     expect(Array.isArray(result.principalVariation)).toBe(true);
@@ -28,9 +26,7 @@ describe("chooseMove", () => {
     const result = chooseMove(state, { difficulty: "easy" });
     expect(result.depth).toBe(0);
     expect(result.nodesVisited).toBe(0);
-    expect(isLegalMove(state.board, result.move.row, result.move.col)).toBe(
-      true,
-    );
+    expect(isLegalMove(state.board, result.move.row, result.move.col)).toBe(true);
   });
 
   it("takes an immediate win-in-1 when one is available, even at easy difficulty", () => {
@@ -55,9 +51,7 @@ describe("chooseMove", () => {
   it("defaults to a usable configuration when none is passed", () => {
     const state = newGame();
     const result = chooseMove(state);
-    expect(isLegalMove(state.board, result.move.row, result.move.col)).toBe(
-      true,
-    );
+    expect(isLegalMove(state.board, result.move.row, result.move.col)).toBe(true);
   });
 
   it("searches deeper at hard than at easy for the same tactical position", () => {
@@ -150,24 +144,20 @@ describe("DIFFICULTY_PROFILES", () => {
       rootScoreJitter: 0.1,
     });
     expect(DIFFICULTY_PROFILES.medium.recognizedForkPatterns).toEqual(
-      new Set(["double-three-trap", "double-four-trap"]),
+      new Set(["double-three-trap", "double-four-trap"])
     );
     expect(DIFFICULTY_PROFILES.hard).toMatchObject({
       maxDepth: 6,
       timeBudgetMs: 5000,
       rootScoreJitter: 0.05,
     });
-    expect(DIFFICULTY_PROFILES.hard.recognizedForkPatterns).toEqual(
-      ALL_FORK_PATTERN_NAMES,
-    );
+    expect(DIFFICULTY_PROFILES.hard.recognizedForkPatterns).toEqual(ALL_FORK_PATTERN_NAMES);
     expect(DIFFICULTY_PROFILES.expert).toMatchObject({
       maxDepth: 6,
       timeBudgetMs: 10000,
       rootScoreJitter: 0.02,
     });
-    expect(DIFFICULTY_PROFILES.expert.recognizedForkPatterns).toEqual(
-      ALL_FORK_PATTERN_NAMES,
-    );
+    expect(DIFFICULTY_PROFILES.expert.recognizedForkPatterns).toEqual(ALL_FORK_PATTERN_NAMES);
   });
 
   it("resolveEngineSearchConfig merges profile with overrides", () => {

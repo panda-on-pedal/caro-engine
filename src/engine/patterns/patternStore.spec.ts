@@ -6,30 +6,28 @@ import { parseBoard } from "../test-helpers/parse-board.ts";
 
 function canonicalize(patterns: readonly PatternInstance[]) {
   return patterns
-    .map((p) => ({
+    .map(p => ({
       type: p.type,
       dir: `${p.direction[0]},${p.direction[1]}`,
-      cells: p.cells.map((c) => `${c.row},${c.col}`).sort().join("|"),
-      gains: p.gains.map((c) => `${c.row},${c.col}`).sort().join("|"),
+      cells: p.cells
+        .map(c => `${c.row},${c.col}`)
+        .sort()
+        .join("|"),
+      gains: p.gains
+        .map(c => `${c.row},${c.col}`)
+        .sort()
+        .join("|"),
       critical: p.criticalGains
-        .map((c) => `${c.row},${c.col}`)
+        .map(c => `${c.row},${c.col}`)
         .sort()
         .join("|"),
     }))
-    .sort((a, b) =>
-      `${a.type}|${a.dir}|${a.cells}`.localeCompare(
-        `${b.type}|${b.dir}|${b.cells}`,
-      ),
-    );
+    .sort((a, b) => `${a.type}|${a.dir}|${a.cells}`.localeCompare(`${b.type}|${b.dir}|${b.cells}`));
 }
 
 function expectStoreMatchesBoard(store: PatternStore): void {
-  expect(canonicalize(store.patterns(1))).toEqual(
-    canonicalize(findPatterns(store.board, 1)),
-  );
-  expect(canonicalize(store.patterns(2))).toEqual(
-    canonicalize(findPatterns(store.board, 2)),
-  );
+  expect(canonicalize(store.patterns(1))).toEqual(canonicalize(findPatterns(store.board, 1)));
+  expect(canonicalize(store.patterns(2))).toEqual(canonicalize(findPatterns(store.board, 2)));
 }
 
 describe("PatternStore", () => {
@@ -41,12 +39,8 @@ describe("PatternStore", () => {
       .....
     `);
     const store = PatternStore.fromBoard(board);
-    expect(canonicalize(store.patterns(1))).toEqual(
-      canonicalize(findPatterns(board, 1)),
-    );
-    expect(canonicalize(store.patterns(2))).toEqual(
-      canonicalize(findPatterns(board, 2)),
-    );
+    expect(canonicalize(store.patterns(1))).toEqual(canonicalize(findPatterns(board, 1)));
+    expect(canonicalize(store.patterns(2))).toEqual(canonicalize(findPatterns(board, 2)));
   });
 
   it("place then patterns match findPatterns on the placed board", () => {
@@ -59,12 +53,8 @@ describe("PatternStore", () => {
     const store = PatternStore.fromBoard(board);
     store.place({ row: 1, col: 3 }, 1);
     const expected = placeMove(board, 1, 3, 1);
-    expect(canonicalize(store.patterns(1))).toEqual(
-      canonicalize(findPatterns(expected, 1)),
-    );
-    expect(canonicalize(store.patterns(2))).toEqual(
-      canonicalize(findPatterns(expected, 2)),
-    );
+    expect(canonicalize(store.patterns(1))).toEqual(canonicalize(findPatterns(expected, 1)));
+    expect(canonicalize(store.patterns(2))).toEqual(canonicalize(findPatterns(expected, 2)));
   });
 
   it("undo restores prior patterns and empty cell", () => {

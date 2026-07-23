@@ -1,6 +1,6 @@
-import { BOARD_SIZE, type Board, type Player } from '../../engine/board.ts';
-import { type Difficulty } from '../../engine/engine.ts';
-import { PatternStore } from '../../engine/patterns/patternStore.ts';
+import { BOARD_SIZE, type Board, type Player } from "../../engine/board.ts";
+import { type Difficulty } from "../../engine/engine.ts";
+import { PatternStore } from "../../engine/patterns/patternStore.ts";
 import {
   applyMove,
   deserializeState,
@@ -8,26 +8,28 @@ import {
   serializeState,
   type GameState,
   type Move,
-} from '../../engine/state.ts';
-import type { SearchProgressEvent } from '../../engine/search/search.ts';
-import type { GameResult } from '../../shared/results.ts';
-import { aggregateResults, firstPlayerWinPct, playerLeaderboard } from '../../shared/results.ts';
-import { logger } from '../../utils/logger.ts';
-import type { ExperienceMode } from '../../engine/experience/experience.ts';
-import { CancelledError, EnginePool } from '../enginePool.ts';
-import { PersistentExperienceStore } from '../experiencePersist.ts';
-import { fetchWithRetry } from '../apiClient.ts';
-import { isLocale, setLocale, t } from '../i18n/index.ts';
-import type { MessageKey } from '../i18n/index.ts';
-import { loadSettings, saveSettings, type CaroSettings } from '../prefs.ts';
-import { formatThought } from '../thoughts.ts';
+} from "../../engine/state.ts";
+import type { SearchProgressEvent } from "../../engine/search/search.ts";
+import type { GameResult } from "../../shared/results.ts";
+import { aggregateResults, firstPlayerWinPct, playerLeaderboard } from "../../shared/results.ts";
+import { logger } from "../../utils/logger.ts";
+import type { ExperienceMode } from "../../engine/experience/experience.ts";
+import { CancelledError, EnginePool } from "../enginePool.ts";
+import { PersistentExperienceStore } from "../experiencePersist.ts";
+import { fetchWithRetry } from "../apiClient.ts";
+import { isLocale, setLocale, t } from "../i18n/index.ts";
+import type { MessageKey } from "../i18n/index.ts";
+import { loadSettings, saveSettings, type CaroSettings } from "../prefs.ts";
+import { formatThought } from "../thoughts.ts";
 import {
   DEFAULT_TOURNAMENT_BOARD_COUNT,
   maxTournamentBoards,
+  nextCacheMissStreak,
   pairingAt,
   sessionTabLabel,
+  shouldRestartPracticeGame,
   type TournamentDifficulty,
-} from '../tournament.ts';
+} from "../tournament.ts";
 import {
   hydrateFromUrl,
   installPopstateListener,
@@ -36,10 +38,10 @@ import {
   setUrlState,
   subscribe,
   type GameMode,
-} from '../urlState.ts';
+} from "../urlState.ts";
 
-const STATE_URL = '/api/state';
-const RESULTS_URL = '/api/results';
+const STATE_URL = "/api/state";
+const RESULTS_URL = "/api/results";
 const AI_THINK_DELAY_MS = 300;
 export const CELL_SIZE_PX = 28;
 const GAME_END_PAUSE_MS = 2000;
@@ -53,6 +55,20 @@ export interface BoardSession {
   gameStartMs: number;
   gamesPlayed: number;
   loopRunning: boolean;
+  /** Consecutive plies with no usable experience baseline (practice mode
+   * only). Resets on any cache hit. Restart fires at P1 miss then P2 miss. */
+  cacheMissStreak: number;
+  /** Last practice ply signals — kept so a restart log can show why. */
+  lastPracticePly?: {
+    player: 1 | 2;
+    difficulty: TournamentDifficulty;
+    move: Move;
+    experienceCacheHit: boolean | undefined;
+    experienceStreakEligible: boolean | undefined;
+    streakBefore: number;
+    streakAfter: number;
+    stoneCountBefore: number;
+  };
 }
 
 export interface ServerNotice {
@@ -81,7 +97,7 @@ export interface LeaderboardRow {
 }
 
 function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function cloneState(current: GameState): GameState {
@@ -111,7 +127,7 @@ function rebuildHistory(loaded: GameState): {
 }
 
 function detectHardwareConcurrency(): number {
-  if (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) {
+  if (typeof navigator !== "undefined" && navigator.hardwareConcurrency) {
     return navigator.hardwareConcurrency;
   }
   return 4;
@@ -127,7 +143,7 @@ function inkTiltDegrees(row: number, col: number): number {
 }
 
 function boardToAscii(board: Board): string {
-  const symbol = (cell: number): string => (cell === 1 ? 'X' : cell === 2 ? 'O' : '.');
+  const symbol = (cell: number): string => (cell === 1 ? "X" : cell === 2 ? "O" : ".");
 
   let minRow = BOARD_SIZE;
   let maxRow = -1;
@@ -154,8 +170,10 @@ function boardToAscii(board: Board): string {
   const endCol = Math.min(BOARD_SIZE - 1, maxCol + 1);
 
   const colHeader =
-    '   ' +
-    Array.from({ length: endCol - startCol + 1 }, (_, i) => String(startCol + i).padStart(3)).join('');
+    "   " +
+    Array.from({ length: endCol - startCol + 1 }, (_, i) => String(startCol + i).padStart(3)).join(
+      ""
+    );
   const rows: string[] = [];
   for (let row = startRow; row <= endRow; row += 1) {
     let line = String(row).padStart(3);
@@ -164,11 +182,11 @@ function boardToAscii(board: Board): string {
     }
     rows.push(line);
   }
-  return [colHeader, ...rows].join('\n');
+  return [colHeader, ...rows].join("\n");
 }
 
 function formatPct(value: number | null): string {
-  return value === null ? '—' : `${value.toFixed(1)}%`;
+  return value === null ? "—" : `${value.toFixed(1)}%`;
 }
 
 class GameSession {
@@ -176,12 +194,14 @@ class GameSession {
   past = $state<GameState[]>([]);
   future = $state<GameState[]>([]);
   busy = $state(false);
-  mode = $state<GameMode>('human-ai');
-  difficulty = $state<Difficulty>('hard');
+  mode = $state<GameMode>("human-ai");
+  difficulty = $state<Difficulty>("hard");
   autoplayPaused = $state(false);
   sessions = $state<BoardSession[]>([]);
   activeIndex = $state(0);
   viewingResults = $state(false);
+  /** Multi-AI modes wait on the Start button before running their loops. */
+  started = $state(false);
   boardCount = $state(DEFAULT_TOURNAMENT_BOARD_COUNT);
   maxBoardCount = $state(maxTournamentBoards(detectHardwareConcurrency()));
   gameResults = $state<GameResult[]>([]);
@@ -192,7 +212,7 @@ class GameSession {
   asciiOpen = $state(false);
   /** Bumped when locale or static copy must refresh. */
   localeTick = $state(0);
-  lang = $state<'en' | 'vi'>(loadSettings().lang);
+  lang = $state<"en" | "vi">(loadSettings().lang);
   ready = $state(false);
 
   private patternStore = PatternStore.fromBoard(newGame().board);
@@ -205,10 +225,10 @@ class GameSession {
   private unsubPop: (() => void) | null = null;
 
   get humanPlayer(): Player | null {
-    if (this.mode === 'human-ai') {
+    if (this.mode === "human-ai") {
       return 1;
     }
-    if (this.mode === 'ai-human') {
+    if (this.mode === "ai-human") {
       return 2;
     }
     return null;
@@ -237,12 +257,12 @@ class GameSession {
   }
 
   private experienceMode(): ExperienceMode {
-    return this.mode === 'practice' ? 'practice' : 'use';
+    return this.mode === "practice" ? "practice" : "use";
   }
 
   /** Human games only write when the Settings toggle is on; Practice/Tournament always write. */
   private persistExperience(): boolean {
-    if (this.mode === 'practice' || this.mode === 'ai-ai') {
+    if (this.mode === "practice" || this.mode === "ai-ai") {
       return true;
     }
     return this.settings.experienceImprovement;
@@ -271,29 +291,29 @@ class GameSession {
       return t(this.serverNotice.key, this.serverNotice.params);
     }
     if (this.settings.showThoughts && this.thoughtLines.length > 0) {
-      return this.thoughtLines.join('\n');
+      return this.thoughtLines.join("\n");
     }
-    return '';
+    return "";
   }
 
-  get statusDetailSeverity(): 'error' | null {
+  get statusDetailSeverity(): "error" | null {
     if (this.serverNotice?.error) {
-      return 'error';
+      return "error";
     }
     return null;
   }
 
   get matchupSides(): { p1: string; p2: string } {
     void this.localeTick;
-    if (this.mode === 'human-ai') {
-      return { p1: t('matchup.human'), p2: t('matchup.computer') };
+    if (this.mode === "human-ai") {
+      return { p1: t("matchup.human"), p2: t("matchup.computer") };
     }
-    if (this.mode === 'ai-human') {
-      return { p1: t('matchup.computer'), p2: t('matchup.human') };
+    if (this.mode === "ai-human") {
+      return { p1: t("matchup.computer"), p2: t("matchup.human") };
     }
     const boardSession = this.sessions[this.activeIndex];
     if (!boardSession) {
-      return { p1: t('matchup.computer'), p2: t('matchup.computer') };
+      return { p1: t("matchup.computer"), p2: t("matchup.computer") };
     }
     return {
       p1: this.difficultyLabel(boardSession.p1),
@@ -315,7 +335,7 @@ class GameSession {
 
   get firstPlayerWinPctLabel(): string {
     void this.localeTick;
-    return t('stats.firstPlayerWinPct', { pct: formatPct(firstPlayerWinPct(this.gameResults)) });
+    return t("stats.firstPlayerWinPct", { pct: formatPct(firstPlayerWinPct(this.gameResults)) });
   }
 
   inkTilt(row: number, col: number): number {
@@ -324,7 +344,7 @@ class GameSession {
 
   cellTitle(row: number, col: number): string {
     void this.localeTick;
-    return t('cell.title', { row, col });
+    return t("cell.title", { row, col });
   }
 
   tabLabel(index: number, boardSession: BoardSession): string {
@@ -333,15 +353,15 @@ class GameSession {
       index,
       boardSession.p1,
       boardSession.p2,
-      boardSession.state.moveHistory.length,
+      boardSession.state.moveHistory.length
     );
   }
 
   sessionTabStatus(boardSession: BoardSession): string {
     if (boardSession.state.winner !== null) {
-      return 'restarting';
+      return "restarting";
     }
-    return boardSession.busy ? 'thinking' : 'idle';
+    return boardSession.busy ? "thinking" : "idle";
   }
 
   boardOptions(): number[] {
@@ -354,12 +374,12 @@ class GameSession {
 
   boardOptionLabel(n: number): string {
     void this.localeTick;
-    return t('boards.n', { n });
+    return t("boards.n", { n });
   }
 
   async init(): Promise<void> {
     logger.setDebug(true);
-    document.documentElement.style.setProperty('--cell-size', `${CELL_SIZE_PX}px`);
+    document.documentElement.style.setProperty("--cell-size", `${CELL_SIZE_PX}px`);
 
     this.maxBoardCount = maxTournamentBoards(detectHardwareConcurrency());
     this.boardCount = Math.min(DEFAULT_TOURNAMENT_BOARD_COUNT, this.maxBoardCount);
@@ -427,7 +447,7 @@ class GameSession {
     this.applyLang(lang);
   }
 
-  private applyLang(lang: 'en' | 'vi'): void {
+  private applyLang(lang: "en" | "vi"): void {
     setLocale(lang);
     document.documentElement.lang = lang;
     this.lang = lang;
@@ -441,7 +461,7 @@ class GameSession {
   setBoardCount(count: number): void {
     this.boardCount = count;
     if (isMultiAiMode(this.mode)) {
-      this.resetForMode(this.mode).catch((error: unknown) => {
+      this.resetForMode(this.mode, true).catch((error: unknown) => {
         logger.error(error);
       });
     }
@@ -467,6 +487,15 @@ class GameSession {
 
   toggleAscii(): void {
     this.asciiOpen = !this.asciiOpen;
+  }
+
+  /** Begin running the idle multi-AI boards set up on mode entry. */
+  start(): void {
+    if (!isMultiAiMode(this.mode) || this.started) {
+      return;
+    }
+    this.started = true;
+    this.startAllSessionLoops();
   }
 
   togglePause(): void {
@@ -495,7 +524,7 @@ class GameSession {
     if (isTournamentMode(this.mode)) {
       await this.clearResults();
     }
-    await this.resetForMode(this.mode);
+    await this.resetForMode(this.mode, true);
   }
 
   async playCell(row: number, col: number): Promise<void> {
@@ -519,7 +548,7 @@ class GameSession {
     if (!this.canUndo) {
       return;
     }
-    this.stepHistory('past', this.past.length >= 2 ? 2 : 1);
+    this.stepHistory("past", this.past.length >= 2 ? 2 : 1);
     try {
       await this.saveState(this.persistedState());
     } catch (error) {
@@ -531,7 +560,7 @@ class GameSession {
     if (!this.canRedo) {
       return;
     }
-    this.stepHistory('future', this.future.length >= 2 ? 2 : 1);
+    this.stepHistory("future", this.future.length >= 2 ? 2 : 1);
     try {
       await this.saveState(this.persistedState());
     } catch (error) {
@@ -541,53 +570,51 @@ class GameSession {
 
   private persistedState(): GameState {
     const redoMoves =
-      this.future.length > 0
-        ? this.future[0].moveHistory.slice(this.state.moveHistory.length)
-        : [];
+      this.future.length > 0 ? this.future[0].moveHistory.slice(this.state.moveHistory.length) : [];
     return { ...this.state, redoMoves };
   }
 
   private difficultyLabel(difficulty: Difficulty): string {
-    if (difficulty === 'easy') {
-      return t('difficulty.easy');
+    if (difficulty === "easy") {
+      return t("difficulty.easy");
     }
-    if (difficulty === 'medium') {
-      return t('difficulty.medium');
+    if (difficulty === "medium") {
+      return t("difficulty.medium");
     }
-    if (difficulty === 'hard') {
-      return t('difficulty.hard');
+    if (difficulty === "hard") {
+      return t("difficulty.hard");
     }
-    return t('difficulty.expert');
+    return t("difficulty.expert");
   }
 
   private statusText(current: GameState): string {
-    if (current.winner === 'draw') {
-      return t('status.draw');
+    if (current.winner === "draw") {
+      return t("status.draw");
     }
     const human = this.humanPlayer;
     if (current.winner !== null) {
       if (human !== null) {
-        return current.winner === human ? t('status.youWin') : t('status.aiWins');
+        return current.winner === human ? t("status.youWin") : t("status.aiWins");
       }
-      return t('status.playerAiWins', { player: current.winner });
+      return t("status.playerAiWins", { player: current.winner });
     }
     if (human !== null) {
-      return current.nextPlayer === human ? t('status.yourTurn') : t('status.aiThinking');
+      return current.nextPlayer === human ? t("status.yourTurn") : t("status.aiThinking");
     }
     return this.autoplayPaused
-      ? t('status.paused')
-      : t('status.playerAiThinking', { player: current.nextPlayer });
+      ? t("status.paused")
+      : t("status.playerAiThinking", { player: current.nextPlayer });
   }
 
   private setServerRetryNotice(attempt: number, maxAttempts: number): void {
     this.serverNotice = {
-      key: 'status.serverRetry',
+      key: "status.serverRetry",
       params: { attempt, max: maxAttempts },
     };
   }
 
   private setServerUnavailableNotice(): void {
-    this.serverNotice = { key: 'status.serverUnavailable', error: true };
+    this.serverNotice = { key: "status.serverUnavailable", error: true };
   }
 
   private clearServerNotice(): void {
@@ -607,10 +634,10 @@ class GameSession {
     this.thoughtLines = [...this.thoughtLines, formatThought(event)];
     if (
       this.settings.highlightWhileThinking &&
-      (event.type === 'examining' ||
-        event.type === 'insight' ||
-        event.type === 'bestSoFar' ||
-        event.type === 'experienceHit')
+      (event.type === "examining" ||
+        event.type === "insight" ||
+        event.type === "bestSoFar" ||
+        event.type === "experienceHit")
     ) {
       this.thinkingCell = { row: event.row, col: event.col };
     }
@@ -631,11 +658,11 @@ class GameSession {
       await fetchWithRetry(
         STATE_URL,
         {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
           body: serializeState(next),
         },
-        { onRetry: this.apiRetryHandler },
+        { onRetry: this.apiRetryHandler }
       );
       this.clearServerNotice();
     } catch (error) {
@@ -692,7 +719,7 @@ class GameSession {
 
   private async commitAndSave(
     next: GameState,
-    placed: { move: Move; player: Player },
+    placed: { move: Move; player: Player }
   ): Promise<void> {
     this.commitState(next, placed);
     try {
@@ -728,7 +755,7 @@ class GameSession {
         await this.pool.requestMove(this.state.board, player, this.difficulty, undefined, {
           experienceMode: this.experienceMode(),
           persistExperience: this.persistExperience(),
-          onProgress: (event) => {
+          onProgress: event => {
             if (myGeneration !== this.generation) {
               return;
             }
@@ -772,6 +799,7 @@ class GameSession {
       gameStartMs: Date.now(),
       gamesPlayed: 0,
       loopRunning: false,
+      cacheMissStreak: 0,
     };
     this.sessionIdCounter += 1;
     return boardSession;
@@ -786,7 +814,7 @@ class GameSession {
     this.activeIndex = 0;
   }
 
-  private async postResult(boardSession: BoardSession, winner: 1 | 2 | 'draw'): Promise<void> {
+  private async postResult(boardSession: BoardSession, winner: 1 | 2 | "draw"): Promise<void> {
     const result: GameResult = {
       p1: boardSession.p1,
       p2: boardSession.p2,
@@ -799,11 +827,11 @@ class GameSession {
       await fetchWithRetry(
         RESULTS_URL,
         {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(result),
         },
-        { onRetry: this.apiRetryHandler },
+        { onRetry: this.apiRetryHandler }
       );
       this.clearServerNotice();
     } catch (error) {
@@ -828,7 +856,7 @@ class GameSession {
 
   private async clearResults(): Promise<void> {
     try {
-      await fetchWithRetry(RESULTS_URL, { method: 'DELETE' }, { onRetry: this.apiRetryHandler });
+      await fetchWithRetry(RESULTS_URL, { method: "DELETE" }, { onRetry: this.apiRetryHandler });
       this.clearServerNotice();
     } catch (error) {
       logger.error(error);
@@ -844,13 +872,22 @@ class GameSession {
     const player = boardSession.state.nextPlayer;
     const difficulty = player === 1 ? boardSession.p1 : boardSession.p2;
     let move: Move;
+    let experienceCacheHit: boolean | undefined;
+    let experienceStreakEligible: boolean | undefined;
     try {
-      move = (
-        await this.pool.requestMove(boardSession.state.board, player, difficulty, undefined, {
+      const result = await this.pool.requestMove(
+        boardSession.state.board,
+        player,
+        difficulty,
+        undefined,
+        {
           experienceMode: this.experienceMode(),
           persistExperience: this.persistExperience(),
-        })
-      ).move;
+        }
+      );
+      move = result.move;
+      experienceCacheHit = result.experienceCacheHit;
+      experienceStreakEligible = result.experienceStreakEligible;
     } catch (error) {
       boardSession.busy = false;
       this.sessions = [...this.sessions];
@@ -863,6 +900,25 @@ class GameSession {
       return;
     }
     boardSession.busy = false;
+    if (this.mode === "practice") {
+      const streakBefore = boardSession.cacheMissStreak;
+      const stoneCountBefore = boardSession.state.moveHistory.length;
+      boardSession.cacheMissStreak = nextCacheMissStreak(
+        boardSession.cacheMissStreak,
+        experienceCacheHit,
+        experienceStreakEligible
+      );
+      boardSession.lastPracticePly = {
+        player,
+        difficulty,
+        move,
+        experienceCacheHit,
+        experienceStreakEligible,
+        streakBefore,
+        streakAfter: boardSession.cacheMissStreak,
+        stoneCountBefore,
+      };
+    }
     boardSession.state = applyMove(boardSession.state, move, player);
     this.sessions = [...this.sessions];
   }
@@ -874,28 +930,55 @@ class GameSession {
     boardSession.loopRunning = true;
     const myGeneration = this.generation;
     try {
-      while (
-        myGeneration === this.generation &&
-        isMultiAiMode(this.mode) &&
-        !this.autoplayPaused
-      ) {
+      while (myGeneration === this.generation && isMultiAiMode(this.mode) && !this.autoplayPaused) {
         const winner = boardSession.state.winner;
-        if (winner !== null) {
-          if (isTournamentMode(this.mode)) {
-            await this.postResult(boardSession, winner);
+        const stoneCount = boardSession.state.moveHistory.length;
+        const leftBook =
+          this.mode === "practice" &&
+          shouldRestartPracticeGame({
+            cacheMissStreak: boardSession.cacheMissStreak,
+            stoneCount,
+          });
+        if (winner !== null || leftBook) {
+          if (leftBook) {
+            logger.log("practice restart", {
+              reason: "left-book",
+              detail: "consecutive real-search cache misses with enough stones on board",
+              boardId: boardSession.id,
+              pairing: `${boardSession.p1}×${boardSession.p2}`,
+              cacheMissStreak: boardSession.cacheMissStreak,
+              stoneCount,
+              lastPracticePly: boardSession.lastPracticePly,
+              lastMoves: boardSession.state.moveHistory.slice(-6),
+            });
+          } else if (this.mode === "practice") {
+            logger.log("practice restart", {
+              reason: "game-over",
+              winner,
+              boardId: boardSession.id,
+              pairing: `${boardSession.p1}×${boardSession.p2}`,
+              stoneCount,
+            });
+          }
+          if (winner !== null) {
+            if (isTournamentMode(this.mode)) {
+              await this.postResult(boardSession, winner);
+              if (myGeneration !== this.generation) {
+                return;
+              }
+            }
+            await delay(GAME_END_PAUSE_MS);
             if (myGeneration !== this.generation) {
               return;
             }
-          }
-          await delay(GAME_END_PAUSE_MS);
-          if (myGeneration !== this.generation) {
-            return;
           }
           const [p1, p2] = pairingAt(this.pairingCounter);
           this.pairingCounter += 1;
           boardSession.p1 = p1;
           boardSession.p2 = p2;
           boardSession.state = newGame();
+          boardSession.cacheMissStreak = 0;
+          boardSession.lastPracticePly = undefined;
           boardSession.gameStartMs = Date.now();
           boardSession.gamesPlayed += 1;
           this.sessions = [...this.sessions];
@@ -916,17 +999,17 @@ class GameSession {
     }
   }
 
-  private stepHistory(fromStack: 'past' | 'future', preferredSteps: number): void {
+  private stepHistory(fromStack: "past" | "future", preferredSteps: number): void {
     const prev = this.state;
-    const from = fromStack === 'past' ? [...this.past] : [...this.future];
-    const to = fromStack === 'past' ? [...this.future] : [...this.past];
+    const from = fromStack === "past" ? [...this.past] : [...this.future];
+    const to = fromStack === "past" ? [...this.future] : [...this.past];
     const steps = Math.min(preferredSteps, from.length);
     let current = this.state;
     for (let i = 0; i < steps; i += 1) {
       to.push(cloneState(current));
       current = from.pop()!;
     }
-    if (fromStack === 'past') {
+    if (fromStack === "past") {
       this.past = from;
       this.future = to;
     } else {
@@ -937,7 +1020,12 @@ class GameSession {
     this.syncPatternStore(prev, this.state);
   }
 
-  async resetForMode(newMode: GameMode): Promise<void> {
+  /**
+   * Rebuild state for `newMode`. On plain mode entry the multi-AI boards are
+   * left idle until the Start button runs them; pass `resume` (from New Game or
+   * a board-count change) to keep an already-running tournament going.
+   */
+  async resetForMode(newMode: GameMode, resume = false): Promise<void> {
     this.generation += 1;
     this.pool.cancelAll();
     this.clearThoughtFeed();
@@ -954,10 +1042,15 @@ class GameSession {
       } else {
         this.gameResults = [];
       }
-      this.startAllSessionLoops();
+      if (resume && this.started) {
+        this.startAllSessionLoops();
+      } else {
+        this.started = false;
+      }
       return;
     }
 
+    this.started = false;
     this.sessions = [];
     this.resizePool(desiredPoolSize(this.boardCount));
     this.busy = false;
@@ -976,7 +1069,7 @@ class GameSession {
 
 export const session = new GameSession();
 setLocale(session.settings.lang);
-if (typeof document !== 'undefined') {
+if (typeof document !== "undefined") {
   document.documentElement.lang = session.settings.lang;
 }
 

@@ -33,7 +33,7 @@ describe("totalPatternScore", () => {
     const board = parseBoard("..OO...");
     const patterns = findPatterns(board, 2);
     expect(totalPatternScore(patterns)).toBe(
-      patterns.reduce((sum, p) => sum + totalPatternScore([p]), 0),
+      patterns.reduce((sum, p) => sum + totalPatternScore([p]), 0)
     );
     expect(totalPatternScore([])).toBe(0);
   });
@@ -49,9 +49,7 @@ describe("scoreMove", () => {
 
   it("returns +Infinity when the move wins immediately", () => {
     const board = parseBoard("XXXX.");
-    expect(scoreMove(board, 1, { row: 0, col: 4 })).toBe(
-      Number.POSITIVE_INFINITY,
-    );
+    expect(scoreMove(board, 1, { row: 0, col: 4 })).toBe(Number.POSITIVE_INFINITY);
   });
 
   it("scores a quiet, disconnected cell as zero", () => {
@@ -78,8 +76,8 @@ describe("selectTopMovesFromStore", () => {
     const store = PatternStore.fromBoard(board);
     const fromStore = selectTopMovesFromStore(store, 2, moves, 5);
     const fromBoard = selectTopMoves(board, 2, moves, 5);
-    expect(fromStore.map((m) => `${m.row},${m.col}`)).toEqual(
-      fromBoard.map((m) => `${m.row},${m.col}`),
+    expect(fromStore.map(m => `${m.row},${m.col}`)).toEqual(
+      fromBoard.map(m => `${m.row},${m.col}`)
     );
     expect(store.depth).toBe(0);
   });
@@ -98,7 +96,7 @@ describe("selectTopMoves", () => {
     ];
     const top = selectTopMoves(board, 1, moves, 3);
     expect(top).toHaveLength(3);
-    const scores = top.map((m) => scoreMove(board, 1, m));
+    const scores = top.map(m => scoreMove(board, 1, m));
     expect(scores[0]).toBeGreaterThanOrEqual(scores[1]);
     expect(scores[1]).toBeGreaterThanOrEqual(scores[2]);
   });
@@ -118,11 +116,7 @@ describe("selectTopMoves", () => {
       { row: 4, col: 0 },
     ];
     const top = selectTopMoves(board, 2, moves, 3);
-    expect(top.map((m) => `${m.row},${m.col}`)).toEqual([
-      "0,0",
-      "0,4",
-      "4,0",
-    ]);
+    expect(top.map(m => `${m.row},${m.col}`)).toEqual(["0,0", "0,4", "4,0"]);
   });
 
   it("prefers the dual-purpose move over a weak one-sided block when both compete for a slot", () => {
@@ -162,33 +156,20 @@ describe("selectTopMovesTiered", () => {
         [quietA, quietB],
         [extend, extendFar],
       ],
-      4,
+      4
     );
     expect(top.slice(0, 2)).toEqual([quietA, quietB]);
     expect(top.slice(2)).toHaveLength(2);
   });
 
   it("sorts within each tier by score descending, stable on ties", () => {
-    const top = selectTopMovesTiered(
-      board(),
-      1,
-      [[quietA, extend, quietB]],
-      3,
-    );
+    const top = selectTopMovesTiered(board(), 1, [[quietA, extend, quietB]], 3);
     expect(top[0]).toEqual(extend);
     expect(top.slice(1)).toEqual([quietA, quietB]);
   });
 
   it("drops duplicates across tiers, keeping the earlier tier's slot", () => {
-    const top = selectTopMovesTiered(
-      board(),
-      1,
-      [
-        [quietA],
-        [quietA, extend],
-      ],
-      5,
-    );
+    const top = selectTopMovesTiered(board(), 1, [[quietA], [quietA, extend]], 5);
     expect(top).toEqual([quietA, extend]);
   });
 
@@ -200,7 +181,7 @@ describe("selectTopMovesTiered", () => {
         [quietA, quietB],
         [extend, extendFar, { row: 0, col: 6 }, { row: 0, col: 7 }],
       ],
-      3,
+      3
     );
     expect(top).toHaveLength(3);
     expect(top.slice(0, 2)).toEqual([quietA, quietB]);

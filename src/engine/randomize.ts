@@ -26,14 +26,8 @@ export function distanceWeight(distance: number, decayRate: number): number {
  * been played so far. Starts wide/exploratory and linearly sharpens
  * toward minDecay as the game matures.
  */
-export function decayRateForMoveCount(
-  moveCount: number,
-  config: DecayConfig,
-): number {
-  return Math.max(
-    config.minDecay,
-    config.startDecay - config.stepDown * moveCount,
-  );
+export function decayRateForMoveCount(moveCount: number, config: DecayConfig): number {
+  return Math.max(config.minDecay, config.startDecay - config.stepDown * moveCount);
 }
 
 /**
@@ -44,7 +38,7 @@ export function decayRateForMoveCount(
 export function weightedPick<T>(
   items: readonly T[],
   weights: readonly number[],
-  rng: () => number = Math.random,
+  rng: () => number = Math.random
 ): T {
   if (items.length !== weights.length) {
     throw new Error("items and weights must have the same length");
@@ -72,7 +66,7 @@ export function sampleWithoutReplacement<T>(
   items: readonly T[],
   weights: readonly number[],
   count: number,
-  rng: () => number = Math.random,
+  rng: () => number = Math.random
 ): T[] {
   const remainingItems = [...items];
   const remainingWeights = [...weights];

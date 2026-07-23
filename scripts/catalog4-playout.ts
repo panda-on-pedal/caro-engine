@@ -27,7 +27,13 @@ const start = parseBoard(`
 
 const SYMBOLS = [".", "X", "O"] as const;
 
-function printBoard(board: Board, minRow: number, maxRow: number, minCol: number, maxCol: number): void {
+function printBoard(
+  board: Board,
+  minRow: number,
+  maxRow: number,
+  minCol: number,
+  maxCol: number
+): void {
   const header = ["  "];
   for (let c = minCol; c <= maxCol; c += 1) {
     header.push(String(c).padStart(2));
@@ -53,7 +59,7 @@ function playout(firstMove: { row: number; col: number }): void {
     const { move } = result;
     board = placeMove(board, move.row, move.col, player);
     console.log(
-      `move ${ply}: ${SYMBOLS[player]} plays ${move.row},${move.col} (search score ${result.score})`,
+      `move ${ply}: ${SYMBOLS[player]} plays ${move.row},${move.col} (search score ${result.score})`
     );
     if (checkCaroWin(board, move.row, move.col, player)) {
       console.log(`\n>>> ${SYMBOLS[player]} WINS <<<\n`);

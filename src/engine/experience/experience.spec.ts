@@ -21,9 +21,7 @@ function build(size: number, stones: Array<[number, number, Player]>): Board {
 describe("canonicalExperienceKey", () => {
   it("differs by side to move on the same board", () => {
     const board = build(5, [[2, 2, 1]]);
-    expect(canonicalExperienceKey(board, 1).key).not.toBe(
-      canonicalExperienceKey(board, 2).key,
-    );
+    expect(canonicalExperienceKey(board, 1).key).not.toBe(canonicalExperienceKey(board, 2).key);
   });
 
   it("collapses the 8 symmetries onto one key", () => {
@@ -53,9 +51,7 @@ describe("canonicalExperienceKey", () => {
       [9, 9, 1],
       [9, 10, 2],
     ]);
-    expect(canonicalExperienceKey(a, 1).key).toBe(
-      canonicalExperienceKey(b, 1).key,
-    );
+    expect(canonicalExperienceKey(a, 1).key).toBe(canonicalExperienceKey(b, 1).key);
   });
 
   it("distinguishes an edge-blocked shape from the same shape in open space", () => {
@@ -68,7 +64,7 @@ describe("canonicalExperienceKey", () => {
       [0, 8, 1],
     ]);
     expect(canonicalExperienceKey(openShape, 1).key).not.toBe(
-      canonicalExperienceKey(edgeShape, 1).key,
+      canonicalExperienceKey(edgeShape, 1).key
     );
   });
 
@@ -112,30 +108,26 @@ describe("experience comparison helpers", () => {
     expect(
       experienceBeatsBaseline(
         { move: { row: 0, col: 0 }, score: 10, depth: 4 },
-        { move: { row: 1, col: 1 }, score: 99, depth: 3 },
-      ),
+        { move: { row: 1, col: 1 }, score: 99, depth: 3 }
+      )
     ).toBe(true);
     expect(
       experienceBeatsBaseline(
         { move: { row: 0, col: 0 }, score: 50, depth: 3 },
-        { move: { row: 1, col: 1 }, score: 40, depth: 3 },
-      ),
+        { move: { row: 1, col: 1 }, score: 40, depth: 3 }
+      )
     ).toBe(true);
     expect(
       experienceBeatsBaseline(
         { move: { row: 0, col: 0 }, score: 10, depth: 3 },
-        { move: { row: 1, col: 1 }, score: 40, depth: 3 },
-      ),
+        { move: { row: 1, col: 1 }, score: 40, depth: 3 }
+      )
     ).toBe(false);
   });
 
   it("trusts any entry backed by a real search, rejects depth-0", () => {
-    expect(
-      isStrongExperienceHit({ move: { row: 0, col: 0 }, score: 1, depth: 1 }),
-    ).toBe(true);
-    expect(
-      isStrongExperienceHit({ move: { row: 0, col: 0 }, score: 1, depth: 0 }),
-    ).toBe(false);
+    expect(isStrongExperienceHit({ move: { row: 0, col: 0 }, score: 1, depth: 1 })).toBe(true);
+    expect(isStrongExperienceHit({ move: { row: 0, col: 0 }, score: 1, depth: 0 })).toBe(false);
     expect(isStrongExperienceHit(undefined)).toBe(false);
   });
 
@@ -145,19 +137,19 @@ describe("experience comparison helpers", () => {
         move: { row: 0, col: 0 },
         score: 0,
         depth: 1,
-      }),
+      })
     ).toBe(true);
     expect(
       shouldReplaceExperience(
         { move: { row: 0, col: 0 }, score: 10, depth: 4 },
-        { move: { row: 1, col: 1 }, score: 10, depth: 4 },
-      ),
+        { move: { row: 1, col: 1 }, score: 10, depth: 4 }
+      )
     ).toBe(true);
     expect(
       shouldReplaceExperience(
         { move: { row: 0, col: 0 }, score: 10, depth: 4 },
-        { move: { row: 1, col: 1 }, score: 9, depth: 4 },
-      ),
+        { move: { row: 1, col: 1 }, score: 9, depth: 4 }
+      )
     ).toBe(false);
   });
 });
@@ -187,7 +179,7 @@ describe("ExperienceStore", () => {
 });
 
 describe("tryUseExperienceHit", () => {
-  it("returns instantly only in use mode with a real legal hit", () => {
+  it("returns instantly in use mode with a real legal hit", () => {
     let board = createEmptyBoard(5);
     board = placeMove(board, 2, 2, 1);
     const entry = { move: { row: 2, col: 3 }, score: 5, depth: 2 };
@@ -197,16 +189,42 @@ describe("tryUseExperienceHit", () => {
         player: 2,
         mode: "use",
         entry,
-      })?.move,
+      })?.move
     ).toEqual(entry.move);
+  });
+
+  it("does not fire in practice on an unsettled entry", () => {
+    let board = createEmptyBoard(5);
+    board = placeMove(board, 2, 2, 1);
+    const entry = { move: { row: 2, col: 3 }, score: 5, depth: 2 };
     expect(
       tryUseExperienceHit({
         board,
         player: 2,
         mode: "practice",
         entry,
-      }),
+      })
     ).toBeNull();
+  });
+
+  it("fires in practice when the entry is settled", () => {
+    let board = createEmptyBoard(5);
+    board = placeMove(board, 2, 2, 1);
+    const entry = {
+      move: { row: 2, col: 3 },
+      score: 5,
+      depth: 2,
+      settled: true as const,
+    };
+    const hit = tryUseExperienceHit({
+      board,
+      player: 2,
+      mode: "practice",
+      entry,
+    });
+    expect(hit?.move).toEqual(entry.move);
+    expect(hit?.experienceCacheHit).toBe(true);
+    expect(hit?.experienceStreakEligible).toBe(true);
   });
 
   it("does not fire on a depth-0 entry", () => {
@@ -218,7 +236,7 @@ describe("tryUseExperienceHit", () => {
         player: 2,
         mode: "use",
         entry: { move: { row: 2, col: 3 }, score: 5, depth: 0 },
-      }),
+      })
     ).toBeNull();
   });
 });
@@ -277,7 +295,7 @@ describe("toCanonicalBoard", () => {
 describe("ExperienceStore eviction callback", () => {
   it("invokes onEvict with each key dropped by LRU overflow", () => {
     const evicted: string[] = [];
-    const store = new ExperienceStore(1, (key) => evicted.push(key));
+    const store = new ExperienceStore(1, key => evicted.push(key));
     store.put("A", { move: { row: 0, col: 0 }, score: 1, depth: 1 });
     store.put("B", { move: { row: 1, col: 1 }, score: 1, depth: 1 });
     expect(evicted).toEqual(["A"]);

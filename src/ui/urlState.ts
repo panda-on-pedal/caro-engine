@@ -1,4 +1,4 @@
-export type GameMode = 'human-ai' | 'ai-human' | 'ai-ai' | 'practice';
+export type GameMode = "human-ai" | "ai-human" | "ai-ai" | "practice";
 
 export type UrlState = {
   mode: GameMode;
@@ -6,50 +6,45 @@ export type UrlState = {
 
 type Listener = (state: UrlState, prev: UrlState) => void;
 
-const DEFAULT_STATE: UrlState = { mode: 'human-ai' };
+const DEFAULT_STATE: UrlState = { mode: "human-ai" };
 
 const listeners = new Set<Listener>();
 let current: UrlState = { ...DEFAULT_STATE };
 
 export function isMultiAiMode(mode: GameMode): boolean {
-  return mode === 'ai-ai' || mode === 'practice';
+  return mode === "ai-ai" || mode === "practice";
 }
 
 /** Tournament is the only multi-AI mode that records pairing stats. */
 export function isTournamentMode(mode: GameMode): boolean {
-  return mode === 'ai-ai';
+  return mode === "ai-ai";
 }
 
 export function isGameMode(value: string): value is GameMode {
-  return (
-    value === 'human-ai' ||
-    value === 'ai-human' ||
-    value === 'ai-ai' ||
-    value === 'practice'
-  );
+  return value === "human-ai" || value === "ai-human" || value === "ai-ai" || value === "practice";
 }
 
 function parseSearch(search: string): UrlState {
-  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
-  const modeRaw = params.get('mode') ?? '';
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const modeRaw = params.get("mode") ?? "";
   return {
     mode: isGameMode(modeRaw) ? modeRaw : DEFAULT_STATE.mode,
   };
 }
 
 function writeSearch(state: UrlState): void {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return;
   }
   const url = new URL(window.location.href);
-  url.searchParams.delete('lang');
-  url.searchParams.set('mode', state.mode);
+  url.searchParams.delete("lang");
+  url.searchParams.set("mode", state.mode);
   const next = `${url.pathname}${url.search}${url.hash}`;
   const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   if (next === currentPath) {
     return;
   }
-  window.history.replaceState(window.history.state, '', next);
+  window.history.replaceState(window.history.state, "", next);
 }
 
 function notify(prev: UrlState): void {
@@ -81,7 +76,7 @@ export function setUrlState(patch: Partial<UrlState>): void {
  * optionally notify. Used at boot and on `popstate`.
  */
 export function hydrateFromUrl(options?: { notify?: boolean }): UrlState {
-  const search = typeof window !== 'undefined' ? window.location.search : '';
+  const search = typeof window !== "undefined" ? window.location.search : "";
   const next = parseSearch(search);
   const prev = current;
   const changed = next.mode !== current.mode;
@@ -106,14 +101,14 @@ export function parseUrlState(search: string): UrlState {
 }
 
 export function installPopstateListener(): () => void {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return () => undefined;
   }
   const onPopState = (): void => {
     hydrateFromUrl({ notify: true });
   };
-  window.addEventListener('popstate', onPopState);
+  window.addEventListener("popstate", onPopState);
   return () => {
-    window.removeEventListener('popstate', onPopState);
+    window.removeEventListener("popstate", onPopState);
   };
 }

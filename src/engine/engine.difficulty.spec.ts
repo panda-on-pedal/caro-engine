@@ -1,11 +1,5 @@
 // src/engine/engine.difficulty.spec.ts
-import {
-  createEmptyBoard,
-  isLegalMove,
-  placeMove,
-  type Board,
-  type Player,
-} from "./board.ts";
+import { createEmptyBoard, isLegalMove, placeMove, type Board, type Player } from "./board.ts";
 import { checkCaroWin } from "./rules.ts";
 import { search, type SearchConfig } from "./search/search.ts";
 import { ALL_FORK_PATTERN_NAMES } from "./search/narrow.ts";

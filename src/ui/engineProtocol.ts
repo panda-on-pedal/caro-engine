@@ -1,32 +1,16 @@
-import type { Board, Player } from '../engine/board.ts';
-import {
-  resolveEngineSearchConfig,
-  type Difficulty,
-} from '../engine/engine.ts';
+import type { Board, Player } from "../engine/board.ts";
+import { resolveEngineSearchConfig, type Difficulty } from "../engine/engine.ts";
 import type {
   ExperienceEntry,
   ExperienceMode,
   ExperienceTransform,
-} from '../engine/experience/experience.ts';
-import {
-  experienceKeyFor,
-  tryUseExperienceHit,
-} from '../engine/experience/experienceLookup.ts';
-import { isUsableExperienceMove } from '../engine/experience/experience.ts';
-import {
-  search,
-  type SearchProgressEvent,
-  type SearchResult,
-} from '../engine/search/search.ts';
-import {
-  TranspositionTable,
-  type TTEntry,
-} from '../engine/transposition/transposition.ts';
-import { PersistentExperienceStore } from './experiencePersist.ts';
-import {
-  loadSlice as realLoadSlice,
-  flushSlice as realFlushSlice,
-} from './ttPersist.ts';
+} from "../engine/experience/experience.ts";
+import { experienceKeyFor, tryUseExperienceHit } from "../engine/experience/experienceLookup.ts";
+import { isUsableExperienceMove } from "../engine/experience/experience.ts";
+import { search, type SearchProgressEvent, type SearchResult } from "../engine/search/search.ts";
+import { TranspositionTable, type TTEntry } from "../engine/transposition/transposition.ts";
+import { PersistentExperienceStore } from "./experiencePersist.ts";
+import { loadSlice as realLoadSlice, flushSlice as realFlushSlice } from "./ttPersist.ts";
 
 export type { SearchProgressEvent };
 
@@ -47,40 +31,35 @@ export interface EngineRequest {
 }
 
 export type EngineResponse =
-  | { id: number; ok: true; result: SearchResult }
-  | { id: number; ok: false; error: string };
+  { id: number; ok: true; result: SearchResult } | { id: number; ok: false; error: string };
 
 export type EngineProgressMessage = {
   id: number;
-  type: 'progress';
+  type: "progress";
   event: SearchProgressEvent;
 };
 
 export type EngineMessage = EngineResponse | EngineProgressMessage;
 
 export function isProgressMessage(message: EngineMessage): message is EngineProgressMessage {
-  return 'type' in message && message.type === 'progress';
+  return "type" in message && message.type === "progress";
 }
 
 export function handleEngineRequest(
   request: EngineRequest,
-  onProgress?: (event: SearchProgressEvent) => void,
+  onProgress?: (event: SearchProgressEvent) => void
 ): EngineResponse {
   try {
-    const result = search(
-      request.board,
-      request.player,
-      {
-        ...resolveEngineSearchConfig({
-          difficulty: request.difficulty,
-          timeBudgetMs: request.timeBudgetMs,
-          stepTimeByOwnStones: request.stepTimeByOwnStones,
-          experienceMode: request.experienceMode,
-          experienceBaseline: request.experienceBaseline,
-        }),
-        onProgress,
-      },
-    );
+    const result = search(request.board, request.player, {
+      ...resolveEngineSearchConfig({
+        difficulty: request.difficulty,
+        timeBudgetMs: request.timeBudgetMs,
+        stepTimeByOwnStones: request.stepTimeByOwnStones,
+        experienceMode: request.experienceMode,
+        experienceBaseline: request.experienceBaseline,
+      }),
+      onProgress,
+    });
     return { id: request.id, ok: true, result };
   } catch (error) {
     return {
@@ -103,14 +82,14 @@ export async function runBookDeepening(
   deps: BookDeepenDeps = {
     loadSlice: realLoadSlice,
     flushSlice: realFlushSlice,
-  },
+  }
 ): Promise<EngineResponse> {
   const key = request.canonicalKey;
   if (key === undefined) {
     return {
       id: request.id,
       ok: false,
-      error: 'bookDeepening without canonicalKey',
+      error: "bookDeepening without canonicalKey",
     };
   }
   try {
@@ -161,9 +140,7 @@ export function prepareExperienceForRequest(params: {
   const stored = params.store.get(params.difficulty, key);
   // Stored moves live in the canonical frame; project back to this board.
   const entry =
-    stored !== undefined
-      ? { ...stored, move: transform.fromCanonical(stored.move) }
-      : undefined;
+    stored !== undefined ? { ...stored, move: transform.fromCanonical(stored.move) } : undefined;
   const instant = tryUseExperienceHit({
     board: params.board,
     player: params.player,
@@ -173,7 +150,7 @@ export function prepareExperienceForRequest(params: {
   // Any non-off mode seeds/floors the search on a usable hit; `use` mode
   // additionally replays it instantly while a background search improves it.
   const baseline =
-    params.experienceMode !== 'off' && isUsableExperienceMove(params.board, entry)
+    params.experienceMode !== "off" && isUsableExperienceMove(params.board, entry)
       ? entry
       : undefined;
   return { instant, baseline, settled: stored?.settled === true, key, transform };

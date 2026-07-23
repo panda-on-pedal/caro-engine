@@ -13,9 +13,7 @@ function otherPlayer(player: Player): Player {
 }
 
 /** Sum of `RANK_PATTERN_WEIGHTS` over instances (no tempo multiplier). */
-export function totalPatternScore(
-  patterns: readonly PatternInstance[],
-): number {
+export function totalPatternScore(patterns: readonly PatternInstance[]): number {
   let total = 0;
   for (const p of patterns) {
     total += RANK_PATTERN_WEIGHTS[p.type];
@@ -35,7 +33,7 @@ function scoreMoveFromBaseline(
   opponent: Player,
   ownBefore: number,
   oppBefore: number,
-  move: Move,
+  move: Move
 ): number {
   const next = placeMove(board, move.row, move.col, player);
   if (checkCaroWin(next, move.row, move.col, player)) {
@@ -52,7 +50,7 @@ function scoreMoveFromStore(
   opponent: Player,
   ownBefore: number,
   oppBefore: number,
-  move: Move,
+  move: Move
 ): number {
   store.place(move, player);
   let score: number;
@@ -76,14 +74,7 @@ export function scoreMove(board: Board, player: Player, move: Move): number {
   const opponent = otherPlayer(player);
   const ownBefore = totalPatternScore(findPatterns(board, player));
   const oppBefore = totalPatternScore(findPatterns(board, opponent));
-  return scoreMoveFromBaseline(
-    board,
-    player,
-    opponent,
-    ownBefore,
-    oppBefore,
-    move,
-  );
+  return scoreMoveFromBaseline(board, player, opponent, ownBefore, oppBefore, move);
 }
 
 function bonusFor(bonus: ReadonlyMap<string, number> | undefined, move: Move): number {
@@ -97,7 +88,7 @@ function rankByScore(
   ownBefore: number,
   oppBefore: number,
   moves: readonly Move[],
-  bonus?: ReadonlyMap<string, number>,
+  bonus?: ReadonlyMap<string, number>
 ): Move[] {
   const ranked = moves.map((move, index) => ({
     move,
@@ -112,7 +103,7 @@ function rankByScore(
     }
     return a.index - b.index;
   });
-  return ranked.map((r) => r.move);
+  return ranked.map(r => r.move);
 }
 
 function rankByScoreFromStore(
@@ -122,7 +113,7 @@ function rankByScoreFromStore(
   ownBefore: number,
   oppBefore: number,
   moves: readonly Move[],
-  bonus?: ReadonlyMap<string, number>,
+  bonus?: ReadonlyMap<string, number>
 ): Move[] {
   const ranked = moves.map((move, index) => ({
     move,
@@ -137,7 +128,7 @@ function rankByScoreFromStore(
     }
     return a.index - b.index;
   });
-  return ranked.map((r) => r.move);
+  return ranked.map(r => r.move);
 }
 
 /**
@@ -148,15 +139,12 @@ export function selectTopMoves(
   board: Board,
   player: Player,
   moves: readonly Move[],
-  k: number = DEFAULT_TOP_K,
+  k: number = DEFAULT_TOP_K
 ): Move[] {
   const opponent = otherPlayer(player);
   const ownBefore = totalPatternScore(findPatterns(board, player));
   const oppBefore = totalPatternScore(findPatterns(board, opponent));
-  return rankByScore(board, player, opponent, ownBefore, oppBefore, moves).slice(
-    0,
-    k,
-  );
+  return rankByScore(board, player, opponent, ownBefore, oppBefore, moves).slice(0, k);
 }
 
 /** Like `selectTopMoves`, scoring trial places via `PatternStore`. */
@@ -164,19 +152,12 @@ export function selectTopMovesFromStore(
   store: PatternStore,
   player: Player,
   moves: readonly Move[],
-  k: number = DEFAULT_TOP_K,
+  k: number = DEFAULT_TOP_K
 ): Move[] {
   const opponent = otherPlayer(player);
   const ownBefore = totalPatternScore(store.patterns(player));
   const oppBefore = totalPatternScore(store.patterns(opponent));
-  return rankByScoreFromStore(
-    store,
-    player,
-    opponent,
-    ownBefore,
-    oppBefore,
-    moves,
-  ).slice(0, k);
+  return rankByScoreFromStore(store, player, opponent, ownBefore, oppBefore, moves).slice(0, k);
 }
 
 /**
@@ -192,7 +173,7 @@ export function selectTopMovesTiered(
   player: Player,
   tiers: ReadonlyArray<readonly Move[]>,
   k: number = DEFAULT_TOP_K,
-  bonus?: ReadonlyMap<string, number>,
+  bonus?: ReadonlyMap<string, number>
 ): Move[] {
   const opponent = otherPlayer(player);
   const ownBefore = totalPatternScore(findPatterns(board, player));
@@ -204,7 +185,7 @@ export function selectTopMovesTiered(
     if (selected.length >= k) {
       break;
     }
-    const fresh = tier.filter((move) => {
+    const fresh = tier.filter(move => {
       const key = `${move.row},${move.col}`;
       if (seen.has(key)) {
         return false;
@@ -212,15 +193,7 @@ export function selectTopMovesTiered(
       seen.add(key);
       return true;
     });
-    for (const move of rankByScore(
-      board,
-      player,
-      opponent,
-      ownBefore,
-      oppBefore,
-      fresh,
-      bonus,
-    )) {
+    for (const move of rankByScore(board, player, opponent, ownBefore, oppBefore, fresh, bonus)) {
       if (selected.length >= k) {
         break;
       }
@@ -236,7 +209,7 @@ export function selectTopMovesTieredFromStore(
   player: Player,
   tiers: ReadonlyArray<readonly Move[]>,
   k: number = DEFAULT_TOP_K,
-  bonus?: ReadonlyMap<string, number>,
+  bonus?: ReadonlyMap<string, number>
 ): Move[] {
   const opponent = otherPlayer(player);
   const ownBefore = totalPatternScore(store.patterns(player));
@@ -248,7 +221,7 @@ export function selectTopMovesTieredFromStore(
     if (selected.length >= k) {
       break;
     }
-    const fresh = tier.filter((move) => {
+    const fresh = tier.filter(move => {
       const key = `${move.row},${move.col}`;
       if (seen.has(key)) {
         return false;
@@ -263,7 +236,7 @@ export function selectTopMovesTieredFromStore(
       ownBefore,
       oppBefore,
       fresh,
-      bonus,
+      bonus
     )) {
       if (selected.length >= k) {
         break;

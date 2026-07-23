@@ -1,20 +1,8 @@
-import {
-  isInBounds,
-  WIN_LENGTH,
-  type Board,
-  type Cell,
-  type Player,
-} from "../board.ts";
+import { isInBounds, WIN_LENGTH, type Board, type Cell, type Player } from "../board.ts";
 import type { Move } from "../state.ts";
 
 export type PatternType =
-  | "five"
-  | "open-four"
-  | "four"
-  | "open-three"
-  | "three"
-  | "open-two"
-  | "two";
+  "five" | "open-four" | "four" | "open-three" | "three" | "open-two" | "two";
 
 export interface PatternInstance {
   type: PatternType;
@@ -42,11 +30,7 @@ export const PATTERN_DIRECTIONS: ReadonlyArray<Direction> = DIRECTIONS;
  * Line identity for `direction` through `(row, col)`:
  * horizontal → row; vertical → col; diag ↘ → row-col; diag ↙ → row+col.
  */
-export function lineKey(
-  row: number,
-  col: number,
-  direction: Direction,
-): number {
+export function lineKey(row: number, col: number, direction: Direction): number {
   const dRow = direction[0];
   const dCol = direction[1];
   if (dRow === 0 && dCol === 1) {
@@ -70,10 +54,7 @@ function boardReader(board: Board): CellReader {
   return (row, col) => (isInBounds(board, row, col) ? board[row][col] : null);
 }
 
-function withOverrides(
-  reader: CellReader,
-  overrides: ReadonlyMap<string, Player>,
-): CellReader {
+function withOverrides(reader: CellReader, overrides: ReadonlyMap<string, Player>): CellReader {
   return (row, col) => {
     const override = overrides.get(`${row},${col}`);
     return override !== undefined ? override : reader(row, col);
@@ -84,12 +65,7 @@ function cellKey(move: Move): string {
   return `${move.row},${move.col}`;
 }
 
-function windowCells(
-  row: number,
-  col: number,
-  dRow: number,
-  dCol: number,
-): Move[] {
+function windowCells(row: number, col: number, dRow: number, dCol: number): Move[] {
   return Array.from({ length: WIN_LENGTH }, (_, i) => ({
     row: row + i * dRow,
     col: col + i * dCol,
@@ -97,7 +73,7 @@ function windowCells(
 }
 
 function isWindowInBounds(read: CellReader, cells: Move[]): boolean {
-  return cells.every((c) => read(c.row, c.col) !== null);
+  return cells.every(c => read(c.row, c.col) !== null);
 }
 
 /**
@@ -113,10 +89,10 @@ function isViableWindow(
   cells: Move[],
   dRow: number,
   dCol: number,
-  player: Player,
+  player: Player
 ): boolean {
   const opponent: Player = player === 1 ? 2 : 1;
-  if (cells.some((c) => read(c.row, c.col) === opponent)) {
+  if (cells.some(c => read(c.row, c.col) === opponent)) {
     return false;
   }
 
@@ -158,16 +134,13 @@ function viableWindowsInDirection(
   dRow: number,
   dCol: number,
   player: Player,
-  lineFilterKey?: number,
+  lineFilterKey?: number
 ): WindowInfo[] {
   const direction: Direction = [dRow, dCol];
   const results: WindowInfo[] = [];
   for (let row = 0; row < size; row += 1) {
     for (let col = 0; col < size; col += 1) {
-      if (
-        lineFilterKey !== undefined &&
-        lineKey(row, col, direction) !== lineFilterKey
-      ) {
+      if (lineFilterKey !== undefined && lineKey(row, col, direction) !== lineFilterKey) {
         continue;
       }
       const cells = windowCells(row, col, dRow, dCol);
@@ -178,8 +151,8 @@ function viableWindowsInDirection(
         continue;
       }
       results.push({
-        stones: cells.filter((c) => read(c.row, c.col) === player),
-        gaps: cells.filter((c) => read(c.row, c.col) === 0),
+        stones: cells.filter(c => read(c.row, c.col) === player),
+        gaps: cells.filter(c => read(c.row, c.col) === 0),
       });
     }
   }
@@ -192,18 +165,11 @@ function findFives(
   dRow: number,
   dCol: number,
   player: Player,
-  lineFilterKey?: number,
+  lineFilterKey?: number
 ): PatternInstance[] {
-  return viableWindowsInDirection(
-    read,
-    size,
-    dRow,
-    dCol,
-    player,
-    lineFilterKey,
-  )
-    .filter((w) => w.stones.length === WIN_LENGTH)
-    .map((w) => ({
+  return viableWindowsInDirection(read, size, dRow, dCol, player, lineFilterKey)
+    .filter(w => w.stones.length === WIN_LENGTH)
+    .map(w => ({
       type: "five" as const,
       player,
       cells: w.stones,
@@ -214,7 +180,7 @@ function findFives(
 }
 
 function groupByStoneSet(
-  windows: WindowInfo[],
+  windows: WindowInfo[]
 ): Map<string, { cells: Move[]; gains: Map<string, Move> }> {
   const groups = new Map<string, { cells: Move[]; gains: Map<string, Move> }>();
   for (const w of windows) {
@@ -237,16 +203,11 @@ function findFours(
   dRow: number,
   dCol: number,
   player: Player,
-  lineFilterKey?: number,
+  lineFilterKey?: number
 ): PatternInstance[] {
-  const windows = viableWindowsInDirection(
-    read,
-    size,
-    dRow,
-    dCol,
-    player,
-    lineFilterKey,
-  ).filter((w) => w.stones.length === 4);
+  const windows = viableWindowsInDirection(read, size, dRow, dCol, player, lineFilterKey).filter(
+    w => w.stones.length === 4
+  );
   const groups = groupByStoneSet(windows);
 
   const instances: PatternInstance[] = [];
@@ -274,16 +235,11 @@ function findThrees(
   dRow: number,
   dCol: number,
   player: Player,
-  lineFilterKey?: number,
+  lineFilterKey?: number
 ): PatternInstance[] {
-  const windows = viableWindowsInDirection(
-    read,
-    size,
-    dRow,
-    dCol,
-    player,
-    lineFilterKey,
-  ).filter((w) => w.stones.length === 3);
+  const windows = viableWindowsInDirection(read, size, dRow, dCol, player, lineFilterKey).filter(
+    w => w.stones.length === 3
+  );
   const groups = groupByStoneSet(windows);
 
   const instances: PatternInstance[] = [];
@@ -293,23 +249,11 @@ function findThrees(
       continue;
     }
 
-    const criticalGains = gains.filter((gain) => {
-      const hypothetical = withOverrides(
-        read,
-        new Map([[cellKey(gain), player]]),
-      );
-      const fours = findFours(
-        hypothetical,
-        size,
-        dRow,
-        dCol,
-        player,
-        lineFilterKey,
-      );
+    const criticalGains = gains.filter(gain => {
+      const hypothetical = withOverrides(read, new Map([[cellKey(gain), player]]));
+      const fours = findFours(hypothetical, size, dRow, dCol, player, lineFilterKey);
       return fours.some(
-        (four) =>
-          four.type === "open-four" &&
-          four.cells.some((c) => cellKey(c) === cellKey(gain)),
+        four => four.type === "open-four" && four.cells.some(c => cellKey(c) === cellKey(gain))
       );
     });
 
@@ -331,16 +275,11 @@ function findTwos(
   dRow: number,
   dCol: number,
   player: Player,
-  lineFilterKey?: number,
+  lineFilterKey?: number
 ): PatternInstance[] {
-  const windows = viableWindowsInDirection(
-    read,
-    size,
-    dRow,
-    dCol,
-    player,
-    lineFilterKey,
-  ).filter((w) => w.stones.length === 2);
+  const windows = viableWindowsInDirection(read, size, dRow, dCol, player, lineFilterKey).filter(
+    w => w.stones.length === 2
+  );
   const groups = groupByStoneSet(windows);
 
   const instances: PatternInstance[] = [];
@@ -350,23 +289,11 @@ function findTwos(
       continue;
     }
 
-    const criticalGains = gains.filter((gain) => {
-      const hypothetical = withOverrides(
-        read,
-        new Map([[cellKey(gain), player]]),
-      );
-      const threes = findThrees(
-        hypothetical,
-        size,
-        dRow,
-        dCol,
-        player,
-        lineFilterKey,
-      );
+    const criticalGains = gains.filter(gain => {
+      const hypothetical = withOverrides(read, new Map([[cellKey(gain), player]]));
+      const threes = findThrees(hypothetical, size, dRow, dCol, player, lineFilterKey);
       return threes.some(
-        (three) =>
-          three.type === "open-three" &&
-          three.cells.some((c) => cellKey(c) === cellKey(gain)),
+        three => three.type === "open-three" && three.cells.some(c => cellKey(c) === cellKey(gain))
       );
     });
 
@@ -388,7 +315,7 @@ function findPatternsInDirection(
   dRow: number,
   dCol: number,
   player: Player,
-  lineFilterKey?: number,
+  lineFilterKey?: number
 ): PatternInstance[] {
   return withoutStoneSubsets([
     ...findFives(read, size, dRow, dCol, player, lineFilterKey),
@@ -403,7 +330,7 @@ function findPatternsInDirection(
  */
 function isCellSubset(a: readonly Move[], b: readonly Move[]): boolean {
   const keys = new Set(b.map(cellKey));
-  return a.every((c) => keys.has(cellKey(c)));
+  return a.every(c => keys.has(cellKey(c)));
 }
 
 /**
@@ -412,17 +339,12 @@ function isCellSubset(a: readonly Move[], b: readonly Move[]): boolean {
  * the same threat line, not a second one — keeping them double-counts
  * score and creates phantom same-line "forks".
  */
-function withoutStoneSubsets(
-  patterns: readonly PatternInstance[],
-): PatternInstance[] {
+function withoutStoneSubsets(patterns: readonly PatternInstance[]): PatternInstance[] {
   return patterns.filter(
     (p, i) =>
       !patterns.some(
-        (q, j) =>
-          i !== j &&
-          p.cells.length < q.cells.length &&
-          isCellSubset(p.cells, q.cells),
-      ),
+        (q, j) => i !== j && p.cells.length < q.cells.length && isCellSubset(p.cells, q.cells)
+      )
   );
 }
 
@@ -431,9 +353,7 @@ export function findPatterns(board: Board, player: Player): PatternInstance[] {
   const size = board.length;
   const instances: PatternInstance[] = [];
   for (const [dRow, dCol] of DIRECTIONS) {
-    instances.push(
-      ...findPatternsInDirection(read, size, dRow, dCol, player),
-    );
+    instances.push(...findPatternsInDirection(read, size, dRow, dCol, player));
   }
   return instances;
 }
@@ -448,19 +368,12 @@ export function findPatternsOnLine(
   player: Player,
   anchorRow: number,
   anchorCol: number,
-  direction: Direction,
+  direction: Direction
 ): PatternInstance[] {
   const read = boardReader(board);
   const size = board.length;
   const key = lineKey(anchorRow, anchorCol, direction);
-  return findPatternsInDirection(
-    read,
-    size,
-    direction[0],
-    direction[1],
-    player,
-    key,
-  );
+  return findPatternsInDirection(read, size, direction[0], direction[1], player, key);
 }
 
 export interface ForkPoint {
@@ -489,9 +402,7 @@ export interface ForkPoint {
  * function's job is only to make sure the point is never pruned out of
  * candidacy before that judgment can happen.
  */
-export function findForkPoints(
-  patterns: readonly PatternInstance[],
-): ForkPoint[] {
+export function findForkPoints(patterns: readonly PatternInstance[]): ForkPoint[] {
   const byGain = new Map<string, PatternInstance[]>();
   for (const pattern of patterns) {
     for (const gain of pattern.gains) {

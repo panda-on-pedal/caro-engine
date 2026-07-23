@@ -1,4 +1,10 @@
-import { evaluate, forkBonusFor, FORK_BONUS_SCALE, RANK_PATTERN_WEIGHTS, WIN_SCORE } from "./evaluate.ts";
+import {
+  evaluate,
+  forkBonusFor,
+  FORK_BONUS_SCALE,
+  RANK_PATTERN_WEIGHTS,
+  WIN_SCORE,
+} from "./evaluate.ts";
 import { findForkPoints, findPatterns } from "../patterns/patterns.ts";
 import { parseBoard } from "../test-helpers/parse-board.ts";
 
@@ -6,9 +12,7 @@ describe("evaluate", () => {
   it("scores an open-four position higher than an open-three position for the same player", () => {
     const openFourBoard = parseBoard(".XXXX..");
     const openThreeBoard = parseBoard(".XXX...");
-    expect(evaluate(openFourBoard, 1)).toBeGreaterThan(
-      evaluate(openThreeBoard, 1),
-    );
+    expect(evaluate(openFourBoard, 1)).toBeGreaterThan(evaluate(openThreeBoard, 1));
   });
 
   it("scores an open-three position higher than a plain-two position for the same player", () => {
@@ -50,10 +54,8 @@ describe("forkBonusFor", () => {
     `);
     const forkPoint = findForkPoints(findPatterns(board, 1))[0];
     const expected =
-      forkPoint.patterns.reduce(
-        (sum, p) => sum + RANK_PATTERN_WEIGHTS[p.type],
-        0,
-      ) * FORK_BONUS_SCALE;
+      forkPoint.patterns.reduce((sum, p) => sum + RANK_PATTERN_WEIGHTS[p.type], 0) *
+      FORK_BONUS_SCALE;
     expect(forkBonusFor(forkPoint)).toBe(expected);
   });
 });

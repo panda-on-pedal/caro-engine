@@ -59,13 +59,15 @@
       <option value={String(n)}>{session.boardOptionLabel(n)}</option>
     {/each}
   </select>
-  <button id="pause" type="button" onclick={() => session.togglePause()}>
-    {session.localeTick >= 0
-      ? session.autoplayPaused
-        ? t('controls.resume')
-        : t('controls.pause')
-      : ''}
-  </button>
+  {#if session.started}
+    <button id="pause" type="button" onclick={() => session.togglePause()}>
+      {session.localeTick >= 0
+        ? session.autoplayPaused
+          ? t('controls.resume')
+          : t('controls.pause')
+        : ''}
+    </button>
+  {/if}
 {/if}
 
 {#if !isMultiAi}
@@ -77,14 +79,16 @@
   </button>
 {/if}
 
-<button id="new-game" type="button" onclick={onNewGame}>
-  {session.localeTick >= 0 ? t('controls.newGame') : ''}
-</button>
+{#if !isMultiAi || session.started}
+  <button id="new-game" type="button" onclick={onNewGame}>
+    {session.localeTick >= 0 ? t('controls.newGame') : ''}
+  </button>
 
-<button id="ascii-toggle" type="button" onclick={() => session.toggleAscii()}>
-  {session.localeTick >= 0
-    ? session.asciiOpen
-      ? t('controls.hideAscii')
-      : t('controls.showAscii')
-    : ''}
-</button>
+  <button id="ascii-toggle" type="button" onclick={() => session.toggleAscii()}>
+    {session.localeTick >= 0
+      ? session.asciiOpen
+        ? t('controls.hideAscii')
+        : t('controls.showAscii')
+      : ''}
+  </button>
+{/if}

@@ -10,30 +10,18 @@ describe("resolveEffectiveTimeBudget", () => {
 
   it("uses floor(moveCount / 2) as own stones", () => {
     // 4 total stones → 2 own → still at floor (startOwnStones)
-    expect(
-      resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 4 }),
-    ).toBe(minBudgetMs);
+    expect(resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 4 })).toBe(minBudgetMs);
     // 5 total → 2 own (same)
-    expect(
-      resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 5 }),
-    ).toBe(minBudgetMs);
+    expect(resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 5 })).toBe(minBudgetMs);
     // 6 total → 3 own → one step
-    expect(
-      resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 6 }),
-    ).toBe(minBudgetMs + stepMs);
+    expect(resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 6 })).toBe(minBudgetMs + stepMs);
   });
 
   it("stays at minBudget before startOwnStones", () => {
     // 0–1 own (0–3 total)
-    expect(
-      resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 0 }),
-    ).toBe(minBudgetMs);
-    expect(
-      resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 1 }),
-    ).toBe(minBudgetMs);
-    expect(
-      resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 3 }),
-    ).toBe(minBudgetMs);
+    expect(resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 0 })).toBe(minBudgetMs);
+    expect(resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 1 })).toBe(minBudgetMs);
+    expect(resolveEffectiveTimeBudget({ maxBudgetMs, moveCount: 3 })).toBe(minBudgetMs);
   });
 
   it("starts stepping at startOwnStones", () => {
@@ -42,21 +30,21 @@ describe("resolveEffectiveTimeBudget", () => {
       resolveEffectiveTimeBudget({
         maxBudgetMs,
         moveCount: startOwnStones * 2,
-      }),
+      })
     ).toBe(minBudgetMs);
     // own == startOwnStones + 1 → total 6
     expect(
       resolveEffectiveTimeBudget({
         maxBudgetMs,
         moveCount: (startOwnStones + 1) * 2,
-      }),
+      })
     ).toBe(minBudgetMs + stepMs);
     // own == startOwnStones + 2 → total 8
     expect(
       resolveEffectiveTimeBudget({
         maxBudgetMs,
         moveCount: (startOwnStones + 2) * 2,
-      }),
+      })
     ).toBe(minBudgetMs + 2 * stepMs);
   });
 
@@ -65,7 +53,7 @@ describe("resolveEffectiveTimeBudget", () => {
       resolveEffectiveTimeBudget({
         maxBudgetMs,
         moveCount: 100,
-      }),
+      })
     ).toBe(maxBudgetMs);
   });
 
@@ -74,13 +62,13 @@ describe("resolveEffectiveTimeBudget", () => {
       resolveEffectiveTimeBudget({
         maxBudgetMs: 50,
         moveCount: 0,
-      }),
+      })
     ).toBe(50);
     expect(
       resolveEffectiveTimeBudget({
         maxBudgetMs: 50,
         moveCount: 40,
-      }),
+      })
     ).toBe(50);
   });
 
@@ -98,7 +86,7 @@ describe("resolveEffectiveTimeBudget stepTimeByOwnStones", () => {
         maxBudgetMs: 10000,
         moveCount: 0,
         stepTimeByOwnStones: false,
-      }),
+      })
     ).toBe(10000);
   });
 });

@@ -28,15 +28,11 @@ const CFG = {
  * committed snapshot (not converted to hardcoded values) so the actual
  * ranked candidate set stays directly reviewable in the .snap file —
  * any future change to scoring/tiering shows up as a snapshot diff. */
-function snapshotNarrow(
-  board: ReturnType<typeof parseBoard>,
-  player: 1 | 2,
-  moveCount: number,
-) {
+function snapshotNarrow(board: ReturnType<typeof parseBoard>, player: 1 | 2, moveCount: number) {
   const result = narrowCandidates(board, player, moveCount, CFG);
   return {
     source: result.source,
-    moves: result.moves.map((m) => ({
+    moves: result.moves.map(m => ({
       row: m.row,
       col: m.col,
       score: scoreMove(board, player, m),
@@ -122,7 +118,7 @@ describe("catalog #2 — O's dual-purpose 12,13 competes in the soft tier, behin
 
   it("fills the remaining soft slots with the open-three-creating group, dropping the weaker two-gains", () => {
     const result = narrowCandidates(board, 2, 7, CFG);
-    const keys = result.moves.map((m) => `${m.row},${m.col}`).sort();
+    const keys = result.moves.map(m => `${m.row},${m.col}`).sort();
     expect(keys).toEqual(["12,12", "12,13", "12,8", "7,15", "8,14"]);
     // With two top-K slots reserved for the urgent tier, only the three
     // best soft moves survive: 12,13 (252) and two of the ~240
@@ -433,10 +429,8 @@ describe("catalog #11 — O must answer X's row-10 open-three; all four blocks (
   it("every one of the catalog's four blocks — 10,5 / 10,6 / 10,10 / 10,11 — is in the candidate pool", () => {
     const result = narrowCandidates(board, 2, 12, CFG);
     expect(result.source).toBe("tactical");
-    const keys = result.moves.map((m) => `${m.row},${m.col}`);
-    expect(keys).toEqual(
-      expect.arrayContaining(["10,5", "10,6", "10,10", "10,11"]),
-    );
+    const keys = result.moves.map(m => `${m.row},${m.col}`);
+    expect(keys).toEqual(expect.arrayContaining(["10,5", "10,6", "10,10", "10,11"]));
   });
 
   it("dual-purpose blocks outrank pure blocks; O's own fork 8,6 is dropped outright, not merely outscored", () => {
@@ -452,7 +446,7 @@ describe("catalog #11 — O must answer X's row-10 open-three; all four blocks (
     expect(dualDiag).toBeGreaterThan(pure);
     expect(dualVert).toBeGreaterThan(pure);
     const result = narrowCandidates(board, 2, 12, CFG);
-    const keys = result.moves.map((m) => `${m.row},${m.col}`);
+    const keys = result.moves.map(m => `${m.row},${m.col}`);
     expect(keys).not.toContain("8,6");
     expect(keys.sort()).toEqual(["10,10", "10,11", "10,5", "10,6"]);
   });
@@ -558,7 +552,7 @@ describe("catalog #16 — X to move after O's 13,10: must-answer keeps racing fo
   it("includes the racing four-maker 8,10 (mixed-tier fork / vertical three gain)", () => {
     const result = narrowCandidates(board, 1, 14, CFG);
     expect(result.source).toBe("tactical");
-    const keys = result.moves.map((m) => `${m.row},${m.col}`);
+    const keys = result.moves.map(m => `${m.row},${m.col}`);
     expect(keys).toContain("8,10");
   });
 });
@@ -620,7 +614,7 @@ describe("catalog #18 — X to move: 13,11 is the fork that creates two open-thr
     const result = narrowCandidates(board, 1, 18, CFG);
     expect(result.source).toBe("tactical");
     expect(result.moves[0]).toEqual({ row: 13, col: 11 });
-    const keys = result.moves.map((m) => `${m.row},${m.col}`);
+    const keys = result.moves.map(m => `${m.row},${m.col}`);
     expect(keys).toContain("13,11");
   });
 });

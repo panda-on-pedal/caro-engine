@@ -1,20 +1,12 @@
-import type { Difficulty } from '../engine/engine.ts';
-import {
-  ExperienceStore,
-  type StoredExperienceEntry,
-} from '../engine/experience/experience.ts';
-import { logger } from '../utils/logger.ts';
-import { evictSlice } from './ttPersist.ts';
+import type { Difficulty } from "../engine/engine.ts";
+import { ExperienceStore, type StoredExperienceEntry } from "../engine/experience/experience.ts";
+import { logger } from "../utils/logger.ts";
+import { evictSlice } from "./ttPersist.ts";
 
-export const LEGACY_EXPERIENCE_STORAGE_KEY = 'caro-engine-experience-v1';
-export const EXPERIENCE_STORAGE_KEY_PREFIX = 'caro-engine-experience-v2-';
+export const LEGACY_EXPERIENCE_STORAGE_KEY = "caro-engine-experience-v1";
+export const EXPERIENCE_STORAGE_KEY_PREFIX = "caro-engine-experience-v2-";
 
-const DIFFICULTIES: readonly Difficulty[] = [
-  'easy',
-  'medium',
-  'hard',
-  'expert',
-];
+const DIFFICULTIES: readonly Difficulty[] = ["easy", "medium", "hard", "expert"];
 
 interface ExperienceFile {
   version: 2;
@@ -27,7 +19,7 @@ export function experienceStorageKey(difficulty: Difficulty): string {
 
 function readStorage(): Storage | null {
   try {
-    if (typeof localStorage === 'undefined') {
+    if (typeof localStorage === "undefined") {
       return null;
     }
     return localStorage;
@@ -62,10 +54,7 @@ export function discardLegacyExperienceStorage(): void {
 }
 
 /** Load disk-backed experience into `store`. Safe no-op when storage missing/corrupt. */
-export function loadExperienceStore(
-  store: ExperienceStore,
-  difficulty: Difficulty,
-): void {
+export function loadExperienceStore(store: ExperienceStore, difficulty: Difficulty): void {
   const storage = readStorage();
   if (!storage) {
     return;
@@ -78,10 +67,7 @@ export function loadExperienceStore(
 }
 
 /** Persist `store` to localStorage. Debounce via callers if needed. */
-export function saveExperienceStore(
-  store: ExperienceStore,
-  difficulty: Difficulty,
-): void {
+export function saveExperienceStore(store: ExperienceStore, difficulty: Difficulty): void {
   const storage = readStorage();
   if (!storage) {
     return;
@@ -93,7 +79,7 @@ export function saveExperienceStore(
   try {
     storage.setItem(experienceStorageKey(difficulty), JSON.stringify(payload));
   } catch (error) {
-    logger.error('Failed to persist experience cache:', error);
+    logger.error("Failed to persist experience cache:", error);
   }
 }
 
@@ -111,10 +97,10 @@ export class PersistentExperienceStore {
     const maxEntries = options?.maxEntries ?? 2000;
     this.debounceMs = options?.debounceMs ?? 250;
     this.books = {
-      easy: new ExperienceStore(maxEntries, (key) => void evictSlice(key)),
-      medium: new ExperienceStore(maxEntries, (key) => void evictSlice(key)),
-      hard: new ExperienceStore(maxEntries, (key) => void evictSlice(key)),
-      expert: new ExperienceStore(maxEntries, (key) => void evictSlice(key)),
+      easy: new ExperienceStore(maxEntries, key => void evictSlice(key)),
+      medium: new ExperienceStore(maxEntries, key => void evictSlice(key)),
+      hard: new ExperienceStore(maxEntries, key => void evictSlice(key)),
+      expert: new ExperienceStore(maxEntries, key => void evictSlice(key)),
     };
     discardLegacyExperienceStorage();
     for (const difficulty of DIFFICULTIES) {
@@ -130,11 +116,7 @@ export class PersistentExperienceStore {
     return this.books[difficulty].get(key);
   }
 
-  put(
-    difficulty: Difficulty,
-    key: string,
-    entry: Parameters<ExperienceStore['put']>[1],
-  ): boolean {
+  put(difficulty: Difficulty, key: string, entry: Parameters<ExperienceStore["put"]>[1]): boolean {
     const changed = this.books[difficulty].put(key, entry);
     if (changed) {
       this.scheduleSave(difficulty);

@@ -23,7 +23,7 @@ const db = new TTDatabase();
 
 export async function loadSlice(key: string): Promise<Array<[bigint, TTEntry]>> {
   const rows = await db.tt.where("key").equals(key).toArray();
-  return rows.map((r) => [
+  return rows.map(r => [
     BigInt("0x" + r.hash),
     {
       depth: r.depth,
@@ -35,10 +35,7 @@ export async function loadSlice(key: string): Promise<Array<[bigint, TTEntry]>> 
   ]);
 }
 
-export async function flushSlice(
-  key: string,
-  dirty: Array<[bigint, TTEntry]>,
-): Promise<void> {
+export async function flushSlice(key: string, dirty: Array<[bigint, TTEntry]>): Promise<void> {
   if (dirty.length === 0) return;
   const rows: TTRow[] = dirty.map(([hash, entry]) => ({
     key,

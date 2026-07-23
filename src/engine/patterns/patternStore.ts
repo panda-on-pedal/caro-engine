@@ -1,8 +1,4 @@
-import {
-  type Board,
-  type Cell,
-  type Player,
-} from "../board.ts";
+import { type Board, type Cell, type Player } from "../board.ts";
 import {
   findPatterns,
   findPatternsOnLine,
@@ -24,17 +20,12 @@ type UndoFrame = {
 function patternOnLine(
   pattern: PatternInstance,
   direction: readonly [number, number],
-  key: number,
+  key: number
 ): boolean {
-  if (
-    pattern.direction[0] !== direction[0] ||
-    pattern.direction[1] !== direction[1]
-  ) {
+  if (pattern.direction[0] !== direction[0] || pattern.direction[1] !== direction[1]) {
     return false;
   }
-  return pattern.cells.some(
-    (c) => lineKey(c.row, c.col, direction) === key,
-  );
+  return pattern.cells.some(c => lineKey(c.row, c.col, direction) === key);
 }
 
 /**
@@ -48,11 +39,7 @@ export class PatternStore {
   private stack: UndoFrame[] = [];
   private hashValue: bigint;
 
-  private constructor(
-    board: Board,
-    patterns1: PatternInstance[],
-    patterns2: PatternInstance[],
-  ) {
+  private constructor(board: Board, patterns1: PatternInstance[], patterns2: PatternInstance[]) {
     this.board = board;
     this.patterns1 = patterns1;
     this.patterns2 = patterns2;
@@ -78,12 +65,8 @@ export class PatternStore {
 
   /** Deep-copies `board` and runs a full `findPatterns` for both players. */
   static fromBoard(board: Board): PatternStore {
-    const copy = board.map((row) => row.slice()) as Board;
-    return new PatternStore(
-      copy,
-      findPatterns(copy, 1),
-      findPatterns(copy, 2),
-    );
+    const copy = board.map(row => row.slice()) as Board;
+    return new PatternStore(copy, findPatterns(copy, 1), findPatterns(copy, 2));
   }
 
   patterns(player: Player): readonly PatternInstance[] {
@@ -137,7 +120,7 @@ export class PatternStore {
    * Used for UI load / new-game / history jumps that are not place/undo.
    */
   resetFromBoard(board: Board): void {
-    const copy = board.map((row) => row.slice()) as Board;
+    const copy = board.map(row => row.slice()) as Board;
     for (let row = 0; row < this.board.length; row += 1) {
       for (let col = 0; col < this.board.length; col += 1) {
         this.board[row][col] = copy[row][col];
@@ -152,18 +135,10 @@ export class PatternStore {
   private rebuildLinesThrough(row: number, col: number): void {
     for (const direction of PATTERN_DIRECTIONS) {
       const key = lineKey(row, col, direction);
-      this.patterns1 = this.patterns1.filter(
-        (p) => !patternOnLine(p, direction, key),
-      );
-      this.patterns2 = this.patterns2.filter(
-        (p) => !patternOnLine(p, direction, key),
-      );
-      this.patterns1.push(
-        ...findPatternsOnLine(this.board, 1, row, col, direction),
-      );
-      this.patterns2.push(
-        ...findPatternsOnLine(this.board, 2, row, col, direction),
-      );
+      this.patterns1 = this.patterns1.filter(p => !patternOnLine(p, direction, key));
+      this.patterns2 = this.patterns2.filter(p => !patternOnLine(p, direction, key));
+      this.patterns1.push(...findPatternsOnLine(this.board, 1, row, col, direction));
+      this.patterns2.push(...findPatternsOnLine(this.board, 2, row, col, direction));
     }
   }
 }

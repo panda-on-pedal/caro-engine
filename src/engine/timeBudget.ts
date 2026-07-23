@@ -43,7 +43,6 @@ export function resolveEffectiveTimeBudget(params: {
   const raw =
     ownStones < step.startOwnStones
       ? step.minBudgetMs
-      : step.minBudgetMs +
-        (ownStones - step.startOwnStones) * step.stepMs;
+      : step.minBudgetMs + (ownStones - step.startOwnStones) * step.stepMs;
   return Math.max(1, Math.min(params.maxBudgetMs, raw));
 }

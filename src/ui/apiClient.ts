@@ -2,7 +2,7 @@ const DEFAULT_MAX_ATTEMPTS = 50;
 const DEFAULT_BASE_DELAY_MS = 1000;
 
 function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 export interface FetchRetryOptions {
@@ -16,7 +16,7 @@ export interface FetchRetryOptions {
 export async function fetchWithRetry(
   input: RequestInfo | URL,
   init?: RequestInit,
-  options?: FetchRetryOptions,
+  options?: FetchRetryOptions
 ): Promise<Response> {
   const maxAttempts = options?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const baseDelayMs = options?.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;

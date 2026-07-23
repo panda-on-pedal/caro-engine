@@ -1,11 +1,13 @@
-import { defineConfig } from 'vite';
-import { svelte } from '@sveltejs/vite-plugin-svelte';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { defineConfig } from "vite";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
-const pkg = JSON.parse(readFileSync(resolve(rootDir, 'package.json'), 'utf8')) as { version: string };
+const pkg = JSON.parse(readFileSync(resolve(rootDir, "package.json"), "utf8")) as {
+  version: string;
+};
 
 export default defineConfig({
   plugins: [svelte()],
@@ -15,17 +17,17 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   build: {
-    outDir: 'dist/ui',
+    outDir: "dist/ui",
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        main: resolve(rootDir, 'index.html'),
+        main: resolve(rootDir, "index.html"),
       },
     },
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:2026',
+      "/api": "http://localhost:2026",
     },
   },
 });

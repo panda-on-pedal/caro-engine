@@ -1,0 +1,19 @@
+# Build output
+dist
+main.js
+engineWorker.js
+
+# Dependencies
+node_modules
+
+# Lockfile
+package-lock.json
+
+# Runtime / local state
+state.json
+results.json
+
+# Tooling caches
+.claude
+.superpowers
+docs/superpowers

@@ -1,5 +1,5 @@
-import { isInBounds, WIN_LENGTH, type Board, type Player } from './board.ts';
-import type { Move } from './state.ts';
+import { isInBounds, WIN_LENGTH, type Board, type Player } from "./board.ts";
+import type { Move } from "./state.ts";
 
 const DIRECTIONS: ReadonlyArray<readonly [number, number]> = [
   [0, 1],
@@ -18,7 +18,7 @@ export function findCaroWinLine(
   board: Board,
   row: number,
   col: number,
-  player: Player,
+  player: Player
 ): Move[] | null {
   if (board[row][col] !== player) {
     return null;
@@ -47,8 +47,7 @@ export function findCaroWinLine(
       endCol += dCol;
     }
 
-    const runLength =
-      Math.max(Math.abs(endRow - startRow), Math.abs(endCol - startCol)) + 1;
+    const runLength = Math.max(Math.abs(endRow - startRow), Math.abs(endCol - startCol)) + 1;
     if (runLength < WIN_LENGTH) {
       continue;
     }

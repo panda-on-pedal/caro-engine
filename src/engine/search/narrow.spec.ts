@@ -43,7 +43,7 @@ describe("findCandidateMoves", () => {
       expect(Math.max(rowDelta, colDelta)).toBeLessThanOrEqual(2);
     }
     // (5,5) is far from the only stone at (2,2) and must not be a candidate.
-    expect(candidates.some((m) => m.row === 5 && m.col === 5)).toBe(false);
+    expect(candidates.some(m => m.row === 5 && m.col === 5)).toBe(false);
   });
 
   it("never returns an occupied cell", () => {
@@ -71,7 +71,7 @@ describe("FORK_PATTERNS catalog", () => {
     const patterns = findPatterns(board, 1);
     const forkPoints = findForkPoints(patterns);
     expect(forkPoints).toHaveLength(1);
-    const def = FORK_PATTERNS.find((d) => d.name === "double-three-trap")!;
+    const def = FORK_PATTERNS.find(d => d.name === "double-three-trap")!;
     expect(def.matches(forkPoints[0])).toBe(true);
   });
 
@@ -87,7 +87,7 @@ describe("FORK_PATTERNS catalog", () => {
     const patterns = findPatterns(board, 1);
     const forkPoints = findForkPoints(patterns);
     expect(forkPoints).toHaveLength(1);
-    const def = FORK_PATTERNS.find((d) => d.name === "double-three-trap")!;
+    const def = FORK_PATTERNS.find(d => d.name === "double-three-trap")!;
     expect(def.matches(forkPoints[0])).toBe(false);
   });
 
@@ -102,7 +102,7 @@ describe("FORK_PATTERNS catalog", () => {
     `);
     const patterns = findPatterns(board, 1);
     const forkPoints = findForkPoints(patterns);
-    const def = FORK_PATTERNS.find((d) => d.name === "double-four-trap")!;
+    const def = FORK_PATTERNS.find(d => d.name === "double-four-trap")!;
     expect(def.matches(forkPoints[0])).toBe(true);
   });
 
@@ -126,15 +126,11 @@ describe("FORK_PATTERNS catalog", () => {
     const patterns = findPatterns(board, 1);
     const forkPoints = findForkPoints(patterns);
     expect(forkPoints).toHaveLength(1);
-    const def = FORK_PATTERNS.find((d) => d.name === "mixed-tier-fork")!;
+    const def = FORK_PATTERNS.find(d => d.name === "mixed-tier-fork")!;
     expect(def.matches(forkPoints[0])).toBe(true);
-    const doubleThreeDef = FORK_PATTERNS.find(
-      (d) => d.name === "double-three-trap",
-    )!;
+    const doubleThreeDef = FORK_PATTERNS.find(d => d.name === "double-three-trap")!;
     expect(doubleThreeDef.matches(forkPoints[0])).toBe(false);
-    const doubleFourDef = FORK_PATTERNS.find(
-      (d) => d.name === "double-four-trap",
-    )!;
+    const doubleFourDef = FORK_PATTERNS.find(d => d.name === "double-four-trap")!;
     expect(doubleFourDef.matches(forkPoints[0])).toBe(false);
   });
 
@@ -157,10 +153,7 @@ describe("recognizedForkPoints", () => {
   const patterns = findPatterns(board, 1);
 
   it("returns the fork point when its catalog entry is recognized", () => {
-    const result = recognizedForkPoints(
-      patterns,
-      new Set(["double-three-trap"]),
-    );
+    const result = recognizedForkPoints(patterns, new Set(["double-three-trap"]));
     expect(result).toHaveLength(1);
   });
 
@@ -170,10 +163,7 @@ describe("recognizedForkPoints", () => {
   });
 
   it("returns nothing when only an unrelated catalog entry is recognized", () => {
-    const result = recognizedForkPoints(
-      patterns,
-      new Set(["double-four-trap"]),
-    );
+    const result = recognizedForkPoints(patterns, new Set(["double-four-trap"]));
     expect(result).toEqual([]);
   });
 });
@@ -193,9 +183,7 @@ describe("narrowCandidates — forced win/block", () => {
   it("returns only the gain when the mover already has an open four", () => {
     const board = parseBoard(".XXXX..");
     const result = narrowCandidates(board, 1, 4, BASE_CONFIG);
-    expect(result.moves.map((m) => `${m.row},${m.col}`).sort()).toEqual(
-      ["0,0", "0,5"].sort(),
-    );
+    expect(result.moves.map(m => `${m.row},${m.col}`).sort()).toEqual(["0,0", "0,5"].sort());
   });
 
   it("returns only the blocking gain when the opponent has a completable four", () => {
@@ -215,9 +203,7 @@ describe("narrowCandidates — forced win/block", () => {
     // only those are returned — the opponent's four at row 2 is
     // irrelevant once the mover can win immediately, so neither of its
     // blocking cells appears here.
-    expect(result.moves.map((m) => `${m.row},${m.col}`).sort()).toEqual(
-      ["0,0", "0,5"].sort(),
-    );
+    expect(result.moves.map(m => `${m.row},${m.col}`).sort()).toEqual(["0,0", "0,5"].sort());
   });
 });
 
@@ -225,7 +211,7 @@ describe("narrowCandidates — tactical set", () => {
   it("includes the own open-three's extension cells ahead of quiet fillers", () => {
     const board = parseBoard("..XXX..");
     const result = narrowCandidates(board, 1, 3, BASE_CONFIG);
-    const keys = result.moves.map((m) => `${m.row},${m.col}`);
+    const keys = result.moves.map(m => `${m.row},${m.col}`);
     // Own offense keeps criticalGains only; quiet fillers may pad the
     // pool but always rank behind the urgent tier.
     expect(keys.slice(0, 2).sort()).toEqual(["0,1", "0,5"]);
@@ -235,7 +221,7 @@ describe("narrowCandidates — tactical set", () => {
   it("includes the opponent's open-three's blocking cells — full gains, distance blocks included", () => {
     const board = parseBoard("..OOO..");
     const result = narrowCandidates(board, 1, 3, BASE_CONFIG);
-    const keys = result.moves.map((m) => `${m.row},${m.col}`);
+    const keys = result.moves.map(m => `${m.row},${m.col}`);
     // Defense collects every gain of the opponent's open-three: direct
     // extensions (0,1 / 0,5) plus the one-step-beyond cells (0,0 / 0,6)
     // that neutralize via Caro's boxed-five rule.
@@ -255,9 +241,7 @@ describe("narrowCandidates — tactical set", () => {
       recognizedForkPatterns: new Set(["double-three-trap"]),
     };
     const result = narrowCandidates(board, 1, 4, config);
-    expect(
-      result.moves.some((m) => m.row === 2 && m.col === 5),
-    ).toBe(true);
+    expect(result.moves.some(m => m.row === 2 && m.col === 5)).toBe(true);
   });
 
   it("includes open-three extensions when forks are unrecognized (urgent excludes soft open-two)", () => {
@@ -279,9 +263,7 @@ describe("narrowCandidates — tactical set", () => {
     `);
     const result = narrowCandidates(board, 1, 4, BASE_CONFIG); // empty recognizedForkPatterns
     expect(result.source).toBe("tactical");
-    expect(
-      result.moves.some((m) => m.row === 10 && (m.col === 1 || m.col === 5)),
-    ).toBe(true);
+    expect(result.moves.some(m => m.row === 10 && (m.col === 1 || m.col === 5))).toBe(true);
   });
 
   it("includes a recognized fork point built by the opponent (defense)", () => {
@@ -297,7 +279,7 @@ describe("narrowCandidates — tactical set", () => {
       recognizedForkPatterns: new Set(["double-three-trap"]),
     };
     const result = narrowCandidates(board, 1, 4, config);
-    expect(result.moves.some((m) => m.row === 2 && m.col === 5)).toBe(true);
+    expect(result.moves.some(m => m.row === 2 && m.col === 5)).toBe(true);
   });
 });
 
@@ -361,9 +343,12 @@ describe("narrowCandidates — quiet fallback", () => {
       rng: rngHigh,
     });
     expect(low.moves.slice(0, 2)).toEqual(high.moves.slice(0, 2));
-    expect(low.moves.slice(0, 2).map((m) => `${m.row},${m.col}`).sort()).toEqual(
-      ["0,1", "0,5"],
-    );
+    expect(
+      low.moves
+        .slice(0, 2)
+        .map(m => `${m.row},${m.col}`)
+        .sort()
+    ).toEqual(["0,1", "0,5"]);
   });
 
   it("samples different subsets across move counts given a varying rng sequence", () => {
@@ -397,12 +382,12 @@ describe("narrowCandidates — quiet fallback", () => {
 describe("narrowCandidates — soft open-two ∪ quiet", () => {
   it("includes own open-two criticalGains and tags source tactical", () => {
     const board = parseBoard("..XX...");
-    const own = findPatterns(board, 1).find((p) => p.type === "open-two")!;
+    const own = findPatterns(board, 1).find(p => p.type === "open-two")!;
     expect(own.criticalGains.length).toBeGreaterThan(0);
 
     const result = narrowCandidates(board, 1, 2, BASE_CONFIG);
     expect(result.source).toBe("tactical");
-    const keys = new Set(result.moves.map((m) => `${m.row},${m.col}`));
+    const keys = new Set(result.moves.map(m => `${m.row},${m.col}`));
     for (const gain of own.criticalGains) {
       expect(keys.has(`${gain.row},${gain.col}`)).toBe(true);
     }
@@ -410,12 +395,12 @@ describe("narrowCandidates — soft open-two ∪ quiet", () => {
 
   it("includes opponent open-two criticalGains", () => {
     const board = parseBoard("..OO...");
-    const opp = findPatterns(board, 2).find((p) => p.type === "open-two")!;
+    const opp = findPatterns(board, 2).find(p => p.type === "open-two")!;
     expect(opp.criticalGains.length).toBeGreaterThan(0);
 
     const result = narrowCandidates(board, 1, 2, BASE_CONFIG);
     expect(result.source).toBe("tactical");
-    const keys = new Set(result.moves.map((m) => `${m.row},${m.col}`));
+    const keys = new Set(result.moves.map(m => `${m.row},${m.col}`));
     for (const gain of opp.criticalGains) {
       expect(keys.has(`${gain.row},${gain.col}`)).toBe(true);
     }
@@ -434,11 +419,9 @@ describe("narrowCandidates — soft open-two ∪ quiet", () => {
       ......
       ......
     `);
-    const opp = findPatterns(board, 1).find((p) => p.type === "open-two")!;
+    const opp = findPatterns(board, 1).find(p => p.type === "open-two")!;
     expect(opp).toBeDefined();
-    const softKeys = new Set(
-      opp.criticalGains.map((g) => `${g.row},${g.col}`),
-    );
+    const softKeys = new Set(opp.criticalGains.map(g => `${g.row},${g.col}`));
 
     let call = 0;
     const rng = () => {
@@ -450,20 +433,18 @@ describe("narrowCandidates — soft open-two ∪ quiet", () => {
     const result = narrowCandidates(board, 2, 3, { ...BASE_CONFIG, rng });
     expect(result.source).toBe("tactical");
     expect(result.moves.length).toBeLessThanOrEqual(DEFAULT_TOP_K);
-    const keys = new Set(result.moves.map((m) => `${m.row},${m.col}`));
+    const keys = new Set(result.moves.map(m => `${m.row},${m.col}`));
     // Blocking X's open-two scores higher than any quiet filler (reduces
     // opponent pattern score), so both soft keys always survive top-K.
     for (const softKey of softKeys) {
       expect(keys.has(softKey)).toBe(true);
     }
-    const quietNearOwn = [...keys].some((key) => {
+    const quietNearOwn = [...keys].some(key => {
       if (softKeys.has(key)) {
         return false;
       }
       const [r, c] = key.split(",").map(Number);
-      return (
-        Math.max(Math.abs(r - 1), Math.abs(c - 2)) <= 2 && !(r === 1 && c === 2)
-      );
+      return Math.max(Math.abs(r - 1), Math.abs(c - 2)) <= 2 && !(r === 1 && c === 2);
     });
     expect(quietNearOwn).toBe(true);
   });
@@ -475,12 +456,12 @@ describe("narrowCandidates — three gains (urgent)", () => {
     const shapes = ["XOOO..", "X.OOO.", "XO.OO.", "XOO.O."];
     for (const ascii of shapes) {
       const board = parseBoard(ascii);
-      const threes = findPatterns(board, 2).filter((p) => p.type === "three");
+      const threes = findPatterns(board, 2).filter(p => p.type === "three");
       expect(threes.length).toBeGreaterThan(0);
 
       const result = narrowCandidates(board, 2, 3, BASE_CONFIG);
       expect(result.source).toBe("tactical");
-      const keys = new Set(result.moves.map((m) => `${m.row},${m.col}`));
+      const keys = new Set(result.moves.map(m => `${m.row},${m.col}`));
       for (const three of threes) {
         for (const gain of three.gains) {
           expect(keys.has(`${gain.row},${gain.col}`)).toBe(true);
@@ -491,12 +472,12 @@ describe("narrowCandidates — three gains (urgent)", () => {
 
   it("includes opponent three gains so the mover can block expansions", () => {
     const board = parseBoard("XOOO..");
-    const threes = findPatterns(board, 2).filter((p) => p.type === "three");
+    const threes = findPatterns(board, 2).filter(p => p.type === "three");
     expect(threes.length).toBeGreaterThan(0);
 
     const result = narrowCandidates(board, 1, 3, BASE_CONFIG);
     expect(result.source).toBe("tactical");
-    const keys = new Set(result.moves.map((m) => `${m.row},${m.col}`));
+    const keys = new Set(result.moves.map(m => `${m.row},${m.col}`));
     for (const three of threes) {
       for (const gain of three.gains) {
         expect(keys.has(`${gain.row},${gain.col}`)).toBe(true);
@@ -513,15 +494,13 @@ describe("narrowCandidates — three gains (urgent)", () => {
       ......
       ......
     `);
-    const threes = findPatterns(board, 2).filter((p) => p.type === "three");
-    const expected = new Set(
-      threes.flatMap((p) => p.gains.map((g) => `${g.row},${g.col}`)),
-    );
+    const threes = findPatterns(board, 2).filter(p => p.type === "three");
+    const expected = new Set(threes.flatMap(p => p.gains.map(g => `${g.row},${g.col}`)));
     // Quiet fillers may pad the pool (merge design), but the urgent
     // three gains always occupy the leading slots.
     const result = narrowCandidates(board, 2, 4, BASE_CONFIG);
     expect(result.source).toBe("tactical");
-    const keys = result.moves.map((m) => `${m.row},${m.col}`);
+    const keys = result.moves.map(m => `${m.row},${m.col}`);
     expect(keys.slice(0, expected.size).sort()).toEqual([...expected].sort());
     expect(result.moves.length).toBeLessThanOrEqual(DEFAULT_TOP_K);
   });
@@ -567,8 +546,8 @@ describe("narrowCandidates — top-K scoring", () => {
       ...BASE_CONFIG,
       recognizedForkPatterns: ALL_FORK_PATTERN_NAMES,
     });
-    expect(result.moves.some((m) => m.row === 11 && m.col === 10)).toBe(true);
-    const keys = result.moves.map((m) => `${m.row},${m.col}`);
+    expect(result.moves.some(m => m.row === 11 && m.col === 10)).toBe(true);
+    const keys = result.moves.map(m => `${m.row},${m.col}`);
     if (keys.includes("10,6")) {
       expect(keys.indexOf("11,10")).toBeLessThan(keys.indexOf("10,6"));
     }
@@ -598,13 +577,13 @@ describe("narrowCandidates — tier-aware top-K (urgent before soft)", () => {
 
   it("collects the opponent open-three's full gains, including the one-step-beyond distance blocks", () => {
     const result = narrowCandidates(catalog4(), 1, 5, BASE_CONFIG);
-    const keys = result.moves.map((m) => `${m.row},${m.col}`);
+    const keys = result.moves.map(m => `${m.row},${m.col}`);
     expect(keys).toEqual(expect.arrayContaining(["9,7", "10,8", "14,12", "15,13"]));
   });
 
   it("keeps only the four urgent blocks — X's higher-scoring soft offense (9,9) neither blocks nor outraces O's open-three, so it is dropped outright", () => {
     const result = narrowCandidates(catalog4(), 1, 5, BASE_CONFIG);
-    const keys = result.moves.map((m) => `${m.row},${m.col}`);
+    const keys = result.moves.map(m => `${m.row},${m.col}`);
     // Urgent tier only, score-sorted (14,12 builds a vertical two, 10,8
     // is the plain critical block, 9,7/15,13 are zero-delta distance
     // blocks in pattern-gain order). 9,9 would have out-scored all four
@@ -628,7 +607,7 @@ describe("narrowCandidates — tempo race routing (urgent vs soft)", () => {
     `);
     const result = narrowCandidates(board, 1, 6, BASE_CONFIG);
     expect(result.source).toBe("tactical");
-    const keys = result.moves.map((m) => `${m.row},${m.col}`);
+    const keys = result.moves.map(m => `${m.row},${m.col}`);
     expect(keys.slice(0, 2).sort()).toEqual(["0,1", "0,5"]);
     // Their gains are demoted, not deleted — the best still make the pool.
     expect(keys.slice(2)).toEqual(expect.arrayContaining(["2,1", "2,5"]));
@@ -643,7 +622,7 @@ describe("narrowCandidates — tempo race routing (urgent vs soft)", () => {
       ..OOO....
     `);
     const result = narrowCandidates(board, 1, 5, BASE_CONFIG);
-    const keys = result.moves.map((m) => `${m.row},${m.col}`);
+    const keys = result.moves.map(m => `${m.row},${m.col}`);
     expect(keys.slice(0, 4).sort()).toEqual(["2,0", "2,1", "2,5", "2,6"]);
   });
 });
@@ -669,7 +648,7 @@ describe("narrowCandidates — forced-tier futility check (desperado)", () => {
     `);
     const result = narrowCandidates(board, 1, 6, BASE_CONFIG);
     expect(result.source).toBe("tactical");
-    const keys = result.moves.map((m) => `${m.row},${m.col}`);
+    const keys = result.moves.map(m => `${m.row},${m.col}`);
     expect(keys).not.toContain("0,1");
     expect(keys).not.toContain("0,6");
     expect(result.moves.length).toBeGreaterThan(0);
@@ -685,10 +664,7 @@ describe("narrowCandidates — forced-tier futility check (desperado)", () => {
     const board = parseBoard("..OOOO....");
     const result = narrowCandidates(board, 1, 4, BASE_CONFIG);
     expect(result.source).toBe("forced");
-    expect(result.moves.map((m) => `${m.row},${m.col}`).sort()).toEqual([
-      "0,1",
-      "0,6",
-    ]);
+    expect(result.moves.map(m => `${m.row},${m.col}`).sort()).toEqual(["0,1", "0,6"]);
   });
 });
 

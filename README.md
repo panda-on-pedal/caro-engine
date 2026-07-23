@@ -36,6 +36,18 @@ Tournament mode matches the four difficulty levels against each other: **easy**,
 - You can run several boards at once so pairings play in parallel. The page stays responsive while games run.
 - When games finish, results are saved. Open **Results** to see wins, draws, and average move counts for each pairing and overall.
 
+Entering Tournament sets up the boards but waits: pick how many boards to run, then click **Start**. Click the board tabs to watch each game, or the **Results** tab for the standings.
+
+## Practice
+
+Practice mode looks like Tournament — computers play each other across parallel boards — but the goal is training, not standings.
+
+- Every board writes to a shared **experience cache** on disk, so the engine gets stronger the more it plays.
+- Results are **not** recorded; there is no Results tab.
+- A game restarts automatically once both players leave known experience, so practice explores more openings.
+
+As with Tournament, pick how many boards to run and click **Start**, then click the tabs to watch individual games.
+
 ## The engine
 
 The engine is the computer opponent behind every computer-controlled seat. Strength is controlled by difficulty:
@@ -73,14 +85,14 @@ This builds the app and starts the same local server (port 2026, opens the brows
 
 Useful scripts:
 
-| Command | What it does |
-| --- | --- |
-| `npm start` | Build and serve on port 2026 |
-| `npm run build` | Build UI (`dist/ui`) and CLI |
-| `npm run dev:ui` | Vite HMR for the UI (proxy `/api` to port 2026) |
-| `npm test` | Run tests |
-| `npm run typecheck` | TypeScript check |
-| `npm run lint` | Lint |
+| Command             | What it does                                    |
+| ------------------- | ----------------------------------------------- |
+| `npm start`         | Build and serve on port 2026                    |
+| `npm run build`     | Build UI (`dist/ui`) and CLI                    |
+| `npm run dev:ui`    | Vite HMR for the UI (proxy `/api` to port 2026) |
+| `npm test`          | Run tests                                       |
+| `npm run typecheck` | TypeScript check                                |
+| `npm run lint`      | Lint                                            |
 
 Open the page, pick a mode (you first, computer first, or Tournament), choose difficulty or board count, and play - or watch the computers compete.
 

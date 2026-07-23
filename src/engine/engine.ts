@@ -1,9 +1,6 @@
 import { search, type SearchConfig, type SearchResult } from "./search/search.ts";
 import { DEFAULT_DECAY_CONFIG } from "./search/search.ts";
-import {
-  ALL_FORK_PATTERN_NAMES,
-  type ForkPatternName,
-} from "./search/narrow.ts";
+import { ALL_FORK_PATTERN_NAMES, type ForkPatternName } from "./search/narrow.ts";
 import type { ExperienceEntry, ExperienceMode } from "./experience/experience.ts";
 import type { GameState } from "./state.ts";
 import { DEFAULT_MIN_TIME_BUDGET_MS } from "./timeBudget.ts";
@@ -35,10 +32,7 @@ export const DIFFICULTY_PROFILES: Record<Difficulty, DifficultyProfile> = {
   medium: {
     maxDepth: 4,
     timeBudgetMs: 2000,
-    recognizedForkPatterns: new Set([
-      "double-three-trap",
-      "double-four-trap",
-    ]),
+    recognizedForkPatterns: new Set(["double-three-trap", "double-four-trap"]),
     rootScoreJitter: 0.1,
   },
   hard: {
@@ -81,8 +75,7 @@ export function resolveEngineSearchConfig(config: EngineConfig): SearchConfig {
     timeBudgetMs: config.timeBudgetMs ?? profile.timeBudgetMs,
     // Practice has no human waiting — use the full difficulty budget.
     stepTimeByOwnStones:
-      config.stepTimeByOwnStones ??
-      (config.experienceMode === "practice" ? false : undefined),
+      config.stepTimeByOwnStones ?? (config.experienceMode === "practice" ? false : undefined),
     recognizedForkPatterns: profile.recognizedForkPatterns,
     decay: DEFAULT_DECAY_CONFIG,
     rootScoreJitter: config.rootScoreJitter ?? profile.rootScoreJitter,
@@ -96,13 +89,6 @@ export function resolveEngineSearchConfig(config: EngineConfig): SearchConfig {
  * SearchResult (not just the move) so callers can inspect score, depth
  * reached, and the principal variation for debugging or future bridging.
  */
-export function chooseMove(
-  state: GameState,
-  config: EngineConfig = DEFAULT_CONFIG,
-): SearchResult {
-  return search(
-    state.board,
-    state.nextPlayer,
-    resolveEngineSearchConfig(config),
-  );
+export function chooseMove(state: GameState, config: EngineConfig = DEFAULT_CONFIG): SearchResult {
+  return search(state.board, state.nextPlayer, resolveEngineSearchConfig(config));
 }

@@ -1,24 +1,24 @@
-import { isLegalMove } from '../engine/board.ts';
-import { toCanonicalBoard } from '../engine/experience/experience.ts';
-import { applyMove, newGame } from '../engine/state.ts';
+import { isLegalMove } from "../engine/board.ts";
+import { toCanonicalBoard } from "../engine/experience/experience.ts";
+import { applyMove, newGame } from "../engine/state.ts";
 import {
   handleEngineRequest,
   isProgressMessage,
   prepareExperienceForRequest,
   type EngineMessage,
   type EngineRequest,
-} from './engineProtocol.ts';
-import { CancelledError, EnginePool, toPlainBoard } from './enginePool.ts';
-import { PersistentExperienceStore } from './experiencePersist.ts';
+} from "./engineProtocol.ts";
+import { CancelledError, EnginePool, toPlainBoard } from "./enginePool.ts";
+import { PersistentExperienceStore } from "./experiencePersist.ts";
 
-describe('toPlainBoard', () => {
-  it('makes proxied boards structured-cloneable for Worker.postMessage', () => {
+describe("toPlainBoard", () => {
+  it("makes proxied boards structured-cloneable for Worker.postMessage", () => {
     const plain = newGame().board;
     plain[5][5] = 1;
     const proxied = new Proxy(plain, {
       get(target, prop, receiver) {
         const value = Reflect.get(target, prop, receiver);
-        if (typeof prop === 'string' && /^\d+$/.test(prop) && Array.isArray(value)) {
+        if (typeof prop === "string" && /^\d+$/.test(prop) && Array.isArray(value)) {
           return new Proxy(value, {});
         }
         return value;
@@ -31,8 +31,8 @@ describe('toPlainBoard', () => {
   });
 });
 
-describe('handleEngineRequest progress', () => {
-  it('forwards onProgress events while still returning a final result', () => {
+describe("handleEngineRequest progress", () => {
+  it("forwards onProgress events while still returning a final result", () => {
     let state = newGame();
     state = applyMove(state, { row: 10, col: 10 }, 1);
     state = applyMove(state, { row: 0, col: 0 }, 2);
@@ -43,25 +43,25 @@ describe('handleEngineRequest progress', () => {
         id: 7,
         board: state.board,
         player: state.nextPlayer,
-        difficulty: 'easy',
+        difficulty: "easy",
       },
-      (event) => {
-        events.push({ id: 7, type: 'progress', event });
-      },
+      event => {
+        events.push({ id: 7, type: "progress", event });
+      }
     );
 
     expect(response.ok).toBe(true);
     expect(events.length).toBeGreaterThan(0);
-    expect(events.every((message) => isProgressMessage(message))).toBe(true);
+    expect(events.every(message => isProgressMessage(message))).toBe(true);
     if (response.ok) {
       expect(isLegalMove(state.board, response.result.move.row, response.result.move.col)).toBe(
-        true,
+        true
       );
     }
   });
 });
 
-describe('EnginePool progress routing', () => {
+describe("EnginePool progress routing", () => {
   class FakeWorker {
     onmessage: ((event: MessageEvent<EngineMessage>) => void) | null = null;
     onerror: ((event: ErrorEvent) => void) | null = null;
@@ -71,8 +71,8 @@ describe('EnginePool progress routing', () => {
         this.onmessage?.({
           data: {
             id: request.id,
-            type: 'progress',
-            event: { type: 'phase', phase: 'scanning' },
+            type: "progress",
+            event: { type: "phase", phase: "scanning" },
           },
         } as MessageEvent<EngineMessage>);
         this.onmessage?.({
@@ -99,34 +99,34 @@ describe('EnginePool progress routing', () => {
   const OriginalWorker = globalThis.Worker;
 
   beforeEach(() => {
-    Object.defineProperty(globalThis, 'Worker', {
+    Object.defineProperty(globalThis, "Worker", {
       configurable: true,
       value: FakeWorker,
     });
   });
 
   afterEach(() => {
-    Object.defineProperty(globalThis, 'Worker', {
+    Object.defineProperty(globalThis, "Worker", {
       configurable: true,
       value: OriginalWorker,
     });
   });
 
-  it('forwards progress for the matching in-flight id', async () => {
+  it("forwards progress for the matching in-flight id", async () => {
     const pool = new EnginePool(1);
     const progress: string[] = [];
     const board = newGame().board;
-    const result = await pool.requestMove(board, 1, 'easy', undefined, {
-      onProgress: (event) => {
+    const result = await pool.requestMove(board, 1, "easy", undefined, {
+      onProgress: event => {
         progress.push(event.type);
       },
     });
     expect(result.move).toEqual({ row: 7, col: 7 });
-    expect(progress).toEqual(['phase']);
+    expect(progress).toEqual(["phase"]);
     pool.terminate();
   });
 
-  it('ignores progress after cancel removes the pending id', async () => {
+  it("ignores progress after cancel removes the pending id", async () => {
     const holders: {
       worker: {
         onmessage: ((event: MessageEvent<EngineMessage>) => void) | null;
@@ -135,7 +135,7 @@ describe('EnginePool progress routing', () => {
       } | null;
     } = { worker: null };
 
-    Object.defineProperty(globalThis, 'Worker', {
+    Object.defineProperty(globalThis, "Worker", {
       configurable: true,
       value: class {
         onmessage: ((event: MessageEvent<EngineMessage>) => void) | null = null;
@@ -157,8 +157,8 @@ describe('EnginePool progress routing', () => {
           this.onmessage?.({
             data: {
               id: this.lastId,
-              type: 'progress',
-              event: { type: 'phase', phase: 'searching' },
+              type: "progress",
+              event: { type: "phase", phase: "searching" },
             },
           } as MessageEvent<EngineMessage>);
         }
@@ -171,8 +171,8 @@ describe('EnginePool progress routing', () => {
 
     const pool = new EnginePool(1);
     const progress: string[] = [];
-    const pending = pool.requestMove(newGame().board, 1, 'easy', undefined, {
-      onProgress: (event) => {
+    const pending = pool.requestMove(newGame().board, 1, "easy", undefined, {
+      onProgress: event => {
         progress.push(event.type);
       },
     });
@@ -184,7 +184,7 @@ describe('EnginePool progress routing', () => {
   });
 });
 
-describe('EnginePool background improvement', () => {
+describe("EnginePool background improvement", () => {
   class RecordingWorker {
     static instances: RecordingWorker[] = [];
     onmessage: ((event: MessageEvent<EngineMessage>) => void) | null = null;
@@ -209,14 +209,14 @@ describe('EnginePool background improvement', () => {
 
   beforeEach(() => {
     RecordingWorker.instances = [];
-    Object.defineProperty(globalThis, 'Worker', {
+    Object.defineProperty(globalThis, "Worker", {
       configurable: true,
       value: RecordingWorker,
     });
   });
 
   afterEach(() => {
-    Object.defineProperty(globalThis, 'Worker', {
+    Object.defineProperty(globalThis, "Worker", {
       configurable: true,
       value: OriginalWorker,
     });
@@ -231,11 +231,11 @@ describe('EnginePool background improvement', () => {
     const prepared = prepareExperienceForRequest({
       board: state.board,
       player: state.nextPlayer,
-      difficulty: 'easy',
-      experienceMode: 'use',
+      difficulty: "easy",
+      experienceMode: "use",
       store,
     });
-    store.put('easy', prepared.key, {
+    store.put("easy", prepared.key, {
       move: prepared.transform.toCanonical({ row: 4, col: 4 }),
       score: 10,
       depth: 3,
@@ -249,12 +249,12 @@ describe('EnginePool background improvement', () => {
     };
   }
 
-  it('replays a hit instantly and dispatches a full-budget background search', async () => {
+  it("replays a hit instantly and dispatches a full-budget background search", async () => {
     const { store, board, player, key, transform } = seedHit();
     const pool = new EnginePool(1, store);
 
-    const result = await pool.requestMove(board, player, 'easy', undefined, {
-      experienceMode: 'use',
+    const result = await pool.requestMove(board, player, "easy", undefined, {
+      experienceMode: "use",
     });
     expect(result.move).toEqual({ row: 4, col: 4 });
 
@@ -264,25 +264,23 @@ describe('EnginePool background improvement', () => {
     expect(background[0].bookDeepening).toBe(true);
     expect(background[0].canonicalKey).toBe(key);
     expect(background[0].stepTimeByOwnStones).toBe(false);
-    expect(background[0].board).toEqual(
-      toCanonicalBoard(toPlainBoard(board), transform),
-    );
+    expect(background[0].board).toEqual(toCanonicalBoard(toPlainBoard(board), transform));
     expect(background[0].experienceBaseline?.move).toEqual(
-      transform.toCanonical({ row: 4, col: 4 }),
+      transform.toCanonical({ row: 4, col: 4 })
     );
     pool.terminate();
   });
 
-  it('preempts the background search when a foreground request arrives', async () => {
+  it("preempts the background search when a foreground request arrives", async () => {
     const { store, board, player } = seedHit();
     const pool = new EnginePool(1, store);
-    await pool.requestMove(board, player, 'easy', undefined, { experienceMode: 'use' });
+    await pool.requestMove(board, player, "easy", undefined, { experienceMode: "use" });
     const backgroundWorker = RecordingWorker.instances[0];
     expect(backgroundWorker.posted).toHaveLength(1);
 
     // Empty board → no hit → real worker request that must not wait.
-    const foreground = pool.requestMove(newGame().board, 1, 'easy', undefined, {
-      experienceMode: 'use',
+    const foreground = pool.requestMove(newGame().board, 1, "easy", undefined, {
+      experienceMode: "use",
     });
     expect(backgroundWorker.terminated).toBe(true);
     expect(RecordingWorker.instances).toHaveLength(2);
@@ -307,40 +305,98 @@ describe('EnginePool background improvement', () => {
     pool.terminate();
   });
 
-  it('settles the entry when background cannot out-depth it, then skips background', async () => {
-    const { store, board, player, key } = seedHit();
+  it("settles the entry when background cannot out-depth it, then skips background", async () => {
+    const { store, board, player, key, transform } = seedHit();
     const pool = new EnginePool(1, store);
-    await pool.requestMove(board, player, 'easy', undefined, { experienceMode: 'use' });
+    await pool.requestMove(board, player, "easy", undefined, { experienceMode: "use" });
     const worker = RecordingWorker.instances[0];
     const backgroundRequest = worker.posted[0];
+    const canonicalMove = transform.toCanonical({ row: 4, col: 4 });
 
-    // Background search comes back floored at the baseline — no out-depth.
+    // Background search comes back floored at the canonical baseline — no better result.
     worker.onmessage?.({
       data: {
         id: backgroundRequest.id,
+        ok: true,
+        result: {
+          move: canonicalMove,
+          score: 10,
+          depth: 3,
+          principalVariation: [canonicalMove],
+          nodesVisited: 100,
+        },
+      },
+    } as MessageEvent<EngineMessage>);
+
+    expect(store.get("easy", key)?.settled).toBe(true);
+
+    // Second hit: still instant, but no new background dispatch anywhere.
+    const again = await pool.requestMove(board, player, "easy", undefined, {
+      experienceMode: "use",
+    });
+    expect(again.move).toEqual({ row: 4, col: 4 });
+    const totalPosted = RecordingWorker.instances.reduce((n, w) => n + w.posted.length, 0);
+    expect(totalPosted).toBe(1);
+    pool.terminate();
+  });
+
+  it("settles on practice foreground when search does not beat the baseline", async () => {
+    const { store, board, player, key } = seedHit();
+    const pool = new EnginePool(1, store);
+    const pending = pool.requestMove(board, player, "easy", undefined, {
+      experienceMode: "practice",
+    });
+    const worker = RecordingWorker.instances[0];
+    expect(worker.posted).toHaveLength(1);
+    expect(worker.posted[0].bookDeepening).toBeUndefined();
+    expect(worker.posted[0].experienceBaseline?.depth).toBe(3);
+
+    worker.onmessage?.({
+      data: {
+        id: worker.posted[0].id,
         ok: true,
         result: {
           move: { row: 4, col: 4 },
           score: 10,
           depth: 3,
           principalVariation: [{ row: 4, col: 4 }],
-          nodesVisited: 100,
+          nodesVisited: 50,
+          experienceCacheHit: true,
         },
       },
     } as MessageEvent<EngineMessage>);
 
-    expect(store.get('easy', key)?.settled).toBe(true);
+    await pending;
+    expect(store.get("easy", key)?.settled).toBe(true);
+    pool.terminate();
+  });
 
-    // Second hit: still instant, but no new background dispatch anywhere.
-    const again = await pool.requestMove(board, player, 'easy', undefined, {
-      experienceMode: 'use',
+  it("does not settle on practice foreground when search beats the baseline", async () => {
+    const { store, board, player, key } = seedHit();
+    const pool = new EnginePool(1, store);
+    const pending = pool.requestMove(board, player, "easy", undefined, {
+      experienceMode: "practice",
     });
-    expect(again.move).toEqual({ row: 4, col: 4 });
-    const totalPosted = RecordingWorker.instances.reduce(
-      (n, w) => n + w.posted.length,
-      0,
-    );
-    expect(totalPosted).toBe(1);
+    const worker = RecordingWorker.instances[0];
+
+    worker.onmessage?.({
+      data: {
+        id: worker.posted[0].id,
+        ok: true,
+        result: {
+          move: { row: 4, col: 5 },
+          score: 20,
+          depth: 4,
+          principalVariation: [{ row: 4, col: 5 }],
+          nodesVisited: 80,
+          experienceCacheHit: true,
+        },
+      },
+    } as MessageEvent<EngineMessage>);
+
+    await pending;
+    expect(store.get("easy", key)?.settled).not.toBe(true);
+    expect(store.get("easy", key)?.depth).toBe(4);
     pool.terminate();
   });
 });

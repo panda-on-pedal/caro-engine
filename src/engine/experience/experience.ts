@@ -73,15 +73,15 @@ const SYMMETRIES: readonly Symmetry[] = [
 ];
 
 export const IDENTITY_TRANSFORM: ExperienceTransform = {
-  toCanonical: (m) => ({ row: m.row, col: m.col }),
-  fromCanonical: (m) => ({ row: m.row, col: m.col }),
+  toCanonical: m => ({ row: m.row, col: m.col }),
+  fromCanonical: m => ({ row: m.row, col: m.col }),
 };
 
 function makeTransform(
   sym: Symmetry,
   offRow: number,
   offCol: number,
-  n: number,
+  n: number
 ): ExperienceTransform {
   return {
     toCanonical(move) {
@@ -101,10 +101,7 @@ function makeTransform(
  * the same shape hits one entry no matter its orientation or position. Returns
  * the transform needed to store/replay a move in real board coordinates.
  */
-export function canonicalExperienceKey(
-  board: Board,
-  sideToMove: Player,
-): CanonicalPosition {
+export function canonicalExperienceKey(board: Board, sideToMove: Player): CanonicalPosition {
   const n = board.length;
   const stones: Array<{ r: number; c: number; owner: 1 | 2 }> = [];
   for (let r = 0; r < n; r += 1) {
@@ -143,7 +140,7 @@ export function canonicalExperienceKey(
     const eBottom = Math.min(n - 1 - maxR, EDGE_CLAMP);
     const eLeft = Math.min(minC, EDGE_CLAMP);
     const body = pts
-      .map((p) => `${p.r - minR},${p.c - minC},${p.owner}`)
+      .map(p => `${p.r - minR},${p.c - minC},${p.owner}`)
       .sort()
       .join(";");
     const key = `${body}#${eTop},${eRight},${eBottom},${eLeft}`;
@@ -167,14 +164,9 @@ export function canonicalExperienceKey(
  * searches this so its Zobrist hashes (and persisted TT slice) are identical
  * regardless of which symmetric orientation the position was encountered in.
  */
-export function toCanonicalBoard(
-  board: Board,
-  transform: ExperienceTransform,
-): Board {
+export function toCanonicalBoard(board: Board, transform: ExperienceTransform): Board {
   const n = board.length;
-  const out: Board = Array.from({ length: n }, () =>
-    Array.from({ length: n }, () => 0),
-  );
+  const out: Board = Array.from({ length: n }, () => Array.from({ length: n }, () => 0));
   for (let r = 0; r < n; r += 1) {
     for (let c = 0; c < n; c += 1) {
       const cell = board[r][c];
@@ -194,14 +186,14 @@ export function toCanonicalBoard(
  * buys nothing.
  */
 export function isStrongExperienceHit(
-  entry: ExperienceEntry | undefined,
+  entry: ExperienceEntry | undefined
 ): entry is ExperienceEntry {
   return entry !== undefined && entry.depth >= MIN_EXPERIENCE_DEPTH;
 }
 
 export function experienceBeatsBaseline(
   candidate: ExperienceEntry,
-  baseline: ExperienceEntry,
+  baseline: ExperienceEntry
 ): boolean {
   if (candidate.depth > baseline.depth) {
     return true;
@@ -215,19 +207,20 @@ export function experienceBeatsBaseline(
 /** Prefer deeper entries; at equal depth prefer higher score. */
 export function shouldReplaceExperience(
   existing: ExperienceEntry | undefined,
-  next: ExperienceEntry,
+  next: ExperienceEntry
 ): boolean {
   if (existing === undefined) {
     return true;
   }
-  return experienceBeatsBaseline(next, existing) || (
-    next.depth === existing.depth && next.score === existing.score
+  return (
+    experienceBeatsBaseline(next, existing) ||
+    (next.depth === existing.depth && next.score === existing.score)
   );
 }
 
 export function isUsableExperienceMove(
   board: Board,
-  entry: ExperienceEntry | undefined,
+  entry: ExperienceEntry | undefined
 ): entry is ExperienceEntry {
   if (entry === undefined) {
     return false;
@@ -270,10 +263,7 @@ export class ExperienceStore {
 
   put(key: string, entry: ExperienceEntry, updatedAt = Date.now()): boolean {
     const existing = this.map.get(key);
-    if (
-      existing !== undefined &&
-      !shouldReplaceExperience(existing, entry)
-    ) {
+    if (existing !== undefined && !shouldReplaceExperience(existing, entry)) {
       return false;
     }
     // A strictly better entry re-opens background improvement; an equal
@@ -327,7 +317,7 @@ export class ExperienceStore {
 
   /** Snapshot in LRU order (oldest → newest). */
   entries(): StoredExperienceEntry[] {
-    return [...this.map.values()].map((entry) => ({
+    return [...this.map.values()].map(entry => ({
       key: entry.key,
       move: { row: entry.move.row, col: entry.move.col },
       score: entry.score,

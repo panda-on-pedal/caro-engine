@@ -178,7 +178,9 @@ main {
   border-radius: 50%;
   opacity: 0.75;
   transform: rotate(-1deg);
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
 }
 
 .subtitle {
@@ -537,7 +539,9 @@ main {
   width: 78%;
   height: 78%;
   border-radius: 50%;
-  transition: box-shadow 0.15s ease, background-color 0.15s ease;
+  transition:
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .mark[data-winning-cell="true"] {
@@ -595,7 +599,8 @@ main {
 #pause,
 #ascii-toggle,
 #settings-back,
-#instructions-back {
+#instructions-back,
+#start-game {
   padding: 10px 20px;
   font-family: inherit;
   font-size: 1rem;
@@ -605,6 +610,49 @@ main {
   border-radius: 3px 3px 0 0;
   box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.1);
   cursor: pointer;
+}
+
+.start-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  max-width: 32rem;
+  margin-top: var(--cell-size, 28px);
+  margin-left: var(--cell-size, 28px);
+}
+
+.start-screen h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--graphite);
+}
+
+.start-desc {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--graphite);
+}
+
+.start-points {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: var(--graphite);
+}
+
+#start-game {
+  margin-top: 4px;
+  font-weight: 600;
+  color: var(--paper);
+  background: var(--ink-blue);
+  border-color: var(--ink-blue);
 }
 
 #settings-panel,

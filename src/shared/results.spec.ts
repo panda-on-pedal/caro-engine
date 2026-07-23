@@ -34,7 +34,7 @@ describe("isValidGameResult", () => {
     null,
     "not an object",
     42,
-  ])("rejects malformed record %#", (bad) => {
+  ])("rejects malformed record %#", bad => {
     expect(isValidGameResult(bad)).toBe(false);
   });
 });
@@ -65,8 +65,8 @@ describe("aggregateResults", () => {
       { p1: "medium", p2: "hard", winner: 2, moves: 10, durationMs: 100, endedAt: "t3" },
     ];
     const stats = aggregateResults(records);
-    const hardMedium = stats.find((row) => row.p1 === "hard" && row.p2 === "medium")!;
-    const mediumHard = stats.find((row) => row.p1 === "medium" && row.p2 === "hard")!;
+    const hardMedium = stats.find(row => row.p1 === "hard" && row.p2 === "medium")!;
+    const mediumHard = stats.find(row => row.p1 === "medium" && row.p2 === "hard")!;
     expect(hardMedium).toMatchObject({ games: 2, p1Wins: 2, p2Wins: 0, draws: 0, p1WinPct: 100 });
     expect(mediumHard).toMatchObject({ games: 1, p1Wins: 0, p2Wins: 1, draws: 0, p1WinPct: 0 });
   });
@@ -76,7 +76,7 @@ describe("aggregateResults", () => {
       { p1: "easy", p2: "medium", winner: "draw", moves: 400, durationMs: 100, endedAt: "t1" },
     ];
     const stats = aggregateResults(records);
-    const row = stats.find((r) => r.p1 === "easy" && r.p2 === "medium")!;
+    const row = stats.find(r => r.p1 === "easy" && r.p2 === "medium")!;
     expect(row).toMatchObject({ games: 1, p1Wins: 0, p2Wins: 0, draws: 1, p1WinPct: 0 });
   });
 
@@ -86,7 +86,7 @@ describe("aggregateResults", () => {
       { p1: "hard", p2: "easy", winner: 2, moves: 20, durationMs: 100, endedAt: "t2" },
     ];
     const stats = aggregateResults(records);
-    const row = stats.find((r) => r.p1 === "hard" && r.p2 === "easy")!;
+    const row = stats.find(r => r.p1 === "hard" && r.p2 === "easy")!;
     // game 1: 9 moves -> p1 made 5, p2 made 4. game 2: 20 moves -> p1 made 10, p2 made 10.
     expect(row.avgP1Moves).toBeCloseTo((5 + 10) / 2);
     expect(row.avgP2Moves).toBeCloseTo((4 + 10) / 2);
@@ -113,7 +113,7 @@ describe("firstPlayerWinPct", () => {
 describe("playerLeaderboard", () => {
   it("returns one zero row per difficulty when empty, in difficulty order", () => {
     const board = playerLeaderboard([]);
-    expect(board.map((row) => row.player)).toEqual([...TOURNAMENT_DIFFICULTIES]);
+    expect(board.map(row => row.player)).toEqual([...TOURNAMENT_DIFFICULTIES]);
     for (const row of board) {
       expect(row).toMatchObject({ wins: 0, games: 0, winPct: 0 });
     }
@@ -127,7 +127,7 @@ describe("playerLeaderboard", () => {
       { p1: "medium", p2: "easy", winner: 1, moves: 12, durationMs: 100, endedAt: "t4" },
     ];
     const board = playerLeaderboard(records);
-    const byPlayer = Object.fromEntries(board.map((row) => [row.player, row]));
+    const byPlayer = Object.fromEntries(board.map(row => [row.player, row]));
 
     // hard: played 3 (vs easy, vs easy, vs medium), won 2
     expect(byPlayer.hard).toMatchObject({ wins: 2, games: 3, winPct: (2 / 3) * 100 });
@@ -150,7 +150,7 @@ describe("playerLeaderboard", () => {
       { p1: "expert", p2: "easy", winner: 1, moves: 10, durationMs: 100, endedAt: "t4" },
       { p1: "easy", p2: "expert", winner: 1, moves: 10, durationMs: 100, endedAt: "t5" },
     ];
-    expect(playerLeaderboard(records).map((row) => row.player)).toEqual([
+    expect(playerLeaderboard(records).map(row => row.player)).toEqual([
       "hard",
       "medium",
       "expert",

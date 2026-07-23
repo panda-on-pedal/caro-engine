@@ -62,7 +62,7 @@ describe("parseBoard — labeled row/col format", () => {
          3  4
       3  .  X
     `,
-      20,
+      20
     );
     expect(board.length).toBe(20);
 
@@ -71,7 +71,7 @@ describe("parseBoard — labeled row/col format", () => {
            20 21
         20  .  X
       `,
-      20,
+      20
     );
     expect(bigger.length).toBe(22);
     expect(bigger[20][21]).toBe(1);
@@ -82,7 +82,7 @@ describe("parseBoard — labeled row/col format", () => {
       parseBoard(`
          6  7  8
       7  .  O
-    `),
+    `)
     ).toThrow();
   });
 
@@ -91,7 +91,7 @@ describe("parseBoard — labeled row/col format", () => {
       parseBoard(`
          6  7
       7  .  ?
-    `),
+    `)
     ).toThrow();
   });
 

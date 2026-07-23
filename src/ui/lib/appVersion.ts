@@ -1,23 +1,23 @@
-export const GITHUB_REPO_URL = 'https://github.com/panda-on-pedal/caro-engine';
+export const GITHUB_REPO_URL = "https://github.com/panda-on-pedal/caro-engine";
 export const GITHUB_RELEASES_URL = `${GITHUB_REPO_URL}/releases`;
 export const GITHUB_LATEST_RELEASE_API =
-  'https://api.github.com/repos/panda-on-pedal/caro-engine/releases/latest';
-export const NPM_LATEST_URL = 'https://registry.npmjs.org/caro-tournament/latest';
+  "https://api.github.com/repos/panda-on-pedal/caro-engine/releases/latest";
+export const NPM_LATEST_URL = "https://registry.npmjs.org/caro-tournament/latest";
 
 /** Injected by Vite from package.json. */
 declare const __APP_VERSION__: string;
 
 function resolveBundledVersion(): string {
-  if (typeof __APP_VERSION__ === 'string' && __APP_VERSION__.length > 0) {
+  if (typeof __APP_VERSION__ === "string" && __APP_VERSION__.length > 0) {
     return __APP_VERSION__;
   }
-  return '0.0.0';
+  return "0.0.0";
 }
 
 export const APP_VERSION: string = resolveBundledVersion();
 
 export const VERSION_CHECK_INTERVAL_MS = 60 * 60 * 1000;
-const STORAGE_KEY = 'caro.versionCheck';
+const STORAGE_KEY = "caro.versionCheck";
 
 export type VersionCheckCache = {
   checkedAt: number;
@@ -26,7 +26,7 @@ export type VersionCheckCache = {
 
 /** Strip a leading `v` / `V` from a tag or version string. */
 export function normalizeVersion(raw: string): string {
-  return raw.trim().replace(/^[vV]/, '');
+  return raw.trim().replace(/^[vV]/, "");
 }
 
 /**
@@ -35,12 +35,12 @@ export function normalizeVersion(raw: string): string {
  * Non-numeric segments compare as 0.
  */
 export function compareSemver(a: string, b: string): number {
-  const left = normalizeVersion(a).split('.');
-  const right = normalizeVersion(b).split('.');
+  const left = normalizeVersion(a).split(".");
+  const right = normalizeVersion(b).split(".");
   const len = Math.max(left.length, right.length);
   for (let i = 0; i < len; i += 1) {
-    const l = Number.parseInt(left[i] ?? '0', 10);
-    const r = Number.parseInt(right[i] ?? '0', 10);
+    const l = Number.parseInt(left[i] ?? "0", 10);
+    const r = Number.parseInt(right[i] ?? "0", 10);
     const lv = Number.isFinite(l) ? l : 0;
     const rv = Number.isFinite(r) ? r : 0;
     if (lv !== rv) {
@@ -61,17 +61,17 @@ export function readVersionCheckCache(): VersionCheckCache | null {
       return null;
     }
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') {
+    if (!parsed || typeof parsed !== "object") {
       return null;
     }
     const record = parsed as Record<string, unknown>;
-    if (typeof record.checkedAt !== 'number') {
+    if (typeof record.checkedAt !== "number") {
       return null;
     }
     const latestVersion =
       record.latestVersion === null
         ? null
-        : typeof record.latestVersion === 'string'
+        : typeof record.latestVersion === "string"
           ? record.latestVersion
           : null;
     return { checkedAt: record.checkedAt, latestVersion };
@@ -87,7 +87,7 @@ export function writeVersionCheckCache(cache: VersionCheckCache): void {
 export function shouldFetchLatest(
   cache: VersionCheckCache | null,
   now = Date.now(),
-  intervalMs = VERSION_CHECK_INTERVAL_MS,
+  intervalMs = VERSION_CHECK_INTERVAL_MS
 ): boolean {
   if (!cache) {
     return true;
@@ -97,11 +97,11 @@ export function shouldFetchLatest(
 
 /** Parse `tag_name` from a GitHub releases/latest JSON body. */
 export function parseGithubLatestTag(payload: unknown): string | null {
-  if (!payload || typeof payload !== 'object') {
+  if (!payload || typeof payload !== "object") {
     return null;
   }
   const tag = (payload as Record<string, unknown>).tag_name;
-  if (typeof tag !== 'string' || tag.trim() === '') {
+  if (typeof tag !== "string" || tag.trim() === "") {
     return null;
   }
   return normalizeVersion(tag);
@@ -109,11 +109,11 @@ export function parseGithubLatestTag(payload: unknown): string | null {
 
 /** Parse `version` from an npm registry `/latest` JSON body. */
 export function parseNpmLatestVersion(payload: unknown): string | null {
-  if (!payload || typeof payload !== 'object') {
+  if (!payload || typeof payload !== "object") {
     return null;
   }
   const version = (payload as Record<string, unknown>).version;
-  if (typeof version !== 'string' || version.trim() === '') {
+  if (typeof version !== "string" || version.trim() === "") {
     return null;
   }
   return normalizeVersion(version);
@@ -127,7 +127,7 @@ export type LatestVersionResult = {
 async function fetchJson(
   fetchImpl: typeof fetch,
   url: string,
-  headers?: Record<string, string>,
+  headers?: Record<string, string>
 ): Promise<unknown | null> {
   try {
     const response = await fetchImpl(url, headers ? { headers } : undefined);
@@ -161,7 +161,7 @@ export async function resolveLatestVersion(options?: {
   const npmUrl = options?.npmUrl ?? NPM_LATEST_URL;
 
   const githubPayload = await fetchJson(fetchImpl, githubApiUrl, {
-    Accept: 'application/vnd.github+json',
+    Accept: "application/vnd.github+json",
   });
   let latestVersion = parseGithubLatestTag(githubPayload);
 

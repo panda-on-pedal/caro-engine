@@ -1,8 +1,8 @@
-import { applyMove, deserializeState, newGame, serializeState } from './state.ts';
-import { BOARD_SIZE } from './board.ts';
+import { applyMove, deserializeState, newGame, serializeState } from "./state.ts";
+import { BOARD_SIZE } from "./board.ts";
 
-describe('newGame', () => {
-  it('starts with an empty board, player 1 to move, and no winner', () => {
+describe("newGame", () => {
+  it("starts with an empty board, player 1 to move, and no winner", () => {
     const state = newGame();
     expect(state.board.length).toBe(BOARD_SIZE);
     expect(state.nextPlayer).toBe(1);
@@ -11,8 +11,8 @@ describe('newGame', () => {
   });
 });
 
-describe('applyMove', () => {
-  it('places the move, records history, and alternates the next player', () => {
+describe("applyMove", () => {
+  it("places the move, records history, and alternates the next player", () => {
     const state = newGame();
     const next = applyMove(state, { row: 7, col: 7 }, 1);
     expect(next.board[7][7]).toBe(1);
@@ -21,18 +21,18 @@ describe('applyMove', () => {
     expect(next.winner).toBeNull();
   });
 
-  it('rejects a move when it is not that player\'s turn', () => {
+  it("rejects a move when it is not that player's turn", () => {
     const state = newGame();
     expect(() => applyMove(state, { row: 0, col: 0 }, 2)).toThrow();
   });
 
-  it('rejects an illegal (occupied) move', () => {
+  it("rejects an illegal (occupied) move", () => {
     let state = newGame();
     state = applyMove(state, { row: 0, col: 0 }, 1);
     expect(() => applyMove(state, { row: 0, col: 0 }, 2)).toThrow();
   });
 
-  it('rejects moves once the game has ended', () => {
+  it("rejects moves once the game has ended", () => {
     let state = newGame();
     for (let col = 0; col < 4; col += 1) {
       state = applyMove(state, { row: 0, col }, 1);
@@ -43,7 +43,7 @@ describe('applyMove', () => {
     expect(() => applyMove(state, { row: 2, col: 2 }, 2)).toThrow();
   });
 
-  it('does not declare a winner when the five is blocked at both ends (Caro rule)', () => {
+  it("does not declare a winner when the five is blocked at both ends (Caro rule)", () => {
     let state = newGame();
     state = applyMove(state, { row: 6, col: 1 }, 1);
     state = applyMove(state, { row: 6, col: 0 }, 2); // O blocks left end
@@ -59,7 +59,7 @@ describe('applyMove', () => {
     expect(state.winningLine).toBeUndefined();
   });
 
-  it('sets winningLine to the five winning cells when a move wins', () => {
+  it("sets winningLine to the five winning cells when a move wins", () => {
     let state = newGame();
     for (let col = 0; col < 4; col += 1) {
       state = applyMove(state, { row: 0, col }, 1);
@@ -77,15 +77,15 @@ describe('applyMove', () => {
     ]);
   });
 
-  it('leaves winningLine unset on a non-winning move', () => {
+  it("leaves winningLine unset on a non-winning move", () => {
     const state = newGame();
     const next = applyMove(state, { row: 7, col: 7 }, 1);
     expect(next.winningLine).toBeUndefined();
   });
 });
 
-describe('serializeState / deserializeState', () => {
-  it('round-trips a game state through JSON', () => {
+describe("serializeState / deserializeState", () => {
+  it("round-trips a game state through JSON", () => {
     let state = newGame();
     state = applyMove(state, { row: 7, col: 7 }, 1);
     state = applyMove(state, { row: 8, col: 8 }, 2);

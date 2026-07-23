@@ -16,7 +16,7 @@ function isLabeledFormat(lines: readonly string[]): boolean {
   }
   const header = lines[0].split(/\s+/);
   const firstRowLabel = lines[1].split(/\s+/)[0];
-  return header.every((token) => ALL_DIGITS.test(token)) && ALL_DIGITS.test(firstRowLabel);
+  return header.every(token => ALL_DIGITS.test(token)) && ALL_DIGITS.test(firstRowLabel);
 }
 
 function symbolFor(token: string): Cell {
@@ -53,7 +53,7 @@ function parseLabeledBoard(lines: readonly string[], minSize: number): Board {
     const row = Number(rowLabel);
     if (cells.length !== cols.length) {
       throw new Error(
-        `Row ${rowLabel} has ${cells.length} cells but the header declares ${cols.length} columns`,
+        `Row ${rowLabel} has ${cells.length} cells but the header declares ${cols.length} columns`
       );
     }
     cells.forEach((symbol, i) => {
@@ -89,17 +89,17 @@ export function parseBoard(ascii: string, minSize = 20): Board {
   const lines = ascii
     .trim()
     .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
 
   if (isLabeledFormat(lines)) {
     return parseLabeledBoard(lines, minSize);
   }
 
-  const rows = lines.map((line) => line.replace(/\s+/g, "").split(""));
+  const rows = lines.map(line => line.replace(/\s+/g, "").split(""));
 
   const numRows = rows.length;
-  const numCols = Math.max(...rows.map((row) => row.length));
+  const numCols = Math.max(...rows.map(row => row.length));
   const size = Math.max(numRows, numCols);
 
   const board = createEmptyBoard(size);

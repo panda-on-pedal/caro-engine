@@ -1,9 +1,4 @@
-import {
-  findForkPoints,
-  findPatterns,
-  findPatternsOnLine,
-  lineKey,
-} from "./patterns.ts";
+import { findForkPoints, findPatterns, findPatternsOnLine, lineKey } from "./patterns.ts";
 import { parseBoard } from "../test-helpers/parse-board.ts";
 
 describe("lineKey", () => {
@@ -31,11 +26,17 @@ describe("findPatternsOnLine vs findPatterns", () => {
       expect(p.direction).toEqual([0, 1]);
       expect(
         full.some(
-          (f) =>
+          f =>
             f.type === p.type &&
-            f.cells.map((c) => `${c.row},${c.col}`).sort().join("|") ===
-              p.cells.map((c) => `${c.row},${c.col}`).sort().join("|"),
-        ),
+            f.cells
+              .map(c => `${c.row},${c.col}`)
+              .sort()
+              .join("|") ===
+              p.cells
+                .map(c => `${c.row},${c.col}`)
+                .sort()
+                .join("|")
+        )
       ).toBe(true);
     }
   });
@@ -66,20 +67,18 @@ describe("findPatternsOnLine vs findPatterns", () => {
             continue;
           }
           seen.add(key);
-          rebuilt.push(
-            ...findPatternsOnLine(board, 1, row, col, direction),
-          );
+          rebuilt.push(...findPatternsOnLine(board, 1, row, col, direction));
         }
       }
     }
     const canon = (patterns: typeof full) =>
       patterns
         .map(
-          (p) =>
+          p =>
             `${p.type}|${p.direction[0]},${p.direction[1]}|${p.cells
-              .map((c) => `${c.row},${c.col}`)
+              .map(c => `${c.row},${c.col}`)
               .sort()
-              .join("|")}`,
+              .join("|")}`
         )
         .sort();
     expect(canon(rebuilt)).toEqual(canon(full));
@@ -94,11 +93,11 @@ describe("findPatterns — five", () => {
       .......
     `);
     const patterns = findPatterns(board, 1);
-    const fives = patterns.filter((p) => p.type === "five");
+    const fives = patterns.filter(p => p.type === "five");
     expect(fives).toHaveLength(1);
     expect(fives[0].gains).toEqual([]);
-    expect(fives[0].cells.map((c) => `${c.row},${c.col}`).sort()).toEqual(
-      [1, 2, 3, 4, 5].map((col) => `1,${col}`).sort(),
+    expect(fives[0].cells.map(c => `${c.row},${c.col}`).sort()).toEqual(
+      [1, 2, 3, 4, 5].map(col => `1,${col}`).sort()
     );
   });
 
@@ -109,19 +108,19 @@ describe("findPatterns — five", () => {
       ........
     `);
     const patterns = findPatterns(board, 1);
-    expect(patterns.filter((p) => p.type === "five").length).toBeGreaterThan(0);
+    expect(patterns.filter(p => p.type === "five").length).toBeGreaterThan(0);
   });
 
   it("does not report a five for an overline blocked at both ends", () => {
     const board = parseBoard("OXXXXXXO");
     const patterns = findPatterns(board, 1);
-    expect(patterns.filter((p) => p.type === "five")).toHaveLength(0);
+    expect(patterns.filter(p => p.type === "five")).toHaveLength(0);
   });
 
   it("does not report a five blocked at both ends", () => {
     const board = parseBoard("OXXXXXO");
     const patterns = findPatterns(board, 1);
-    expect(patterns.filter((p) => p.type === "five")).toHaveLength(0);
+    expect(patterns.filter(p => p.type === "five")).toHaveLength(0);
   });
 
   it("finds no patterns for the opponent on a board with only one player's stones", () => {
@@ -138,26 +137,24 @@ describe("findPatterns — four / open-four", () => {
   it("classifies a four with two open ends as open-four", () => {
     const board = parseBoard(".XXXX.");
     const patterns = findPatterns(board, 1);
-    const fours = patterns.filter((p) => p.type === "open-four");
+    const fours = patterns.filter(p => p.type === "open-four");
     expect(fours).toHaveLength(1);
-    expect(fours[0].gains.map((g) => g.col).sort()).toEqual([0, 5]);
+    expect(fours[0].gains.map(g => g.col).sort()).toEqual([0, 5]);
     expect(fours[0].criticalGains).toEqual(fours[0].gains);
   });
 
   it("classifies a four blocked at one end as a plain four with one win square", () => {
     const board = parseBoard("OXXXX.");
     const patterns = findPatterns(board, 1);
-    const fours = patterns.filter((p) => p.type === "four");
+    const fours = patterns.filter(p => p.type === "four");
     expect(fours).toHaveLength(1);
-    expect(fours[0].gains.map((g) => g.col)).toEqual([5]);
+    expect(fours[0].gains.map(g => g.col)).toEqual([5]);
   });
 
   it("reports no four when blocked at both ends", () => {
     const board = parseBoard("OXXXXO");
     const patterns = findPatterns(board, 1);
-    expect(
-      patterns.filter((p) => p.type === "four" || p.type === "open-four"),
-    ).toHaveLength(0);
+    expect(patterns.filter(p => p.type === "four" || p.type === "open-four")).toHaveLength(0);
   });
 
   it("treats gapped shapes that complete to five-or-more as plain fours (XOOOO.O / XOO.OOO / XOOO.OO)", () => {
@@ -167,11 +164,9 @@ describe("findPatterns — four / open-four", () => {
       { ascii: "XOOO.OO", gainCol: 4 },
     ]) {
       const patterns = findPatterns(parseBoard(ascii), 2);
-      const fours = patterns.filter((p) => p.type === "four");
+      const fours = patterns.filter(p => p.type === "four");
       expect(fours.length).toBeGreaterThanOrEqual(1);
-      const gainCols = new Set(
-        fours.flatMap((p) => p.gains.map((g) => g.col)),
-      );
+      const gainCols = new Set(fours.flatMap(p => p.gains.map(g => g.col)));
       expect(gainCols.has(gainCol)).toBe(true);
     }
   });
@@ -179,9 +174,7 @@ describe("findPatterns — four / open-four", () => {
   it("does not treat a gapped overline as a four when both ends are already boxed", () => {
     const board = parseBoard("XOOOO.OX");
     const patterns = findPatterns(board, 2);
-    expect(
-      patterns.filter((p) => p.type === "four" || p.type === "open-four"),
-    ).toHaveLength(0);
+    expect(patterns.filter(p => p.type === "four" || p.type === "open-four")).toHaveLength(0);
   });
 });
 
@@ -198,14 +191,9 @@ describe("findPatterns — subset suppression", () => {
    12  .  .  .  .  O  O  .  .  .  .  .  .
     `);
     const patterns = findPatterns(board, 1);
-    expect(patterns.filter((p) => p.type === "three")).toHaveLength(1);
+    expect(patterns.filter(p => p.type === "three")).toHaveLength(1);
     expect(
-      patterns.filter(
-        (p) =>
-          p.type === "two" &&
-          p.direction[0] === 1 &&
-          p.direction[1] === -1,
-      ),
+      patterns.filter(p => p.type === "two" && p.direction[0] === 1 && p.direction[1] === -1)
     ).toHaveLength(0);
     expect(findForkPoints(patterns)).toEqual([]);
   });
@@ -218,9 +206,9 @@ describe("findPatterns — three / open-three (design doc worked examples)", () 
     // The extra trailing "." gives a second window that excludes the O.
     const board = parseBoard("OXXX..");
     const patterns = findPatterns(board, 1);
-    const threes = patterns.filter((p) => p.type === "three");
+    const threes = patterns.filter(p => p.type === "three");
     expect(threes).toHaveLength(1);
-    const opens = patterns.filter((p) => p.type === "open-three");
+    const opens = patterns.filter(p => p.type === "open-three");
     expect(opens).toHaveLength(0);
   });
 
@@ -231,25 +219,23 @@ describe("findPatterns — three / open-three (design doc worked examples)", () 
     // gives col 5's gain room to open on both flanks.
     const board = parseBoard("O.XXX..");
     const patterns = findPatterns(board, 1);
-    const opens = patterns.filter((p) => p.type === "open-three");
+    const opens = patterns.filter(p => p.type === "open-three");
     expect(opens).toHaveLength(1);
     // Filling col 1 only yields a blocked four (O is beyond it); only col 5 opens up to open-four.
-    expect(opens[0].criticalGains.map((g) => g.col)).toEqual([5]);
+    expect(opens[0].criticalGains.map(g => g.col)).toEqual([5]);
   });
 
   it("O..XXX. classifies as open-three through the gaps", () => {
     const board = parseBoard("O..XXX.");
     const patterns = findPatterns(board, 1);
-    const opens = patterns.filter((p) => p.type === "open-three");
+    const opens = patterns.filter(p => p.type === "open-three");
     expect(opens).toHaveLength(1);
   });
 
   it("O.XXXO reports no three: no viable window exists", () => {
     const board = parseBoard("O.XXXO");
     const patterns = findPatterns(board, 1);
-    expect(
-      patterns.filter((p) => p.type === "three" || p.type === "open-three"),
-    ).toHaveLength(0);
+    expect(patterns.filter(p => p.type === "three" || p.type === "open-three")).toHaveLength(0);
   });
 });
 
@@ -257,7 +243,7 @@ describe("findPatterns — two / open-two", () => {
   it("classifies an isolated two with room to grow as open-two", () => {
     const board = parseBoard("..XX...");
     const patterns = findPatterns(board, 1);
-    const opens = patterns.filter((p) => p.type === "open-two");
+    const opens = patterns.filter(p => p.type === "open-two");
     expect(opens.length).toBeGreaterThanOrEqual(1);
     expect(opens[0].criticalGains.length).toBeGreaterThan(0);
   });
@@ -267,9 +253,9 @@ describe("findPatterns — two / open-two", () => {
     // nothing would be found - same width trap as Task 5. Widen by one.
     const board = parseBoard("OXX...");
     const patterns = findPatterns(board, 1);
-    const opens = patterns.filter((p) => p.type === "open-two");
+    const opens = patterns.filter(p => p.type === "open-two");
     expect(opens).toHaveLength(0);
-    const twos = patterns.filter((p) => p.type === "two");
+    const twos = patterns.filter(p => p.type === "two");
     expect(twos.length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -289,12 +275,10 @@ describe("findForkPoints", () => {
     `);
     const patterns = findPatterns(board, 1);
     const forkPoints = findForkPoints(patterns);
-    const atTarget = forkPoints.filter(
-      (f) => f.move.row === 2 && f.move.col === 5,
-    );
+    const atTarget = forkPoints.filter(f => f.move.row === 2 && f.move.col === 5);
     expect(atTarget).toHaveLength(1);
     const directions = new Set(
-      atTarget[0].patterns.map((p) => `${p.direction[0]},${p.direction[1]}`),
+      atTarget[0].patterns.map(p => `${p.direction[0]},${p.direction[1]}`)
     );
     expect(directions.size).toBeGreaterThanOrEqual(2);
   });
@@ -314,15 +298,11 @@ describe("findForkPoints", () => {
     `);
     const patterns = findPatterns(board, 1);
     const forkPoints = findForkPoints(patterns);
-    const atTarget = forkPoints.filter(
-      (f) => f.move.row === 2 && f.move.col === 5,
-    );
+    const atTarget = forkPoints.filter(f => f.move.row === 2 && f.move.col === 5);
     expect(atTarget).toHaveLength(1);
-    expect(atTarget[0].patterns.every((p) => p.type === "open-two")).toBe(
-      true,
-    );
+    expect(atTarget[0].patterns.every(p => p.type === "open-two")).toBe(true);
     const directions = new Set(
-      atTarget[0].patterns.map((p) => `${p.direction[0]},${p.direction[1]}`),
+      atTarget[0].patterns.map(p => `${p.direction[0]},${p.direction[1]}`)
     );
     expect(directions.size).toBeGreaterThanOrEqual(2);
   });

@@ -90,7 +90,7 @@ describe("search", () => {
 
   it("searches when an open-two is present", () => {
     const board = parseBoard("..XX...");
-    const openTwo = findPatterns(board, 1).find((p) => p.type === "open-two")!;
+    const openTwo = findPatterns(board, 1).find(p => p.type === "open-two")!;
     const result = search(board, 1, { maxDepth: 2 });
     expect(result.depth).toBeGreaterThan(0);
     expect(result.nodesVisited).toBeGreaterThan(0);
@@ -275,22 +275,13 @@ describe("pluggable move-selection strategy", () => {
 
   it("patternOnlyStrategy takes narrowing's top pick with zero search overhead", () => {
     const board = parseBoard("OXXXX.");
-    const result = search(
-      board,
-      1,
-      { maxDepth: 4 },
-      patternOnlyStrategy,
-    );
+    const result = search(board, 1, { maxDepth: 4 }, patternOnlyStrategy);
     expect(result.move).toEqual({ row: 0, col: 5 });
     expect(result.nodesVisited).toBe(0);
   });
 
   it("a custom strategy can be substituted without touching narrowCandidates", () => {
-    const alwaysFirstCandidate: MoveSelectionStrategy = (
-      _board,
-      _player,
-      candidates,
-    ) => ({
+    const alwaysFirstCandidate: MoveSelectionStrategy = (_board, _player, candidates) => ({
       move: candidates[0],
       score: 0,
       depth: 0,
@@ -298,12 +289,7 @@ describe("pluggable move-selection strategy", () => {
       nodesVisited: 0,
     });
     const board = parseBoard("OXXXX.");
-    const result = search(
-      board,
-      1,
-      { maxDepth: 4 },
-      alwaysFirstCandidate,
-    );
+    const result = search(board, 1, { maxDepth: 4 }, alwaysFirstCandidate);
     // Forced-block narrowing still yields exactly one candidate here, so
     // "always take the first" and "negamax" agree — the point of this
     // test is that a hand-rolled strategy function works at all.
@@ -358,12 +344,7 @@ describe("regression: manual playtesting findings (2026-07-16 session)", () => {
       ..O.................
       ....................
     `);
-    const result = search(
-      board,
-      2,
-      { maxDepth: 4 },
-      patternOnlyStrategy,
-    );
+    const result = search(board, 2, { maxDepth: 4 }, patternOnlyStrategy);
     expect(result.nodesVisited).toBe(0);
     const blocksLeft = result.move.row === 3 && result.move.col === 2;
     const blocksRight = result.move.row === 3 && result.move.col === 6;
@@ -373,9 +354,7 @@ describe("regression: manual playtesting findings (2026-07-16 session)", () => {
 
 function createBoardWithSingleStone(row: number, col: number) {
   const size = 20;
-  const board = Array.from({ length: size }, () =>
-    Array<0 | 1 | 2>(size).fill(0),
-  );
+  const board = Array.from({ length: size }, () => Array<0 | 1 | 2>(size).fill(0));
   board[row][col] = 1;
   return board;
 }

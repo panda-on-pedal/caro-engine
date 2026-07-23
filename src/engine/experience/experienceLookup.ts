@@ -10,8 +10,10 @@ import {
 import type { SearchResult } from "../search/search.ts";
 
 /**
- * Resolve a root experience hit for "use" mode: return a SearchResult when
- * the cached entry is strong enough and still legal.
+ * Resolve a root experience hit for instant replay:
+ * - `use` mode: any strong legal entry (background reinvest may still deepen it)
+ * - `practice` mode: only when the entry is `settled` (a full-budget search
+ *   already failed to beat it — no better result expected)
  */
 export function tryUseExperienceHit(params: {
   board: Board;
@@ -19,7 +21,13 @@ export function tryUseExperienceHit(params: {
   mode: ExperienceMode;
   entry: ExperienceEntry | undefined;
 }): SearchResult | null {
-  if (params.mode !== "use") {
+  if (params.mode === "off") {
+    return null;
+  }
+  if (params.mode === "practice" && params.entry?.settled !== true) {
+    return null;
+  }
+  if (params.mode !== "use" && params.mode !== "practice") {
     return null;
   }
   if (!isStrongExperienceHit(params.entry)) {
@@ -28,18 +36,23 @@ export function tryUseExperienceHit(params: {
   if (!isUsableExperienceMove(params.board, params.entry)) {
     return null;
   }
-  return {
+  const result: SearchResult = {
     move: params.entry.move,
     score: params.entry.score,
     depth: params.entry.depth,
     principalVariation: [params.entry.move],
     nodesVisited: 0,
   };
+  if (params.mode === "practice") {
+    return {
+      ...result,
+      experienceCacheHit: true,
+      experienceStreakEligible: true,
+    };
+  }
+  return result;
 }
 
-export function experienceKeyFor(
-  board: Board,
-  player: Player,
-): CanonicalPosition {
+export function experienceKeyFor(board: Board, player: Player): CanonicalPosition {
   return canonicalExperienceKey(board, player);
 }

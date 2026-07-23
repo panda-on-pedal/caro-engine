@@ -1,4 +1,4 @@
-import { isLocale, type Locale } from './i18n/index.ts';
+import { isLocale, type Locale } from "./i18n/index.ts";
 
 export interface CaroSettings {
   highlightWhileThinking: boolean;
@@ -13,10 +13,10 @@ export const DEFAULT_SETTINGS: CaroSettings = {
   highlightWhileThinking: false,
   experienceImprovement: true,
   showThoughts: true,
-  lang: 'vi',
+  lang: "vi",
 };
 
-const STORAGE_KEY = 'caro.settings';
+const STORAGE_KEY = "caro.settings";
 
 export function loadSettings(): CaroSettings {
   try {
@@ -25,24 +25,27 @@ export function loadSettings(): CaroSettings {
       return { ...DEFAULT_SETTINGS };
     }
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') {
+    if (!parsed || typeof parsed !== "object") {
       return { ...DEFAULT_SETTINGS };
     }
     const record = parsed as Record<string, unknown>;
     return {
       highlightWhileThinking:
-        typeof record.highlightWhileThinking === 'boolean'
+        typeof record.highlightWhileThinking === "boolean"
           ? record.highlightWhileThinking
           : DEFAULT_SETTINGS.highlightWhileThinking,
       experienceImprovement:
-        typeof record.experienceImprovement === 'boolean'
+        typeof record.experienceImprovement === "boolean"
           ? record.experienceImprovement
           : DEFAULT_SETTINGS.experienceImprovement,
       showThoughts:
-        typeof record.showThoughts === 'boolean'
+        typeof record.showThoughts === "boolean"
           ? record.showThoughts
           : DEFAULT_SETTINGS.showThoughts,
-      lang: typeof record.lang === 'string' && isLocale(record.lang) ? record.lang : DEFAULT_SETTINGS.lang,
+      lang:
+        typeof record.lang === "string" && isLocale(record.lang)
+          ? record.lang
+          : DEFAULT_SETTINGS.lang,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

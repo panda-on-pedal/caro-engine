@@ -8,15 +8,25 @@
   import Controls from '../components/Controls.svelte';
   import Status from '../components/Status.svelte';
   import AsciiPanel from '../components/AsciiPanel.svelte';
+  import StartScreen from '../components/StartScreen.svelte';
+
+  const idleMultiAi = $derived(isMultiAiMode(session.mode) && !session.started);
 </script>
 
-{#if isMultiAiMode(session.mode)}
+{#if isMultiAiMode(session.mode) && session.started}
   <TabStrip />
 {/if}
 
 <div class="play-row">
   {#if session.showingResults}
     <StatsPanel />
+  {:else if idleMultiAi}
+    <div class="play-layout">
+      <StartScreen />
+      <div id="controls" class="controls">
+        <Controls />
+      </div>
+    </div>
   {:else}
     <div class="play-layout">
       <Board />
@@ -29,6 +39,6 @@
   {/if}
 </div>
 
-{#if session.asciiOpen && !session.showingResults}
+{#if session.asciiOpen && !session.showingResults && !idleMultiAi}
   <AsciiPanel />
 {/if}

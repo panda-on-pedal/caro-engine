@@ -6,12 +6,7 @@ import {
   type PatternInstance,
   type PatternType,
 } from "../patterns/patterns.ts";
-import {
-  isLegalMove,
-  placeMove,
-  type Board,
-  type Player,
-} from "../board.ts";
+import { isLegalMove, placeMove, type Board, type Player } from "../board.ts";
 import { checkCaroWin } from "../rules.ts";
 import type { Move } from "../state.ts";
 import {
@@ -43,11 +38,7 @@ export function findCandidateMoves(board: Board): Move[] {
       }
       hasStone = true;
       for (let dRow = -CANDIDATE_RADIUS; dRow <= CANDIDATE_RADIUS; dRow += 1) {
-        for (
-          let dCol = -CANDIDATE_RADIUS;
-          dCol <= CANDIDATE_RADIUS;
-          dCol += 1
-        ) {
+        for (let dCol = -CANDIDATE_RADIUS; dCol <= CANDIDATE_RADIUS; dCol += 1) {
           const r = row + dRow;
           const c = col + dCol;
           if (isLegalMove(board, r, c)) {
@@ -66,10 +57,7 @@ export function findCandidateMoves(board: Board): Move[] {
   return [...candidates.values()];
 }
 
-export type ForkPatternName =
-  | "double-three-trap"
-  | "double-four-trap"
-  | "mixed-tier-fork";
+export type ForkPatternName = "double-three-trap" | "double-four-trap" | "mixed-tier-fork";
 
 export interface ForkPatternDef {
   name: ForkPatternName;
@@ -97,8 +85,7 @@ export const FORK_PATTERNS: readonly ForkPatternDef[] = [
       .....X.
       .......
     `,
-    matches: (forkPoint) =>
-      forkPoint.patterns.every((p) => isTwoTier(p.type)),
+    matches: forkPoint => forkPoint.patterns.every(p => isTwoTier(p.type)),
   },
   {
     name: "double-four-trap",
@@ -110,8 +97,7 @@ export const FORK_PATTERNS: readonly ForkPatternDef[] = [
       ..XXX...
       ........
     `,
-    matches: (forkPoint) =>
-      forkPoint.patterns.every((p) => isThreeTier(p.type)),
+    matches: forkPoint => forkPoint.patterns.every(p => isThreeTier(p.type)),
   },
   {
     name: "mixed-tier-fork",
@@ -129,14 +115,14 @@ export const FORK_PATTERNS: readonly ForkPatternDef[] = [
     // short-circuit (Task 4) before fork detection (step 3) ever runs, so
     // a four-involving fork shape would be dead code here. This entry
     // exists for the two lower tiers only.
-    matches: (forkPoint) =>
-      forkPoint.patterns.some((p) => isTwoTier(p.type)) &&
-      forkPoint.patterns.some((p) => isThreeTier(p.type)),
+    matches: forkPoint =>
+      forkPoint.patterns.some(p => isTwoTier(p.type)) &&
+      forkPoint.patterns.some(p => isThreeTier(p.type)),
   },
 ];
 
 export const ALL_FORK_PATTERN_NAMES: ReadonlySet<ForkPatternName> = new Set(
-  FORK_PATTERNS.map((def) => def.name),
+  FORK_PATTERNS.map(def => def.name)
 );
 
 /**
@@ -146,13 +132,11 @@ export const ALL_FORK_PATTERN_NAMES: ReadonlySet<ForkPatternName> = new Set(
  */
 export function recognizedForkPoints(
   patterns: readonly PatternInstance[],
-  recognized: ReadonlySet<ForkPatternName>,
+  recognized: ReadonlySet<ForkPatternName>
 ): ForkPoint[] {
   const allForkPoints = findForkPoints(patterns);
-  const activeDefs = FORK_PATTERNS.filter((def) => recognized.has(def.name));
-  return allForkPoints.filter((forkPoint) =>
-    activeDefs.some((def) => def.matches(forkPoint)),
-  );
+  const activeDefs = FORK_PATTERNS.filter(def => recognized.has(def.name));
+  return allForkPoints.filter(forkPoint => activeDefs.some(def => def.matches(forkPoint)));
 }
 
 function otherPlayer(player: Player): Player {
@@ -227,23 +211,19 @@ export function survivingBlocks(
   board: Board,
   defender: Player,
   attacker: Player,
-  candidates: Move[],
+  candidates: Move[]
 ): Move[] {
   return candidates.filter(
-    (block) =>
-      !hasImmediateWin(
-        placeMove(board, block.row, block.col, defender),
-        attacker,
-      ),
+    block => !hasImmediateWin(placeMove(board, block.row, block.col, defender), attacker)
   );
 }
 
 /** Tempo ladder for must-answer / race: four beats open-three. */
 function threatRank(patterns: readonly PatternInstance[]): number {
-  if (patterns.some((p) => p.type === "four" || p.type === "open-four")) {
+  if (patterns.some(p => p.type === "four" || p.type === "open-four")) {
     return 3;
   }
-  if (patterns.some((p) => p.type === "open-three")) {
+  if (patterns.some(p => p.type === "open-three")) {
     return 2;
   }
   return 0;
@@ -258,9 +238,7 @@ function threatRank(patterns: readonly PatternInstance[]): number {
  * open-three counter must not be stripped just because a two-tier fork
  * cell exists.
  */
-function forcingAnswerKeys(
-  oppPatterns: readonly PatternInstance[],
-): Set<string> {
+function forcingAnswerKeys(oppPatterns: readonly PatternInstance[]): Set<string> {
   const keys = new Set<string>();
   for (const pattern of oppPatterns) {
     if (pattern.type !== "open-three") {
@@ -287,7 +265,7 @@ function createsRacingFour(
   board: Board,
   player: Player,
   move: Move,
-  store: PatternStore | undefined,
+  store: PatternStore | undefined
 ): boolean {
   if (store !== undefined) {
     store.place(move, player);
@@ -352,15 +330,13 @@ function weightedReorder(
   board: Board,
   moves: Move[],
   moveCount: number,
-  config: NarrowConfig,
+  config: NarrowConfig
 ): Move[] {
   if (moves.length <= 1) {
     return moves;
   }
   const decayRate = decayRateForMoveCount(moveCount, config.decay);
-  const weights = moves.map((move) =>
-    distanceWeight(nearestStoneDistance(board, move), decayRate),
-  );
+  const weights = moves.map(move => distanceWeight(nearestStoneDistance(board, move), decayRate));
   return sampleWithoutReplacement(moves, weights, moves.length, config.rng);
 }
 
@@ -406,16 +382,14 @@ export function narrowCandidates(
   board: Board,
   player: Player,
   moveCount: number,
-  config: NarrowConfig,
+  config: NarrowConfig
 ): NarrowResult {
   const opponent = otherPlayer(player);
   const ownPatterns = config.ownPatterns ?? findPatterns(board, player);
   const oppPatterns = config.oppPatterns ?? findPatterns(board, opponent);
 
   // Step 1: I can win now.
-  const ownFour = ownPatterns.find(
-    (p) => p.type === "four" || p.type === "open-four",
-  );
+  const ownFour = ownPatterns.find(p => p.type === "four" || p.type === "open-four");
   if (ownFour) {
     return { moves: ownFour.gains, source: "forced" };
   }
@@ -431,9 +405,7 @@ export function narrowCandidates(
   // win, block when survival is the best a miss can buy.
   const desperadoEnabled = config.desperado ?? true;
   let desperadoBlocks: Move[] | null = null;
-  const oppFour = oppPatterns.find(
-    (p) => p.type === "four" || p.type === "open-four",
-  );
+  const oppFour = oppPatterns.find(p => p.type === "four" || p.type === "open-four");
   if (oppFour) {
     const box = boxCell(oppFour, board);
     const candidates = box ? [...oppFour.gains, box] : oppFour.gains;
@@ -466,10 +438,7 @@ export function narrowCandidates(
     }
   };
 
-  for (const forkPoint of recognizedForkPoints(
-    ownPatterns,
-    config.recognizedForkPatterns,
-  )) {
+  for (const forkPoint of recognizedForkPoints(ownPatterns, config.recognizedForkPatterns)) {
     const key = `${forkPoint.move.row},${forkPoint.move.col}`;
     urgentMoves.set(key, forkPoint.move);
     forkBonus.set(key, forkBonusFor(forkPoint));
@@ -483,10 +452,7 @@ export function narrowCandidates(
   const desperado = desperadoBlocks !== null;
 
   if (!desperado) {
-    for (const forkPoint of recognizedForkPoints(
-      oppPatterns,
-      config.recognizedForkPatterns,
-    )) {
+    for (const forkPoint of recognizedForkPoints(oppPatterns, config.recognizedForkPatterns)) {
       const key = `${forkPoint.move.row},${forkPoint.move.col}`;
       urgentMoves.set(key, forkPoint.move);
       forkBonus.set(key, forkBonusFor(forkPoint));
@@ -536,8 +502,7 @@ export function narrowCandidates(
     // #16 keeps 8,10; catalog #11 still drops 8,6 which only makes
     // open-threes). Skipped in desperado mode.
     const answerKeys = forcingAnswerKeys(oppPatterns);
-    const mustAnswer =
-      !desperado && answerKeys.size > 0 && !ownAlreadyRacing(ownPatterns);
+    const mustAnswer = !desperado && answerKeys.size > 0 && !ownAlreadyRacing(ownPatterns);
 
     // Neither tier is forced — fill remaining slots from the quiet
     // neighborhood so development/racing stays possible, but cap at the
@@ -548,13 +513,8 @@ export function narrowCandidates(
     // ahead of any soft/quiet score. Skip quiet padding when we must
     // answer (those fillers would be stripped anyway).
     const softAndQuiet = new Map(softMoves);
-    let poolSize = new Set([...urgentMoves.keys(), ...softAndQuiet.keys()])
-      .size;
-    if (
-      !desperado &&
-      !mustAnswer &&
-      poolSize < QUIET_FALLBACK_SAMPLE_SIZE
-    ) {
+    let poolSize = new Set([...urgentMoves.keys(), ...softAndQuiet.keys()]).size;
+    if (!desperado && !mustAnswer && poolSize < QUIET_FALLBACK_SAMPLE_SIZE) {
       for (const move of sampleQuietMoves(board, moveCount, config)) {
         if (poolSize >= QUIET_FALLBACK_SAMPLE_SIZE) {
           break;
@@ -595,14 +555,14 @@ export function narrowCandidates(
           player,
           [urgentSurvivors, softSurvivors],
           DEFAULT_TOP_K,
-          forkBonus,
+          forkBonus
         )
       : selectTopMovesTiered(
           board,
           player,
           [urgentSurvivors, softSurvivors],
           DEFAULT_TOP_K,
-          forkBonus,
+          forkBonus
         );
 
     return {
@@ -628,24 +588,13 @@ export function narrowCandidates(
 }
 
 /** Distance-weighted quiet sample from the raw radius-2 neighborhood. */
-function sampleQuietMoves(
-  board: Board,
-  moveCount: number,
-  config: NarrowConfig,
-): Move[] {
+function sampleQuietMoves(board: Board, moveCount: number, config: NarrowConfig): Move[] {
   const raw = findCandidateMoves(board);
   if (raw.length <= QUIET_FALLBACK_SAMPLE_SIZE) {
     return weightedReorder(board, raw, moveCount, config);
   }
 
   const decayRate = decayRateForMoveCount(moveCount, config.decay);
-  const weights = raw.map((move) =>
-    distanceWeight(nearestStoneDistance(board, move), decayRate),
-  );
-  return sampleWithoutReplacement(
-    raw,
-    weights,
-    QUIET_FALLBACK_SAMPLE_SIZE,
-    config.rng,
-  );
+  const weights = raw.map(move => distanceWeight(nearestStoneDistance(board, move), decayRate));
+  return sampleWithoutReplacement(raw, weights, QUIET_FALLBACK_SAMPLE_SIZE, config.rng);
 }

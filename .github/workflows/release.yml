@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - '*'
+      - "*"
 
 jobs:
   build:
@@ -21,10 +21,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           # Trusted Publishing needs Node >= 22.14 and npm >= 11.5.1
-          node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
           # Never cache package manager in release builds
-          cache: ''
+          cache: ""
 
       - name: Ensure recent npm CLI
         run: npm install -g npm@latest

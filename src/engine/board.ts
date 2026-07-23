@@ -29,13 +29,13 @@ export function placeMove(board: Board, row: number, col: number, player: Player
   if (!isLegalMove(board, row, col)) {
     throw new Error(`Illegal move: (${row}, ${col})`);
   }
-  const next = board.map((r) => r.slice()) as Board;
+  const next = board.map(r => r.slice()) as Board;
   next[row][col] = player;
   return next;
 }
 
 export function isFull(board: Board): boolean {
-  return board.every((row) => row.every((cell) => cell !== 0));
+  return board.every(row => row.every(cell => cell !== 0));
 }
 
 function countInDirection(
@@ -44,7 +44,7 @@ function countInDirection(
   col: number,
   player: Player,
   dRow: number,
-  dCol: number,
+  dCol: number
 ): number {
   let count = 0;
   let r = row + dRow;

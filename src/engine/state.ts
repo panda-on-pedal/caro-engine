@@ -1,12 +1,19 @@
-import { createEmptyBoard, isFull, isLegalMove, placeMove, type Board, type Player } from './board.ts';
-import { findCaroWinLine } from './rules.ts';
+import {
+  createEmptyBoard,
+  isFull,
+  isLegalMove,
+  placeMove,
+  type Board,
+  type Player,
+} from "./board.ts";
+import { findCaroWinLine } from "./rules.ts";
 
 export interface Move {
   row: number;
   col: number;
 }
 
-export type Winner = Player | 'draw' | null;
+export type Winner = Player | "draw" | null;
 
 export interface GameState {
   board: Board;
@@ -32,7 +39,7 @@ export function newGame(): GameState {
 /** Applies `player`'s move to the state, returning the resulting state. Throws on illegal moves or moves made after the game has ended. */
 export function applyMove(state: GameState, move: Move, player: Player): GameState {
   if (state.winner !== null) {
-    throw new Error('Game has already ended');
+    throw new Error("Game has already ended");
   }
   if (player !== state.nextPlayer) {
     throw new Error(`It is not player ${player}'s turn`);
@@ -43,7 +50,7 @@ export function applyMove(state: GameState, move: Move, player: Player): GameSta
 
   const board = placeMove(state.board, move.row, move.col, player);
   const winningLine = findCaroWinLine(board, move.row, move.col, player);
-  const winner: Winner = winningLine !== null ? player : isFull(board) ? 'draw' : null;
+  const winner: Winner = winningLine !== null ? player : isFull(board) ? "draw" : null;
 
   return {
     board,

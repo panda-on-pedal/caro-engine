@@ -1,31 +1,31 @@
-import type { Difficulty } from '../engine/engine.ts';
-import { PAIRINGS, TOURNAMENT_DIFFICULTIES } from '../ui/tournament.ts';
+import type { Difficulty } from "../engine/engine.ts";
+import { PAIRINGS, TOURNAMENT_DIFFICULTIES } from "../ui/tournament.ts";
 
 export interface GameResult {
   p1: Difficulty;
   p2: Difficulty;
-  winner: 1 | 2 | 'draw';
+  winner: 1 | 2 | "draw";
   moves: number;
   durationMs: number;
   endedAt: string;
 }
 
-const DIFFICULTIES: ReadonlySet<string> = new Set(['easy', 'medium', 'hard', 'expert']);
+const DIFFICULTIES: ReadonlySet<string> = new Set(["easy", "medium", "hard", "expert"]);
 
 export function isValidGameResult(value: unknown): value is GameResult {
-  if (typeof value !== 'object' || value === null) {
+  if (typeof value !== "object" || value === null) {
     return false;
   }
   const record = value as Record<string, unknown>;
   return (
-    typeof record.p1 === 'string' &&
+    typeof record.p1 === "string" &&
     DIFFICULTIES.has(record.p1) &&
-    typeof record.p2 === 'string' &&
+    typeof record.p2 === "string" &&
     DIFFICULTIES.has(record.p2) &&
-    (record.winner === 1 || record.winner === 2 || record.winner === 'draw') &&
-    typeof record.moves === 'number' &&
-    typeof record.durationMs === 'number' &&
-    typeof record.endedAt === 'string'
+    (record.winner === 1 || record.winner === 2 || record.winner === "draw") &&
+    typeof record.moves === "number" &&
+    typeof record.durationMs === "number" &&
+    typeof record.endedAt === "string"
   );
 }
 
@@ -52,14 +52,14 @@ function average(values: number[]): number {
  * order, even when a pairing has no games yet. */
 export function aggregateResults(records: GameResult[]): PairingStats[] {
   return PAIRINGS.map(([p1, p2]) => {
-    const matching = records.filter((record) => record.p1 === p1 && record.p2 === p2);
+    const matching = records.filter(record => record.p1 === p1 && record.p2 === p2);
     const games = matching.length;
-    const p1Wins = matching.filter((record) => record.winner === 1).length;
-    const p2Wins = matching.filter((record) => record.winner === 2).length;
-    const draws = matching.filter((record) => record.winner === 'draw').length;
+    const p1Wins = matching.filter(record => record.winner === 1).length;
+    const p2Wins = matching.filter(record => record.winner === 2).length;
+    const draws = matching.filter(record => record.winner === "draw").length;
     const p1WinPct = games === 0 ? 0 : (p1Wins / games) * 100;
-    const avgP1Moves = average(matching.map((record) => Math.ceil(record.moves / 2)));
-    const avgP2Moves = average(matching.map((record) => Math.floor(record.moves / 2)));
+    const avgP1Moves = average(matching.map(record => Math.ceil(record.moves / 2)));
+    const avgP2Moves = average(matching.map(record => Math.floor(record.moves / 2)));
     return { p1, p2, games, p1Wins, p2Wins, draws, p1WinPct, avgP1Moves, avgP2Moves };
   });
 }
@@ -70,7 +70,7 @@ export function firstPlayerWinPct(records: GameResult[]): number | null {
   if (records.length === 0) {
     return null;
   }
-  const p1Wins = records.filter((record) => record.winner === 1).length;
+  const p1Wins = records.filter(record => record.winner === 1).length;
   return (p1Wins / records.length) * 100;
 }
 
@@ -82,14 +82,14 @@ export interface PlayerLeaderboardRow {
 }
 
 const DIFFICULTY_ORDER = new Map(
-  TOURNAMENT_DIFFICULTIES.map((difficulty, index) => [difficulty, index]),
+  TOURNAMENT_DIFFICULTIES.map((difficulty, index) => [difficulty, index])
 );
 
 /** Per-difficulty standings: wins (either seat) and win% = wins / games played.
  * Sorted by wins desc, then win% desc, then difficulty order. Always one row
  * per tournament difficulty. */
 export function playerLeaderboard(records: GameResult[]): PlayerLeaderboardRow[] {
-  const rows: PlayerLeaderboardRow[] = TOURNAMENT_DIFFICULTIES.map((player) => {
+  const rows: PlayerLeaderboardRow[] = TOURNAMENT_DIFFICULTIES.map(player => {
     let wins = 0;
     let games = 0;
     for (const record of records) {

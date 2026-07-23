@@ -26,7 +26,9 @@ describe("handleEngineRequest", () => {
     expect(response.id).toBe(42);
     expect(response.ok).toBe(true);
     if (response.ok) {
-      expect(isLegalMove(state.board, response.result.move.row, response.result.move.col)).toBe(true);
+      expect(isLegalMove(state.board, response.result.move.row, response.result.move.col)).toBe(
+        true
+      );
     }
   });
 
@@ -43,7 +45,9 @@ describe("handleEngineRequest", () => {
 
     expect(response.ok).toBe(true);
     if (response.ok) {
-      expect(isLegalMove(state.board, response.result.move.row, response.result.move.col)).toBe(true);
+      expect(isLegalMove(state.board, response.result.move.row, response.result.move.col)).toBe(
+        true
+      );
     }
   });
 });
@@ -68,7 +72,7 @@ describe("prepareExperienceForRequest", () => {
     expect(miss.settled).toBe(false);
 
     // Store in the canonical frame, exactly as EnginePool.rememberResult does.
-    store.put('easy', miss.key, {
+    store.put("easy", miss.key, {
       move: miss.transform.toCanonical({ row: 4, col: 4 }),
       score: 10,
       depth: 3,
@@ -80,10 +84,42 @@ describe("prepareExperienceForRequest", () => {
     expect(hit.baseline?.depth).toBe(3);
     expect(hit.settled).toBe(false);
 
-    store.markSettled('easy', miss.key);
+    store.markSettled("easy", miss.key);
     const settledHit = prepareExperienceForRequest(params);
     expect(settledHit.instant?.move).toEqual({ row: 4, col: 4 });
     expect(settledHit.settled).toBe(true);
+  });
+
+  it("practice mode only instant-replays settled entries", () => {
+    const store = new PersistentExperienceStore();
+    let state = newGame();
+    state = applyMove(state, { row: 5, col: 5 }, 1);
+    state = applyMove(state, { row: 5, col: 6 }, 2);
+    const params = {
+      board: state.board,
+      player: state.nextPlayer,
+      difficulty: "easy" as const,
+      experienceMode: "practice" as const,
+      store,
+    };
+
+    const miss = prepareExperienceForRequest(params);
+    store.put("easy", miss.key, {
+      move: miss.transform.toCanonical({ row: 4, col: 4 }),
+      score: 10,
+      depth: 3,
+    });
+
+    const unsettled = prepareExperienceForRequest(params);
+    expect(unsettled.instant).toBeNull();
+    expect(unsettled.baseline?.move).toEqual({ row: 4, col: 4 });
+    expect(unsettled.settled).toBe(false);
+
+    store.markSettled("easy", miss.key);
+    const settled = prepareExperienceForRequest(params);
+    expect(settled.instant?.move).toEqual({ row: 4, col: 4 });
+    expect(settled.instant?.experienceCacheHit).toBe(true);
+    expect(settled.settled).toBe(true);
   });
 });
 
