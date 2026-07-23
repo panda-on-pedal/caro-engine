@@ -72,7 +72,7 @@ const SYMMETRIES: readonly Symmetry[] = [
   { apply: (r, c, n) => [r, n - 1 - c], invert: (r, c, n) => [r, n - 1 - c] }, // flip cols
 ];
 
-const IDENTITY_TRANSFORM: ExperienceTransform = {
+export const IDENTITY_TRANSFORM: ExperienceTransform = {
   toCanonical: (m) => ({ row: m.row, col: m.col }),
   fromCanonical: (m) => ({ row: m.row, col: m.col }),
 };
@@ -162,6 +162,32 @@ export function canonicalExperienceKey(
 }
 
 /**
+ * Project every stone of `board` through `transform.toCanonical`, returning a
+ * fresh board of the same size in the canonical frame. The background reinvest
+ * searches this so its Zobrist hashes (and persisted TT slice) are identical
+ * regardless of which symmetric orientation the position was encountered in.
+ */
+export function toCanonicalBoard(
+  board: Board,
+  transform: ExperienceTransform,
+): Board {
+  const n = board.length;
+  const out: Board = Array.from({ length: n }, () =>
+    Array.from({ length: n }, () => 0),
+  );
+  for (let r = 0; r < n; r += 1) {
+    for (let c = 0; c < n; c += 1) {
+      const cell = board[r][c];
+      if (cell !== 0) {
+        const { row, col } = transform.toCanonical({ row: r, col: c });
+        out[row][col] = cell;
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * An entry is replayable when it carries a real search (depth >= floor). We no
  * longer gate on the planned depth: under a time budget a fresh search reaches
  * roughly the same depth as the stored one, so re-searching a matched position
@@ -215,9 +241,11 @@ export function isUsableExperienceMove(
 export class ExperienceStore {
   private readonly maxEntries: number;
   private readonly map = new Map<string, StoredExperienceEntry>();
+  private onEvict?: (key: string) => void;
 
-  constructor(maxEntries = 2000) {
+  constructor(maxEntries = 2000, onEvict?: (key: string) => void) {
     this.maxEntries = Math.max(1, maxEntries);
+    this.onEvict = onEvict;
   }
 
   get size(): number {
@@ -320,6 +348,7 @@ export class ExperienceStore {
         return;
       }
       this.map.delete(oldest);
+      this.onEvict?.(oldest);
     }
   }
 }

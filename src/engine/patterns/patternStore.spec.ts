@@ -159,3 +159,34 @@ describe("PatternStore", () => {
     expect(store.depth).toBe(0);
   });
 });
+
+describe("PatternStore hash", () => {
+  it("is transposition-invariant and undo-reversible", () => {
+    const store = PatternStore.fromBoard(createEmptyBoard());
+    const empty = store.hash;
+
+    store.place({ row: 5, col: 5 }, 1);
+    store.place({ row: 6, col: 7 }, 2);
+    const afterAB = store.hash;
+    store.undo();
+    store.undo();
+    expect(store.hash).toBe(empty); // undo restores the hash
+
+    store.place({ row: 6, col: 7 }, 2); // reverse order
+    store.place({ row: 5, col: 5 }, 1);
+    expect(store.hash).toBe(afterAB); // same position → same hash
+  });
+
+  it("matches a from-scratch recompute of the same position", () => {
+    const a = PatternStore.fromBoard(createEmptyBoard());
+    a.place({ row: 1, col: 1 }, 1);
+    a.place({ row: 2, col: 2 }, 2);
+
+    const board = createEmptyBoard();
+    board[1][1] = 1;
+    board[2][2] = 2;
+    const b = PatternStore.fromBoard(board);
+
+    expect(a.hash).toBe(b.hash);
+  });
+});

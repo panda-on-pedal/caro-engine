@@ -5,6 +5,7 @@ import {
   experienceBeatsBaseline,
   isStrongExperienceHit,
   shouldReplaceExperience,
+  toCanonicalBoard,
 } from "./experience.ts";
 import { tryUseExperienceHit } from "./experienceLookup.ts";
 
@@ -254,5 +255,31 @@ describe("settled entries", () => {
     store.put("k", { move: { row: 1, col: 1 }, score: 5, depth: 3 });
     store.markSettled("k");
     expect(store.markSettled("k")).toBe(false);
+  });
+});
+
+describe("toCanonicalBoard", () => {
+  it("produces a board whose own canonical key is the identity key", () => {
+    const board = createEmptyBoard();
+    board[5][5] = 1;
+    board[5][6] = 1;
+    board[6][6] = 2;
+    const { key, transform } = canonicalExperienceKey(board, 1);
+
+    const canonical = toCanonicalBoard(board, transform);
+    const rekey = canonicalExperienceKey(canonical, 1);
+    expect(rekey.key).toBe(key);
+    const probe = { row: 5, col: 6 };
+    expect(rekey.transform.toCanonical(probe)).toEqual(probe);
+  });
+});
+
+describe("ExperienceStore eviction callback", () => {
+  it("invokes onEvict with each key dropped by LRU overflow", () => {
+    const evicted: string[] = [];
+    const store = new ExperienceStore(1, (key) => evicted.push(key));
+    store.put("A", { move: { row: 0, col: 0 }, score: 1, depth: 1 });
+    store.put("B", { move: { row: 1, col: 1 }, score: 1, depth: 1 });
+    expect(evicted).toEqual(["A"]);
   });
 });

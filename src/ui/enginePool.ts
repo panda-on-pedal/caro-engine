@@ -2,8 +2,10 @@ import type { Board, Player } from '../engine/board.ts';
 import type { Difficulty } from '../engine/engine.ts';
 import {
   EMPTY_POSITION_KEY,
+  IDENTITY_TRANSFORM,
   MIN_EXPERIENCE_DEPTH,
   experienceBeatsBaseline,
+  toCanonicalBoard,
   type ExperienceEntry,
   type ExperienceMode,
   type ExperienceTransform,
@@ -214,15 +216,28 @@ export class EnginePool {
     if (!idleSlot) {
       return;
     }
+    // Search the canonical frame so the persisted TT slice is orientation-
+    // independent. The baseline move must be canonical too (it floors the result).
+    const canonicalBoard = toCanonicalBoard(
+      toPlainBoard(board),
+      prepared.transform,
+    );
+    const canonicalBaseline: ExperienceEntry = {
+      move: prepared.transform.toCanonical(baseline.move),
+      score: baseline.score,
+      depth: baseline.depth,
+    };
     const request: EngineRequest = {
       id: this.nextId,
-      board: toPlainBoard(board),
+      board: canonicalBoard,
       player,
       difficulty,
       // Background reinvest is not user-facing — use the full difficulty budget.
       stepTimeByOwnStones: false,
       experienceMode,
-      experienceBaseline: baseline,
+      experienceBaseline: canonicalBaseline,
+      bookDeepening: true,
+      canonicalKey: prepared.key,
     };
     this.nextId += 1;
     new Promise<SearchResult>((resolve, reject) => {
@@ -236,7 +251,8 @@ export class EnginePool {
         reject,
         difficulty,
         experienceKey: prepared.key,
-        experienceTransform: prepared.transform,
+        // Result move is already canonical → store unchanged.
+        experienceTransform: IDENTITY_TRANSFORM,
         experienceMode,
         persistExperience: true,
         background: true,

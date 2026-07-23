@@ -26,8 +26,27 @@ import {
   type ExperienceMode,
 } from "../experience/experience.ts";
 import { resolveEffectiveTimeBudget } from "../timeBudget.ts";
+import {
+  TranspositionTable,
+  TTFlag,
+  type TTEntry,
+} from "../transposition/transposition.ts";
+import { SIDE_TO_MOVE_KEY } from "../transposition/zobrist.ts";
 
 export type { InsightKind, SearchProgressEvent } from "./searchProgress.ts";
+
+/** Store mate scores relative to the current node so they retrieve correctly
+ *  at a different distance from the root. */
+function adjustMate(score: number, ply: number): number {
+  if (score >= WIN_SCORE) return score + ply;
+  if (score <= -WIN_SCORE) return score - ply;
+  return score;
+}
+function deAdjustMate(score: number, ply: number): number {
+  if (score >= WIN_SCORE) return score - ply;
+  if (score <= -WIN_SCORE) return score + ply;
+  return score;
+}
 
 export const DEFAULT_DECAY_CONFIG: DecayConfig = {
   startDecay: 0.8,
@@ -132,6 +151,7 @@ function negamax(
   path: Move[] = [],
   rootPlayer: Player = player,
   rootProgress?: RootProgress,
+  tt?: TranspositionTable,
 ): SearchNode {
   nodeCounter.count += 1;
 
@@ -143,10 +163,37 @@ function negamax(
     return { score: evaluateStore(store, player), principalVariation: [] };
   }
 
+  const isRootFrame = rootMoves !== undefined;
+  const ply = path.length;
+  const alphaOrig = alpha;
+  const ttKey =
+    tt !== undefined ? store.hash ^ (player === 2 ? SIDE_TO_MOVE_KEY : 0n) : 0n;
+  let ttMove: Move | undefined;
+  if (tt !== undefined && !isRootFrame) {
+    const hit = tt.probe(ttKey);
+    if (hit !== undefined) {
+      if (hit.bestRow >= 0) {
+        ttMove = { row: hit.bestRow, col: hit.bestCol };
+      }
+      if (hit.depth >= depth) {
+        const s = deAdjustMate(hit.score, ply);
+        if (hit.flag === TTFlag.Exact) {
+          return { score: s, principalVariation: ttMove ? [ttMove] : [] };
+        }
+        if (hit.flag === TTFlag.Lower && s > alpha) alpha = s;
+        else if (hit.flag === TTFlag.Upper && s < beta) beta = s;
+        if (alpha >= beta) {
+          return { score: s, principalVariation: ttMove ? [ttMove] : [] };
+        }
+      }
+    }
+  }
+
   const nodeNarrow = narrowConfigForStore(store, player, narrowConfig);
-  const moves =
+  const rawMoves =
     rootMoves ??
     narrowCandidates(store.board, player, moveCount, nodeNarrow).moves;
+  const moves = ttMove ? seedBaselineMove(rawMoves, ttMove) : rawMoves;
   if (moves.length === 0) {
     return { score: 0, principalVariation: [] };
   }
@@ -155,7 +202,6 @@ function negamax(
   let bestCompare = -Infinity;
   let currentAlpha = alpha;
 
-  const isRootFrame = rootMoves !== undefined;
   if (isRootFrame) {
     logger.log("[search] root: examining candidates", {
       depth,
@@ -239,6 +285,8 @@ function negamax(
             undefined,
             [...path, move],
             rootPlayer,
+            undefined,
+            tt,
           );
           return {
             score: -child.score,
@@ -270,11 +318,37 @@ function negamax(
   }
 
   if (best.score === -Infinity) {
-    return { score: evaluateStore(store, player), principalVariation: [] };
+    const evalScore = evaluateStore(store, player);
+    if (tt !== undefined && !isRootFrame) {
+      tt.store(ttKey, {
+        depth,
+        score: adjustMate(evalScore, ply),
+        flag: TTFlag.Exact,
+        bestRow: -1,
+        bestCol: -1,
+      });
+    }
+    return { score: evalScore, principalVariation: [] };
   }
 
   if (isRootFrame) {
     best.complete = !rootIncomplete;
+  }
+  if (tt !== undefined && !isRootFrame) {
+    const flag =
+      best.score <= alphaOrig
+        ? TTFlag.Upper
+        : best.score >= beta
+          ? TTFlag.Lower
+          : TTFlag.Exact;
+    const bm = best.principalVariation[0];
+    tt.store(ttKey, {
+      depth,
+      score: adjustMate(best.score, ply),
+      flag,
+      bestRow: bm ? bm.row : -1,
+      bestCol: bm ? bm.col : -1,
+    });
   }
   return best;
 }
@@ -365,6 +439,13 @@ export interface SearchConfig {
   experienceMode?: ExperienceMode;
   /** Practice baseline (and optional move-ordering seed). */
   experienceBaseline?: ExperienceEntry;
+  /** Optional transposition table shared across this search's iterations.
+   *  Changes node count only — never the chosen move or score. */
+  tt?: TranspositionTable;
+  /** Fired after each fully completed iterative-deepening depth with the TT
+   *  entries changed since the previous call. Used by book deepening to flush
+   *  progress. A deadline-truncated final depth does NOT fire. */
+  onDepthComplete?: (depth: number, dirty: Array<[bigint, TTEntry]>) => void;
 }
 
 /**
@@ -440,6 +521,7 @@ export const negamaxStrategy: MoveSelectionStrategy = (
       [],
       player,
       rootProgress,
+      config.tt,
     );
     if (result.principalVariation.length === 0) {
       break;
@@ -473,6 +555,9 @@ export const negamaxStrategy: MoveSelectionStrategy = (
     }
     bestNode = result;
     depthReached = depth;
+    if (config.tt !== undefined && config.onDepthComplete !== undefined) {
+      config.onDepthComplete(depth, config.tt.takeDirty());
+    }
     if (Math.abs(result.score) >= WIN_SCORE) {
       break;
     }

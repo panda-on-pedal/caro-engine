@@ -11,6 +11,7 @@ import {
   type PatternInstance,
 } from "./patterns.ts";
 import type { Move } from "../state.ts";
+import { zobristTerm } from "../transposition/zobrist.ts";
 
 type UndoFrame = {
   row: number;
@@ -45,6 +46,7 @@ export class PatternStore {
   private patterns1: PatternInstance[];
   private patterns2: PatternInstance[];
   private stack: UndoFrame[] = [];
+  private hashValue: bigint;
 
   private constructor(
     board: Board,
@@ -54,6 +56,24 @@ export class PatternStore {
     this.board = board;
     this.patterns1 = patterns1;
     this.patterns2 = patterns2;
+    this.hashValue = PatternStore.computeHash(board);
+  }
+
+  private static computeHash(board: Board): bigint {
+    let h = 0n;
+    for (let row = 0; row < board.length; row += 1) {
+      for (let col = 0; col < board.length; col += 1) {
+        const cell = board[row][col];
+        if (cell !== 0) {
+          h ^= zobristTerm(row, col, cell);
+        }
+      }
+    }
+    return h;
+  }
+
+  get hash(): bigint {
+    return this.hashValue;
   }
 
   /** Deep-copies `board` and runs a full `findPatterns` for both players. */
@@ -91,6 +111,7 @@ export class PatternStore {
       patterns2: this.patterns2,
     });
     this.board[row][col] = player;
+    this.hashValue ^= zobristTerm(row, col, player);
     this.patterns1 = this.patterns1.slice();
     this.patterns2 = this.patterns2.slice();
     this.rebuildLinesThrough(row, col);
@@ -101,6 +122,10 @@ export class PatternStore {
     const frame = this.stack.pop();
     if (!frame) {
       throw new Error("PatternStore.undo: empty stack");
+    }
+    const removed = this.board[frame.row][frame.col];
+    if (removed !== 0) {
+      this.hashValue ^= zobristTerm(frame.row, frame.col, removed);
     }
     this.board[frame.row][frame.col] = frame.previousCell;
     this.patterns1 = frame.patterns1;
@@ -121,6 +146,7 @@ export class PatternStore {
     this.patterns1 = findPatterns(this.board, 1);
     this.patterns2 = findPatterns(this.board, 2);
     this.stack = [];
+    this.hashValue = PatternStore.computeHash(this.board);
   }
 
   private rebuildLinesThrough(row: number, col: number): void {

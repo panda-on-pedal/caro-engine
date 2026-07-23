@@ -1,10 +1,14 @@
 import { isLegalMove } from "../engine/board.ts";
+import { createEmptyBoard } from "../engine/board.ts";
 import { applyMove, newGame } from "../engine/state.ts";
 import {
   handleEngineRequest,
   prepareExperienceForRequest,
+  runBookDeepening,
+  type EngineRequest,
 } from "./engineProtocol.ts";
 import { PersistentExperienceStore } from "./experiencePersist.ts";
+import { type TTEntry } from "../engine/transposition/transposition.ts";
 
 describe("handleEngineRequest", () => {
   it("returns a legal move and echoes the request id on a mid-game board", () => {
@@ -80,5 +84,44 @@ describe("prepareExperienceForRequest", () => {
     const settledHit = prepareExperienceForRequest(params);
     expect(settledHit.instant?.move).toEqual({ row: 4, col: 4 });
     expect(settledHit.settled).toBe(true);
+  });
+});
+
+describe("runBookDeepening", () => {
+  it("seeds from loadSlice, flushes per completed depth, and returns a move", async () => {
+    const board = createEmptyBoard();
+    board[5][5] = 1;
+    board[5][6] = 1;
+    board[6][6] = 2;
+
+    const flushed: Array<[string, number]> = [];
+    const request: EngineRequest = {
+      id: 1,
+      board,
+      player: 1,
+      difficulty: "medium",
+      // Cap the real search so the test is fast despite BOOK_MAX_DEPTH=24.
+      timeBudgetMs: 50,
+      bookDeepening: true,
+      canonicalKey: "KEY_X",
+    };
+
+    const response = await runBookDeepening(request, {
+      loadSlice: (key: string) => {
+        expect(key).toBe("KEY_X");
+        return Promise.resolve([]);
+      },
+      flushSlice: (key: string, dirty: Array<[bigint, TTEntry]>) => {
+        flushed.push([key, dirty.length]);
+        return Promise.resolve();
+      },
+    });
+
+    expect(response.ok).toBe(true);
+    if (response.ok) {
+      expect(response.result.move).toBeDefined();
+    }
+    expect(flushed.length).toBeGreaterThan(0);
+    expect(flushed.every(([k]) => k === "KEY_X")).toBe(true);
   });
 });

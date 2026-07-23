@@ -10,6 +10,10 @@ import { DEFAULT_MIN_TIME_BUDGET_MS } from "./timeBudget.ts";
 
 export type Difficulty = "easy" | "medium" | "hard" | "expert";
 
+/** Depth ceiling for background book deepening — time budget is the real
+ *  limiter; this only guards against pathological unbounded recursion. */
+export const BOOK_MAX_DEPTH = 24;
+
 export interface DifficultyProfile {
   maxDepth: number;
   timeBudgetMs: number;
@@ -63,6 +67,8 @@ export interface EngineConfig {
   rootScoreJitter?: number;
   experienceMode?: ExperienceMode;
   experienceBaseline?: ExperienceEntry;
+  /** Background book deepening: use BOOK_MAX_DEPTH instead of difficulty maxDepth. */
+  bookDeepening?: boolean;
 }
 
 const DEFAULT_CONFIG: EngineConfig = { difficulty: "medium" };
@@ -71,7 +77,7 @@ const DEFAULT_CONFIG: EngineConfig = { difficulty: "medium" };
 export function resolveEngineSearchConfig(config: EngineConfig): SearchConfig {
   const profile = DIFFICULTY_PROFILES[config.difficulty];
   return {
-    maxDepth: profile.maxDepth,
+    maxDepth: config.bookDeepening ? BOOK_MAX_DEPTH : profile.maxDepth,
     timeBudgetMs: config.timeBudgetMs ?? profile.timeBudgetMs,
     // Practice has no human waiting — use the full difficulty budget.
     stepTimeByOwnStones:

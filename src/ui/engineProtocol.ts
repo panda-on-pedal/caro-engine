@@ -18,7 +18,15 @@ import {
   type SearchProgressEvent,
   type SearchResult,
 } from '../engine/search/search.ts';
+import {
+  TranspositionTable,
+  type TTEntry,
+} from '../engine/transposition/transposition.ts';
 import { PersistentExperienceStore } from './experiencePersist.ts';
+import {
+  loadSlice as realLoadSlice,
+  flushSlice as realFlushSlice,
+} from './ttPersist.ts';
 
 export type { SearchProgressEvent };
 
@@ -32,6 +40,10 @@ export interface EngineRequest {
   stepTimeByOwnStones?: boolean;
   experienceMode?: ExperienceMode;
   experienceBaseline?: ExperienceEntry;
+  /** Background book-deepening job: search the canonical board, persist the TT. */
+  bookDeepening?: boolean;
+  /** Experience canonical key naming the persisted TT slice. */
+  canonicalKey?: string;
 }
 
 export type EngineResponse =
@@ -69,6 +81,57 @@ export function handleEngineRequest(
         onProgress,
       },
     );
+    return { id: request.id, ok: true, result };
+  } catch (error) {
+    return {
+      id: request.id,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export interface BookDeepenDeps {
+  loadSlice: (key: string) => Promise<Array<[bigint, TTEntry]>>;
+  flushSlice: (key: string, dirty: Array<[bigint, TTEntry]>) => Promise<void>;
+}
+
+/** Background reinvest: seed the persisted TT slice, deepen the canonical
+ *  position under the full budget, flushing after each completed depth. */
+export async function runBookDeepening(
+  request: EngineRequest,
+  deps: BookDeepenDeps = {
+    loadSlice: realLoadSlice,
+    flushSlice: realFlushSlice,
+  },
+): Promise<EngineResponse> {
+  const key = request.canonicalKey;
+  if (key === undefined) {
+    return {
+      id: request.id,
+      ok: false,
+      error: 'bookDeepening without canonicalKey',
+    };
+  }
+  try {
+    const tt = new TranspositionTable();
+    tt.seed(await deps.loadSlice(key));
+    const result = search(request.board, request.player, {
+      ...resolveEngineSearchConfig({
+        difficulty: request.difficulty,
+        timeBudgetMs: request.timeBudgetMs,
+        stepTimeByOwnStones: false,
+        bookDeepening: true,
+        experienceMode: request.experienceMode,
+        experienceBaseline: request.experienceBaseline,
+      }),
+      tt,
+      onDepthComplete: (_depth, dirty) => {
+        // Fire-and-forget: never block the synchronous search. Dexie serializes
+        // bulkPuts; a terminate mid-flush loses only this depth. Do NOT await.
+        void deps.flushSlice(key, dirty);
+      },
+    });
     return { id: request.id, ok: true, result };
   } catch (error) {
     return {

@@ -1,4 +1,5 @@
 import { isLegalMove } from '../engine/board.ts';
+import { toCanonicalBoard } from '../engine/experience/experience.ts';
 import { applyMove, newGame } from '../engine/state.ts';
 import {
   handleEngineRequest,
@@ -239,11 +240,17 @@ describe('EnginePool background improvement', () => {
       score: 10,
       depth: 3,
     });
-    return { store, board: state.board, player: state.nextPlayer, key: prepared.key };
+    return {
+      store,
+      board: state.board,
+      player: state.nextPlayer,
+      key: prepared.key,
+      transform: prepared.transform,
+    };
   }
 
   it('replays a hit instantly and dispatches a full-budget background search', async () => {
-    const { store, board, player } = seedHit();
+    const { store, board, player, key, transform } = seedHit();
     const pool = new EnginePool(1, store);
 
     const result = await pool.requestMove(board, player, 'easy', undefined, {
@@ -254,8 +261,15 @@ describe('EnginePool background improvement', () => {
     expect(RecordingWorker.instances).toHaveLength(1);
     const background = RecordingWorker.instances[0].posted;
     expect(background).toHaveLength(1);
-    expect(background[0].experienceBaseline?.move).toEqual({ row: 4, col: 4 });
+    expect(background[0].bookDeepening).toBe(true);
+    expect(background[0].canonicalKey).toBe(key);
     expect(background[0].stepTimeByOwnStones).toBe(false);
+    expect(background[0].board).toEqual(
+      toCanonicalBoard(toPlainBoard(board), transform),
+    );
+    expect(background[0].experienceBaseline?.move).toEqual(
+      transform.toCanonical({ row: 4, col: 4 }),
+    );
     pool.terminate();
   });
 

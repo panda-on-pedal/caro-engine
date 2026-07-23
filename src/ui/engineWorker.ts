@@ -1,5 +1,6 @@
 import {
   handleEngineRequest,
+  runBookDeepening,
   type EngineProgressMessage,
   type EngineRequest,
   type EngineResponse,
@@ -14,6 +15,10 @@ const scope = self as unknown as WorkerScope;
 
 scope.onmessage = (event: MessageEvent<EngineRequest>): void => {
   const request = event.data;
+  if (request.bookDeepening) {
+    void runBookDeepening(request).then((response) => scope.postMessage(response));
+    return;
+  }
   const response = handleEngineRequest(request, (progressEvent) => {
     scope.postMessage({
       id: request.id,

@@ -1,5 +1,6 @@
 import { isLegalMove } from "./board.ts";
 import {
+  BOOK_MAX_DEPTH,
   DIFFICULTY_PROFILES,
   chooseMove,
   resolveEngineSearchConfig,
@@ -194,5 +195,18 @@ describe("DIFFICULTY_PROFILES", () => {
       experienceMode: "use",
     });
     expect(use.stepTimeByOwnStones).toBeUndefined();
+  });
+});
+
+describe("bookDeepening depth override", () => {
+  it("raises maxDepth to BOOK_MAX_DEPTH but keeps the difficulty budget", () => {
+    const normal = resolveEngineSearchConfig({ difficulty: "expert" });
+    const deep = resolveEngineSearchConfig({
+      difficulty: "expert",
+      bookDeepening: true,
+    });
+    expect(normal.maxDepth).toBe(6);
+    expect(deep.maxDepth).toBe(BOOK_MAX_DEPTH);
+    expect(deep.timeBudgetMs).toBe(normal.timeBudgetMs);
   });
 });

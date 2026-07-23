@@ -53,11 +53,15 @@
     "@types/node": "^26.1.1",
     "esbuild": "^0.28.1",
     "eslint": "^10.7.0",
+    "fake-indexeddb": "^6.2.5",
     "jest": "^30.4.2",
     "svelte": "^5.56.7",
     "ts-jest": "^29.4.11",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.64.0",
     "vite": "^8.1.5"
+  },
+  "dependencies": {
+    "dexie": "^4.4.4"
   }
 }

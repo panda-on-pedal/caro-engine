@@ -4,6 +4,7 @@ import {
   type StoredExperienceEntry,
 } from '../engine/experience/experience.ts';
 import { logger } from '../utils/logger.ts';
+import { evictSlice } from './ttPersist.ts';
 
 export const LEGACY_EXPERIENCE_STORAGE_KEY = 'caro-engine-experience-v1';
 export const EXPERIENCE_STORAGE_KEY_PREFIX = 'caro-engine-experience-v2-';
@@ -110,10 +111,10 @@ export class PersistentExperienceStore {
     const maxEntries = options?.maxEntries ?? 2000;
     this.debounceMs = options?.debounceMs ?? 250;
     this.books = {
-      easy: new ExperienceStore(maxEntries),
-      medium: new ExperienceStore(maxEntries),
-      hard: new ExperienceStore(maxEntries),
-      expert: new ExperienceStore(maxEntries),
+      easy: new ExperienceStore(maxEntries, (key) => void evictSlice(key)),
+      medium: new ExperienceStore(maxEntries, (key) => void evictSlice(key)),
+      hard: new ExperienceStore(maxEntries, (key) => void evictSlice(key)),
+      expert: new ExperienceStore(maxEntries, (key) => void evictSlice(key)),
     };
     discardLegacyExperienceStorage();
     for (const difficulty of DIFFICULTIES) {
