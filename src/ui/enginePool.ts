@@ -42,6 +42,12 @@ export interface RequestMoveOptions {
   experienceMode?: ExperienceMode;
   /** When false, skip writing the search result into the experience book. */
   persistExperience?: boolean;
+  /**
+   * Practice only. Default true. When false, every strong cache hit replays
+   * instantly and no background improvement is enqueued, so games walk to the
+   * edge of the cache — and restart — much faster.
+   */
+  practiceImprovement?: boolean;
 }
 
 interface PendingEntry {
@@ -114,12 +120,14 @@ export class EnginePool {
   ): Promise<SearchResult> {
     const experienceMode = options?.experienceMode ?? "use";
     const persistExperience = options?.persistExperience !== false;
+    const practiceImprovement = options?.practiceImprovement !== false;
     const prepared = prepareExperienceForRequest({
       board,
       player,
       difficulty,
       experienceMode,
       store: this.experience,
+      practiceImprovement,
     });
 
     if (prepared.instant !== null) {
@@ -137,7 +145,9 @@ export class EnginePool {
       });
       // Reinvest: replay instantly, but keep improving the entry in the
       // background until a full-budget search can no longer out-depth it.
-      if (!prepared.settled && persistExperience) {
+      // Practice with improvement off replays every hit and never re-searches.
+      const improvementAllowed = experienceMode !== "practice" || practiceImprovement;
+      if (!prepared.settled && persistExperience && improvementAllowed) {
         this.enqueueBackgroundImprovement(board, player, difficulty, prepared, experienceMode);
       }
       return Promise.resolve(prepared.instant);

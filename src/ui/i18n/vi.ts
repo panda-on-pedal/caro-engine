@@ -44,6 +44,7 @@ export const vi: Messages = {
   "settings.highlightWhileThinking": "Tô sáng ô khi máy đang nghĩ",
   "settings.showThoughts": "Hiện suy nghĩ của máy",
   "settings.experienceImprovement": "Học từ ván Người vs Máy (lưu kinh nghiệm mới)",
+  "settings.practiceImprovement": "Tiếp tục cải thiện kinh nghiệm khi luyện tập (chậm hơn)",
   "instructions.title": "Hướng dẫn",
   "instructions.rulesTitle": "Luật chơi",
   "instructions.rules.place": "Hai bên lần lượt đặt X và O trên bàn cờ.",

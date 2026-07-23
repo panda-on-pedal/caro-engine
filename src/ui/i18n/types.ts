@@ -41,6 +41,7 @@ export type Messages = {
   "settings.highlightWhileThinking": string;
   "settings.showThoughts": string;
   "settings.experienceImprovement": string;
+  "settings.practiceImprovement": string;
   "instructions.title": string;
   "instructions.rulesTitle": string;
   "instructions.rules.place": string;

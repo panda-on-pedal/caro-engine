@@ -44,6 +44,7 @@ export const en: Messages = {
   "settings.highlightWhileThinking": "Highlight cells while thinking",
   "settings.showThoughts": "Show computer thoughts",
   "settings.experienceImprovement": "Learn from Human vs Computer games (save new experience)",
+  "settings.practiceImprovement": "Keep improving experience while practicing (slower)",
   "instructions.title": "Instructions",
   "instructions.rulesTitle": "Rules",
   "instructions.rules.place": "Players take turns placing X and O on the board.",

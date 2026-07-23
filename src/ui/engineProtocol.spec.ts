@@ -121,6 +121,37 @@ describe("prepareExperienceForRequest", () => {
     expect(settled.instant?.experienceCacheHit).toBe(true);
     expect(settled.settled).toBe(true);
   });
+
+  it("instant-replays unsettled practice hits when improvement is off", () => {
+    const store = new PersistentExperienceStore();
+    let state = newGame();
+    state = applyMove(state, { row: 5, col: 5 }, 1);
+    state = applyMove(state, { row: 5, col: 6 }, 2);
+    const params = {
+      board: state.board,
+      player: state.nextPlayer,
+      difficulty: "easy" as const,
+      experienceMode: "practice" as const,
+      store,
+    };
+
+    const miss = prepareExperienceForRequest(params);
+    store.put("easy", miss.key, {
+      move: miss.transform.toCanonical({ row: 4, col: 4 }),
+      score: 10,
+      depth: 3,
+    });
+
+    // Default (improvement on): unsettled hit still forces a foreground search.
+    expect(prepareExperienceForRequest(params).instant).toBeNull();
+
+    // Improvement off: the unsettled hit replays instantly instead.
+    const offParams = { ...params, practiceImprovement: false };
+    const instant = prepareExperienceForRequest(offParams);
+    expect(instant.instant?.move).toEqual({ row: 4, col: 4 });
+    expect(instant.instant?.experienceCacheHit).toBe(true);
+    expect(instant.settled).toBe(false);
+  });
 });
 
 describe("runBookDeepening", () => {

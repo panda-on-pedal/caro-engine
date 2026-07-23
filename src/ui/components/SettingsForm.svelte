@@ -17,6 +17,11 @@
     session.setExperienceImprovement(checked);
   }
 
+  function onTogglePracticeImprovement(event: Event): void {
+    const checked = (event.currentTarget as HTMLInputElement).checked;
+    session.setPracticeImprovement(checked);
+  }
+
   function onLang(event: Event): void {
     session.setLang((event.currentTarget as HTMLSelectElement).value);
   }
@@ -55,6 +60,18 @@
   />
   <span>
     {session.localeTick >= 0 ? t('settings.experienceImprovement') : ''}
+  </span>
+</label>
+
+<label class="settings-row">
+  <input
+    id="pref-practice-improvement"
+    type="checkbox"
+    checked={session.settings.practiceImprovement}
+    onchange={onTogglePracticeImprovement}
+  />
+  <span>
+    {session.localeTick >= 0 ? t('settings.practiceImprovement') : ''}
   </span>
 </label>
 

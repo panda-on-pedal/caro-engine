@@ -45,6 +45,9 @@ const RESULTS_URL = "/api/results";
 const AI_THINK_DELAY_MS = 300;
 export const CELL_SIZE_PX = 28;
 const GAME_END_PAUSE_MS = 2000;
+/** Minimum spacing between multi-AI moves so instant cache-hit replays step
+ * visibly instead of blurring the board through many moves at once. */
+const MOVE_RENDER_DELAY_MS = 100;
 
 export interface BoardSession {
   id: number;
@@ -485,6 +488,11 @@ class GameSession {
     saveSettings(this.settings);
   }
 
+  setPracticeImprovement(value: boolean): void {
+    this.settings = { ...this.settings, practiceImprovement: value };
+    saveSettings(this.settings);
+  }
+
   toggleAscii(): void {
     this.asciiOpen = !this.asciiOpen;
   }
@@ -883,6 +891,7 @@ class GameSession {
         {
           experienceMode: this.experienceMode(),
           persistExperience: this.persistExperience(),
+          practiceImprovement: this.settings.practiceImprovement,
         }
       );
       move = result.move;
@@ -985,6 +994,10 @@ class GameSession {
           continue;
         }
         await this.runSessionAiMove(boardSession, myGeneration);
+        if (myGeneration !== this.generation) {
+          return;
+        }
+        await delay(MOVE_RENDER_DELAY_MS);
       }
     } finally {
       boardSession.loopRunning = false;

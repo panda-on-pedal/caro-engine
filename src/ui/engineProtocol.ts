@@ -128,6 +128,8 @@ export function prepareExperienceForRequest(params: {
   difficulty: Difficulty;
   experienceMode: ExperienceMode;
   store: PersistentExperienceStore;
+  /** Practice only. Default true — re-search unsettled hits to improve them. */
+  practiceImprovement?: boolean;
 }): {
   instant: SearchResult | null;
   baseline?: ExperienceEntry;
@@ -146,6 +148,7 @@ export function prepareExperienceForRequest(params: {
     player: params.player,
     mode: params.experienceMode,
     entry,
+    practiceImprovement: params.practiceImprovement,
   });
   // Any non-off mode seeds/floors the search on a usable hit; `use` mode
   // additionally replays it instantly while a background search improves it.

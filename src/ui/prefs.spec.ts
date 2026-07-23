@@ -29,36 +29,41 @@ describe("prefs", () => {
     });
   });
 
-  it("defaults language to Vietnamese, thoughts on, and experience improvement on", () => {
+  it("defaults language to Vietnamese, thoughts on, and both improvements on", () => {
     expect(DEFAULT_SETTINGS.lang).toBe("vi");
     expect(DEFAULT_SETTINGS.showThoughts).toBe(true);
     expect(DEFAULT_SETTINGS.experienceImprovement).toBe(true);
+    expect(DEFAULT_SETTINGS.practiceImprovement).toBe(true);
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
   });
 
-  it("round-trips highlightWhileThinking, showThoughts, experienceImprovement, and lang", () => {
+  it("round-trips highlightWhileThinking, showThoughts, improvements, and lang", () => {
     saveSettings({
       highlightWhileThinking: false,
       showThoughts: true,
       experienceImprovement: true,
+      practiceImprovement: true,
       lang: "en",
     });
     expect(loadSettings()).toEqual({
       highlightWhileThinking: false,
       showThoughts: true,
       experienceImprovement: true,
+      practiceImprovement: true,
       lang: "en",
     });
     saveSettings({
       highlightWhileThinking: true,
       showThoughts: false,
       experienceImprovement: false,
+      practiceImprovement: false,
       lang: "vi",
     });
     expect(loadSettings()).toEqual({
       highlightWhileThinking: true,
       showThoughts: false,
       experienceImprovement: false,
+      practiceImprovement: false,
       lang: "vi",
     });
   });
@@ -77,6 +82,7 @@ describe("prefs", () => {
       highlightWhileThinking: false,
       showThoughts: true,
       experienceImprovement: true,
+      practiceImprovement: true,
       lang: "vi",
     });
   });
