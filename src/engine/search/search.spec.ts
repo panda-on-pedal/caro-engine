@@ -7,12 +7,12 @@ import {
   type MoveSelectionStrategy,
 } from "./search.ts";
 import { WIN_SCORE } from "./evaluate.ts";
-import { findPatterns } from "./patterns.ts";
-import { parseBoard } from "./test-helpers/parse-board.ts";
+import { findPatterns } from "../patterns/patterns.ts";
+import { parseBoard } from "../test-helpers/parse-board.ts";
 import { narrowCandidates, ALL_FORK_PATTERN_NAMES } from "./narrow.ts";
 import { DEFAULT_TOP_K } from "./rankMoves.ts";
 import { DEFAULT_DECAY_CONFIG } from "./search.ts";
-import { createEmptyBoard, placeMove } from "./board.ts";
+import { createEmptyBoard, placeMove } from "../board.ts";
 
 describe("negamaxSearch", () => {
   it("finds the unique winning move when one is available (win-in-1)", () => {

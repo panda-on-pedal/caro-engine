@@ -7,17 +7,17 @@ import type {
   ExperienceEntry,
   ExperienceMode,
   ExperienceTransform,
-} from '../engine/experience.ts';
+} from '../engine/experience/experience.ts';
 import {
   experienceKeyFor,
   tryUseExperienceHit,
-} from '../engine/experienceLookup.ts';
-import { isUsableExperienceMove } from '../engine/experience.ts';
+} from '../engine/experience/experienceLookup.ts';
+import { isUsableExperienceMove } from '../engine/experience/experience.ts';
 import {
   search,
   type SearchProgressEvent,
   type SearchResult,
-} from '../engine/search.ts';
+} from '../engine/search/search.ts';
 import { PersistentExperienceStore } from './experiencePersist.ts';
 
 export type { SearchProgressEvent };

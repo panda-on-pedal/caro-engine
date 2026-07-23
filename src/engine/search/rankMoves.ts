@@ -1,10 +1,10 @@
 // src/engine/rankMoves.ts
-import { placeMove, type Board, type Player } from "./board.ts";
-import { checkCaroWin } from "./rules.ts";
-import { findPatterns, type PatternInstance } from "./patterns.ts";
+import { placeMove, type Board, type Player } from "../board.ts";
+import { checkCaroWin } from "../rules.ts";
+import { findPatterns, type PatternInstance } from "../patterns/patterns.ts";
 import { RANK_PATTERN_WEIGHTS } from "./evaluate.ts";
-import type { PatternStore } from "./patternStore.ts";
-import type { Move } from "./state.ts";
+import type { PatternStore } from "../patterns/patternStore.ts";
+import type { Move } from "../state.ts";
 
 export const DEFAULT_TOP_K = 5;
 

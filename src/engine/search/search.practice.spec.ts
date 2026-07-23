@@ -1,5 +1,5 @@
-import { createEmptyBoard, placeMove } from "../engine/board.ts";
-import { search } from "../engine/search.ts";
+import { createEmptyBoard, placeMove } from "../board.ts";
+import { search } from "./search.ts";
 
 describe("search practice baseline", () => {
   it("keeps the baseline when search does not beat it", () => {

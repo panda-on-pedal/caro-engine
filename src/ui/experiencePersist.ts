@@ -2,7 +2,7 @@ import type { Difficulty } from '../engine/engine.ts';
 import {
   ExperienceStore,
   type StoredExperienceEntry,
-} from '../engine/experience.ts';
+} from '../engine/experience/experience.ts';
 import { logger } from '../utils/logger.ts';
 
 export const LEGACY_EXPERIENCE_STORAGE_KEY = 'caro-engine-experience-v1';

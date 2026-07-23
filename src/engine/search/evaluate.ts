@@ -1,10 +1,10 @@
-import type { Board, Player } from "./board.ts";
+import type { Board, Player } from "../board.ts";
 import {
   findPatterns,
   type ForkPoint,
   type PatternInstance,
   type PatternType,
-} from "./patterns.ts";
+} from "../patterns/patterns.ts";
 
 export const PATTERN_SCORES: Record<PatternType, number> = {
   five: 1_000_000,

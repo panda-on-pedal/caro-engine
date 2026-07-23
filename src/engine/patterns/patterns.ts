@@ -4,8 +4,8 @@ import {
   type Board,
   type Cell,
   type Player,
-} from "./board.ts";
-import type { Move } from "./state.ts";
+} from "../board.ts";
+import type { Move } from "../state.ts";
 
 export type PatternType =
   | "five"

@@ -5,21 +5,21 @@ import {
   type ForkPoint,
   type PatternInstance,
   type PatternType,
-} from "./patterns.ts";
+} from "../patterns/patterns.ts";
 import {
   isLegalMove,
   placeMove,
   type Board,
   type Player,
-} from "./board.ts";
-import { checkCaroWin } from "./rules.ts";
-import type { Move } from "./state.ts";
+} from "../board.ts";
+import { checkCaroWin } from "../rules.ts";
+import type { Move } from "../state.ts";
 import {
   decayRateForMoveCount,
   distanceWeight,
   sampleWithoutReplacement,
   type DecayConfig,
-} from "./randomize.ts";
+} from "../randomize.ts";
 import {
   DEFAULT_TOP_K,
   selectTopMoves,
@@ -27,7 +27,7 @@ import {
   selectTopMovesTiered,
   selectTopMovesTieredFromStore,
 } from "./rankMoves.ts";
-import type { PatternStore } from "./patternStore.ts";
+import type { PatternStore } from "../patterns/patternStore.ts";
 import { forkBonusFor } from "./evaluate.ts";
 
 const CANDIDATE_RADIUS = 2;

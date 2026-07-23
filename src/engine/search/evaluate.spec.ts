@@ -1,6 +1,6 @@
 import { evaluate, forkBonusFor, FORK_BONUS_SCALE, RANK_PATTERN_WEIGHTS, WIN_SCORE } from "./evaluate.ts";
-import { findForkPoints, findPatterns } from "./patterns.ts";
-import { parseBoard } from "./test-helpers/parse-board.ts";
+import { findForkPoints, findPatterns } from "../patterns/patterns.ts";
+import { parseBoard } from "../test-helpers/parse-board.ts";
 
 describe("evaluate", () => {
   it("scores an open-four position higher than an open-three position for the same player", () => {

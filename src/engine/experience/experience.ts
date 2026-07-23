@@ -1,6 +1,6 @@
-import type { Board, Player } from "./board.ts";
-import { isLegalMove, WIN_LENGTH } from "./board.ts";
-import type { Move } from "./state.ts";
+import type { Board, Player } from "../board.ts";
+import { isLegalMove, WIN_LENGTH } from "../board.ts";
+import type { Move } from "../state.ts";
 
 export type ExperienceMode = "use" | "practice" | "off";
 

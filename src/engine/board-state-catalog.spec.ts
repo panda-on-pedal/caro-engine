@@ -14,9 +14,9 @@
 import { parseBoard } from "./test-helpers/parse-board.ts";
 import { checkCaroWin } from "./rules.ts";
 import { placeMove } from "./board.ts";
-import { scoreMove } from "./rankMoves.ts";
-import { narrowCandidates, ALL_FORK_PATTERN_NAMES } from "./narrow.ts";
-import { DEFAULT_DECAY_CONFIG } from "./search.ts";
+import { scoreMove } from "./search/rankMoves.ts";
+import { narrowCandidates, ALL_FORK_PATTERN_NAMES } from "./search/narrow.ts";
+import { DEFAULT_DECAY_CONFIG } from "./search/search.ts";
 
 const CFG = {
   recognizedForkPatterns: ALL_FORK_PATTERN_NAMES,

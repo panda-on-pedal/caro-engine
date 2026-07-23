@@ -7,8 +7,8 @@ import {
   type ExperienceEntry,
   type ExperienceMode,
   type ExperienceTransform,
-} from '../engine/experience.ts';
-import type { SearchProgressEvent, SearchResult } from '../engine/search.ts';
+} from '../engine/experience/experience.ts';
+import type { SearchProgressEvent, SearchResult } from '../engine/search/search.ts';
 import { logger } from '../utils/logger.ts';
 import {
   isProgressMessage,

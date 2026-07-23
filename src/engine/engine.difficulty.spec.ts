@@ -7,8 +7,8 @@ import {
   type Player,
 } from "./board.ts";
 import { checkCaroWin } from "./rules.ts";
-import { search, type SearchConfig } from "./search.ts";
-import { ALL_FORK_PATTERN_NAMES } from "./narrow.ts";
+import { search, type SearchConfig } from "./search/search.ts";
+import { ALL_FORK_PATTERN_NAMES } from "./search/narrow.ts";
 
 const SMALL_BOARD_SIZE = 11;
 const EASY_CONFIG: SearchConfig = {

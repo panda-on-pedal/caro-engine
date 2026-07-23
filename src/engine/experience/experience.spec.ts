@@ -1,4 +1,4 @@
-import { createEmptyBoard, placeMove, type Board, type Player } from "./board.ts";
+import { createEmptyBoard, placeMove, type Board, type Player } from "../board.ts";
 import {
   canonicalExperienceKey,
   ExperienceStore,

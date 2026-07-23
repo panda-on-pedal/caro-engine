@@ -1,4 +1,4 @@
-import type { Board, Player } from "./board.ts";
+import type { Board, Player } from "../board.ts";
 import {
   canonicalExperienceKey,
   isStrongExperienceHit,
@@ -7,7 +7,7 @@ import {
   type ExperienceEntry,
   type ExperienceMode,
 } from "./experience.ts";
-import type { SearchResult } from "./search.ts";
+import type { SearchResult } from "../search/search.ts";
 
 /**
  * Resolve a root experience hit for "use" mode: return a SearchResult when

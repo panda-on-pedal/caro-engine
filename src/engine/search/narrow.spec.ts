@@ -1,5 +1,5 @@
 // src/engine/narrow.spec.ts
-import { findForkPoints, findPatterns } from "./patterns.ts";
+import { findForkPoints, findPatterns } from "../patterns/patterns.ts";
 import {
   ALL_FORK_PATTERN_NAMES,
   findCandidateMoves,
@@ -8,8 +8,8 @@ import {
   recognizedForkPoints,
   type NarrowConfig,
 } from "./narrow.ts";
-import { parseBoard } from "./test-helpers/parse-board.ts";
-import { createEmptyBoard, placeMove } from "./board.ts";
+import { parseBoard } from "../test-helpers/parse-board.ts";
+import { createEmptyBoard, placeMove } from "../board.ts";
 import { DEFAULT_TOP_K } from "./rankMoves.ts";
 
 describe("findCandidateMoves", () => {

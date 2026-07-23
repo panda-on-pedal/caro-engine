@@ -4,7 +4,7 @@ import {
   findPatternsOnLine,
   lineKey,
 } from "./patterns.ts";
-import { parseBoard } from "./test-helpers/parse-board.ts";
+import { parseBoard } from "../test-helpers/parse-board.ts";
 
 describe("lineKey", () => {
   it("groups cells on the same diagonal", () => {

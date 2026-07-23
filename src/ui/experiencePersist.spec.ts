@@ -5,7 +5,7 @@ import {
   saveExperienceStore,
   PersistentExperienceStore,
 } from './experiencePersist.ts';
-import { ExperienceStore } from '../engine/experience.ts';
+import { ExperienceStore } from '../engine/experience/experience.ts';
 
 describe('experiencePersist', () => {
   let memory: Record<string, string>;

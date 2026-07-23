@@ -1,6 +1,6 @@
 // src/engine/rankMoves.spec.ts
-import { createEmptyBoard, placeMove } from "./board.ts";
-import { parseBoard } from "./test-helpers/parse-board.ts";
+import { createEmptyBoard, placeMove } from "../board.ts";
+import { parseBoard } from "../test-helpers/parse-board.ts";
 import {
   scoreMove,
   selectTopMoves,
@@ -8,8 +8,8 @@ import {
   selectTopMovesTiered,
   totalPatternScore,
 } from "./rankMoves.ts";
-import { findPatterns } from "./patterns.ts";
-import { PatternStore } from "./patternStore.ts";
+import { findPatterns } from "../patterns/patterns.ts";
+import { PatternStore } from "../patterns/patternStore.ts";
 
 /** O: (8,10), (10,11), (12,9). X: 2x2 block (9,8)/(9,9)/(10,8)/(10,9).
  * Matches docs/superpowers/plans/2026-07-18-board-state-catalog.md #5.1 —

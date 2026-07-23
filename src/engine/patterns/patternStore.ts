@@ -2,7 +2,7 @@ import {
   type Board,
   type Cell,
   type Player,
-} from "./board.ts";
+} from "../board.ts";
 import {
   findPatterns,
   findPatternsOnLine,
@@ -10,7 +10,7 @@ import {
   PATTERN_DIRECTIONS,
   type PatternInstance,
 } from "./patterns.ts";
-import type { Move } from "./state.ts";
+import type { Move } from "../state.ts";
 
 type UndoFrame = {
   row: number;

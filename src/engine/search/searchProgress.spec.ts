@@ -1,5 +1,5 @@
 import { search, type SearchProgressEvent } from './search.ts';
-import { parseBoard } from './test-helpers/parse-board.ts';
+import { parseBoard } from '../test-helpers/parse-board.ts';
 
 describe('search onProgress', () => {
   it('emits phase/candidates/examining/bestSoFar when negamax searches root moves', () => {

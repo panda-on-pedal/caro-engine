@@ -1,6 +1,6 @@
 // src/engine/search.ts
-import { type Board, type Player } from "./board.ts";
-import { checkCaroWin } from "./rules.ts";
+import { type Board, type Player } from "../board.ts";
+import { checkCaroWin } from "../rules.ts";
 import { evaluateFromPatterns, WIN_SCORE } from "./evaluate.ts";
 import {
   ALL_FORK_PATTERN_NAMES,
@@ -10,22 +10,22 @@ import {
   type ForkPatternName,
   type NarrowConfig,
 } from "./narrow.ts";
-import { PatternStore } from "./patternStore.ts";
-import type { DecayConfig } from "./randomize.ts";
+import { PatternStore } from "../patterns/patternStore.ts";
+import type { DecayConfig } from "../randomize.ts";
 import {
   ProgressReporter,
   type InsightKind,
   type SearchProgressEvent,
 } from "./searchProgress.ts";
-import { logger } from "../utils/logger.ts";
-import type { Move } from "./state.ts";
+import { logger } from "../../utils/logger.ts";
+import type { Move } from "../state.ts";
 import {
   experienceBeatsBaseline,
   isUsableExperienceMove,
   type ExperienceEntry,
   type ExperienceMode,
-} from "./experience.ts";
-import { resolveEffectiveTimeBudget } from "./timeBudget.ts";
+} from "../experience/experience.ts";
+import { resolveEffectiveTimeBudget } from "../timeBudget.ts";
 
 export type { InsightKind, SearchProgressEvent } from "./searchProgress.ts";
 

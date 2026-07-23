@@ -1,10 +1,10 @@
-import { search, type SearchConfig, type SearchResult } from "./search.ts";
-import { DEFAULT_DECAY_CONFIG } from "./search.ts";
+import { search, type SearchConfig, type SearchResult } from "./search/search.ts";
+import { DEFAULT_DECAY_CONFIG } from "./search/search.ts";
 import {
   ALL_FORK_PATTERN_NAMES,
   type ForkPatternName,
-} from "./narrow.ts";
-import type { ExperienceEntry, ExperienceMode } from "./experience.ts";
+} from "./search/narrow.ts";
+import type { ExperienceEntry, ExperienceMode } from "./experience/experience.ts";
 import type { GameState } from "./state.ts";
 import { DEFAULT_MIN_TIME_BUDGET_MS } from "./timeBudget.ts";
 

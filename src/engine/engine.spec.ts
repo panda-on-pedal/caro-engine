@@ -5,7 +5,7 @@ import {
   resolveEngineSearchConfig,
   type Difficulty,
 } from "./engine.ts";
-import { ALL_FORK_PATTERN_NAMES } from "./narrow.ts";
+import { ALL_FORK_PATTERN_NAMES } from "./search/narrow.ts";
 import { applyMove, newGame } from "./state.ts";
 
 describe("chooseMove", () => {

@@ -1,8 +1,8 @@
-import { createEmptyBoard, placeMove, type Player } from "./board.ts";
-import { findCandidateMoves } from "./narrow.ts";
+import { createEmptyBoard, placeMove, type Player } from "../board.ts";
+import { findCandidateMoves } from "../search/narrow.ts";
 import { findPatterns, type PatternInstance } from "./patterns.ts";
 import { PatternStore } from "./patternStore.ts";
-import { parseBoard } from "./test-helpers/parse-board.ts";
+import { parseBoard } from "../test-helpers/parse-board.ts";
 
 function canonicalize(patterns: readonly PatternInstance[]) {
   return patterns

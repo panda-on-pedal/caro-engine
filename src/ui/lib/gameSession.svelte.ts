@@ -1,6 +1,6 @@
 import { BOARD_SIZE, type Board, type Player } from '../../engine/board.ts';
 import { type Difficulty } from '../../engine/engine.ts';
-import { PatternStore } from '../../engine/patternStore.ts';
+import { PatternStore } from '../../engine/patterns/patternStore.ts';
 import {
   applyMove,
   deserializeState,
@@ -9,11 +9,11 @@ import {
   type GameState,
   type Move,
 } from '../../engine/state.ts';
-import type { SearchProgressEvent } from '../../engine/search.ts';
+import type { SearchProgressEvent } from '../../engine/search/search.ts';
 import type { GameResult } from '../../shared/results.ts';
 import { aggregateResults, firstPlayerWinPct, playerLeaderboard } from '../../shared/results.ts';
 import { logger } from '../../utils/logger.ts';
-import type { ExperienceMode } from '../../engine/experience.ts';
+import type { ExperienceMode } from '../../engine/experience/experience.ts';
 import { CancelledError, EnginePool } from '../enginePool.ts';
 import { PersistentExperienceStore } from '../experiencePersist.ts';
 import { fetchWithRetry } from '../apiClient.ts';

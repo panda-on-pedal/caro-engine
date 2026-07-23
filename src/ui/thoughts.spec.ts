@@ -1,4 +1,4 @@
-import type { SearchProgressEvent } from '../engine/searchProgress.ts';
+import type { SearchProgressEvent } from '../engine/search/searchProgress.ts';
 import { formatThought } from './thoughts.ts';
 
 describe('formatThought', () => {

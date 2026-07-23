@@ -1,4 +1,4 @@
-import type { SearchProgressEvent } from '../engine/searchProgress.ts';
+import type { SearchProgressEvent } from '../engine/search/searchProgress.ts';
 
 /** English-only thought templates. Intentional: not routed through i18n. */
 export function formatThought(event: SearchProgressEvent): string {
