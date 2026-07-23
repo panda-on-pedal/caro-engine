@@ -6,7 +6,7 @@ import type {
   ExperienceTransform,
 } from "../engine/experience/experience.ts";
 import { experienceKeyFor, tryUseExperienceHit } from "../engine/experience/experienceLookup.ts";
-import { isUsableExperienceMove } from "../engine/experience/experience.ts";
+import { isUsableExperienceMove, isStrongExperienceHit } from "../engine/experience/experience.ts";
 import { search, type SearchProgressEvent, type SearchResult } from "../engine/search/search.ts";
 import { TranspositionTable, type TTEntry } from "../engine/transposition/transposition.ts";
 import { PersistentExperienceStore } from "./experiencePersist.ts";
@@ -138,6 +138,30 @@ export function prepareExperienceForRequest(params: {
   transform: ExperienceTransform;
 } {
   const { key, transform } = experienceKeyFor(params.board, params.player);
+  // Shared human book wins over the per-difficulty book: any non-off mode
+  // replays a legal human-win move instantly (true mimic) with no background
+  // improvement. `settled: true` + no baseline makes EnginePool skip the
+  // reinvest path entirely.
+  if (params.experienceMode !== "off") {
+    const humanStored = params.store.getHuman(key);
+    const humanEntry =
+      humanStored !== undefined
+        ? { ...humanStored, move: transform.fromCanonical(humanStored.move) }
+        : undefined;
+    if (isStrongExperienceHit(humanEntry) && isUsableExperienceMove(params.board, humanEntry)) {
+      const instant: SearchResult = {
+        move: humanEntry.move,
+        score: humanEntry.score,
+        depth: humanEntry.depth,
+        principalVariation: [humanEntry.move],
+        nodesVisited: 0,
+        ...(params.experienceMode === "practice"
+          ? { experienceCacheHit: true, experienceStreakEligible: true }
+          : {}),
+      };
+      return { instant, settled: true, key, transform };
+    }
+  }
   // Books are already split by difficulty in PersistentExperienceStore.
   const stored = params.store.get(params.difficulty, key);
   // Stored moves live in the canonical frame; project back to this board.

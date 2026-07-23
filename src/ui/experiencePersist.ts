@@ -5,6 +5,7 @@ import { evictSlice } from "./ttPersist.ts";
 
 export const LEGACY_EXPERIENCE_STORAGE_KEY = "caro-engine-experience-v1";
 export const EXPERIENCE_STORAGE_KEY_PREFIX = "caro-engine-experience-v2-";
+export const HUMAN_BOOK_STORAGE_KEY = "caro-engine-human-book-v1";
 
 const DIFFICULTIES: readonly Difficulty[] = ["easy", "medium", "hard", "expert"];
 
@@ -83,13 +84,45 @@ export function saveExperienceStore(store: ExperienceStore, difficulty: Difficul
   }
 }
 
+/** Load the shared human book. Safe no-op when storage is missing/corrupt. */
+export function loadHumanBook(store: ExperienceStore): void {
+  const storage = readStorage();
+  if (!storage) {
+    return;
+  }
+  const raw = storage.getItem(HUMAN_BOOK_STORAGE_KEY);
+  if (raw === null) {
+    return;
+  }
+  store.loadAll(parseFile(raw));
+}
+
+/** Persist the shared human book to its own localStorage key. */
+export function saveHumanBook(store: ExperienceStore): void {
+  const storage = readStorage();
+  if (!storage) {
+    return;
+  }
+  const payload: ExperienceFile = {
+    version: 2,
+    entries: store.entries(),
+  };
+  try {
+    storage.setItem(HUMAN_BOOK_STORAGE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    logger.error("Failed to persist human book:", error);
+  }
+}
+
 /**
  * Main-thread experience books: one LRU store + localStorage key per difficulty.
  * Workers receive baselines via the engine protocol; they do not own disk.
  */
 export class PersistentExperienceStore {
   private readonly books: Record<Difficulty, ExperienceStore>;
+  private readonly humanBook: ExperienceStore;
   private readonly dirty = new Set<Difficulty>();
+  private humanDirty = false;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly debounceMs: number;
 
@@ -106,6 +139,8 @@ export class PersistentExperienceStore {
     for (const difficulty of DIFFICULTIES) {
       loadExperienceStore(this.books[difficulty], difficulty);
     }
+    this.humanBook = new ExperienceStore(maxEntries);
+    loadHumanBook(this.humanBook);
   }
 
   book(difficulty: Difficulty): ExperienceStore {
@@ -130,28 +165,50 @@ export class PersistentExperienceStore {
     }
   }
 
+  getHuman(key: string): ReturnType<ExperienceStore["get"]> {
+    return this.humanBook.get(key);
+  }
+
+  putHuman(key: string, entry: Parameters<ExperienceStore["put"]>[1]): boolean {
+    const changed = this.humanBook.put(key, entry);
+    if (changed) {
+      this.humanDirty = true;
+      this.arm();
+    }
+    return changed;
+  }
+
   flush(): void {
     if (this.saveTimer !== null) {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
-    for (const difficulty of this.dirty) {
-      saveExperienceStore(this.books[difficulty], difficulty);
-    }
-    this.dirty.clear();
+    this.persistDirty();
   }
 
   private scheduleSave(difficulty: Difficulty): void {
     this.dirty.add(difficulty);
+    this.arm();
+  }
+
+  private arm(): void {
     if (this.saveTimer !== null) {
       clearTimeout(this.saveTimer);
     }
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
-      for (const dirtyDifficulty of this.dirty) {
-        saveExperienceStore(this.books[dirtyDifficulty], dirtyDifficulty);
-      }
-      this.dirty.clear();
+      this.persistDirty();
     }, this.debounceMs);
+  }
+
+  private persistDirty(): void {
+    for (const difficulty of this.dirty) {
+      saveExperienceStore(this.books[difficulty], difficulty);
+    }
+    this.dirty.clear();
+    if (this.humanDirty) {
+      saveHumanBook(this.humanBook);
+      this.humanDirty = false;
+    }
   }
 }

@@ -1,5 +1,6 @@
 import {
   LEGACY_EXPERIENCE_STORAGE_KEY,
+  HUMAN_BOOK_STORAGE_KEY,
   experienceStorageKey,
   loadExperienceStore,
   saveExperienceStore,
@@ -84,6 +85,30 @@ describe("experiencePersist", () => {
     const store = new ExperienceStore();
     loadExperienceStore(store, "easy");
     expect(store.size).toBe(0);
+  });
+
+  it("stores human-book entries under a dedicated key, isolated from difficulty books", () => {
+    const books = new PersistentExperienceStore();
+    books.putHuman("shape", { move: { row: 3, col: 4 }, score: 0, depth: 1 });
+    books.flush();
+
+    // Not visible through any difficulty book.
+    expect(books.get("easy", "shape")).toBeUndefined();
+    expect(books.getHuman("shape")?.move).toEqual({ row: 3, col: 4 });
+    // Persisted under its own storage key, not a difficulty key.
+    expect(memory[HUMAN_BOOK_STORAGE_KEY]).toContain('"version":2');
+    expect(memory[experienceStorageKey("easy")]).toBeUndefined();
+
+    // Reloads from disk on a fresh instance.
+    const reloaded = new PersistentExperienceStore();
+    expect(reloaded.getHuman("shape")?.move).toEqual({ row: 3, col: 4 });
+  });
+
+  it("latest human-win move wins on the same key", () => {
+    const books = new PersistentExperienceStore();
+    books.putHuman("shape", { move: { row: 1, col: 1 }, score: 0, depth: 1 });
+    books.putHuman("shape", { move: { row: 2, col: 2 }, score: 0, depth: 1 });
+    expect(books.getHuman("shape")?.move).toEqual({ row: 2, col: 2 });
   });
 
   it("persists the settled flag across save/load", () => {

@@ -90,6 +90,86 @@ describe("prepareExperienceForRequest", () => {
     expect(settledHit.settled).toBe(true);
   });
 
+  it("replays a human-book hit ahead of the difficulty book, without a baseline", () => {
+    const store = new PersistentExperienceStore();
+    let state = newGame();
+    state = applyMove(state, { row: 5, col: 5 }, 1);
+    state = applyMove(state, { row: 5, col: 6 }, 2);
+    const params = {
+      board: state.board,
+      player: state.nextPlayer,
+      difficulty: "easy" as const,
+      experienceMode: "use" as const,
+      store,
+    };
+
+    const miss = prepareExperienceForRequest(params);
+
+    // Difficulty book says (4,4); human book says (3,3) — human must win.
+    store.put("easy", miss.key, {
+      move: miss.transform.toCanonical({ row: 4, col: 4 }),
+      score: 10,
+      depth: 3,
+    });
+    store.putHuman(miss.key, {
+      move: miss.transform.toCanonical({ row: 3, col: 3 }),
+      score: 0,
+      depth: 1,
+    });
+
+    const hit = prepareExperienceForRequest(params);
+    expect(hit.instant?.move).toEqual({ row: 3, col: 3 });
+    expect(hit.baseline).toBeUndefined(); // no search seed → no background improvement
+    expect(hit.settled).toBe(true);
+  });
+
+  it("tags a practice-mode human-book hit as a cache hit", () => {
+    const store = new PersistentExperienceStore();
+    let state = newGame();
+    state = applyMove(state, { row: 5, col: 5 }, 1);
+    state = applyMove(state, { row: 5, col: 6 }, 2);
+    const params = {
+      board: state.board,
+      player: state.nextPlayer,
+      difficulty: "easy" as const,
+      experienceMode: "practice" as const,
+      store,
+    };
+    const miss = prepareExperienceForRequest(params);
+    store.putHuman(miss.key, {
+      move: miss.transform.toCanonical({ row: 3, col: 3 }),
+      score: 0,
+      depth: 1,
+    });
+
+    const hit = prepareExperienceForRequest(params);
+    expect(hit.instant?.move).toEqual({ row: 3, col: 3 });
+    expect(hit.instant?.experienceCacheHit).toBe(true);
+    expect(hit.instant?.experienceStreakEligible).toBe(true);
+  });
+
+  it("ignores the human book in off mode", () => {
+    const store = new PersistentExperienceStore();
+    let state = newGame();
+    state = applyMove(state, { row: 5, col: 5 }, 1);
+    state = applyMove(state, { row: 5, col: 6 }, 2);
+    const base = {
+      board: state.board,
+      player: state.nextPlayer,
+      difficulty: "easy" as const,
+      store,
+    };
+    const miss = prepareExperienceForRequest({ ...base, experienceMode: "use" });
+    store.putHuman(miss.key, {
+      move: miss.transform.toCanonical({ row: 3, col: 3 }),
+      score: 0,
+      depth: 1,
+    });
+
+    const off = prepareExperienceForRequest({ ...base, experienceMode: "off" });
+    expect(off.instant).toBeNull();
+  });
+
   it("practice mode only instant-replays settled entries", () => {
     const store = new PersistentExperienceStore();
     let state = newGame();

@@ -14,6 +14,8 @@ import type { GameResult } from "../../shared/results.ts";
 import { aggregateResults, firstPlayerWinPct, playerLeaderboard } from "../../shared/results.ts";
 import { logger } from "../../utils/logger.ts";
 import type { ExperienceMode } from "../../engine/experience/experience.ts";
+import { MIN_EXPERIENCE_DEPTH } from "../../engine/experience/experience.ts";
+import { humanWinBookEntries } from "../../engine/experience/experienceLookup.ts";
 import { CancelledError, EnginePool } from "../enginePool.ts";
 import { PersistentExperienceStore } from "../experiencePersist.ts";
 import { fetchWithRetry } from "../apiClient.ts";
@@ -730,10 +732,25 @@ class GameSession {
     placed: { move: Move; player: Player }
   ): Promise<void> {
     this.commitState(next, placed);
+    this.recordHumanWinIfNeeded(next);
     try {
       await this.saveState(this.persistedState());
     } catch (error) {
       logger.error(error);
+    }
+  }
+
+  /** On a human win, seed the shared (cross-difficulty) human book with every
+   * move the human made this game so any AI can later mimic them. Gated by the
+   * same "experience improvement" toggle that governs difficulty-book writes;
+   * losses and draws record nothing. */
+  private recordHumanWinIfNeeded(next: GameState): void {
+    const human = this.humanPlayer;
+    if (human === null || next.winner !== human || !this.settings.experienceImprovement) {
+      return;
+    }
+    for (const { key, move } of humanWinBookEntries(next.moveHistory, human)) {
+      this.experienceStore.putHuman(key, { move, score: 0, depth: MIN_EXPERIENCE_DEPTH });
     }
   }
 
