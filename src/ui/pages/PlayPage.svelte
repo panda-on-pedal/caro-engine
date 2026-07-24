@@ -5,6 +5,7 @@
   import Board from '../components/Board.svelte';
   import Matchup from '../components/Matchup.svelte';
   import StatsPanel from '../components/StatsPanel.svelte';
+  import ReportsPanel from '../components/ReportsPanel.svelte';
   import Controls from '../components/Controls.svelte';
   import Status from '../components/Status.svelte';
   import AsciiPanel from '../components/AsciiPanel.svelte';
@@ -20,6 +21,8 @@
 <div class="play-row">
   {#if session.showingResults}
     <StatsPanel />
+  {:else if session.showingReports}
+    <ReportsPanel />
   {:else if idleMultiAi}
     <div class="play-layout">
       <StartScreen />
@@ -39,6 +42,6 @@
   {/if}
 </div>
 
-{#if session.asciiOpen && !session.showingResults && !idleMultiAi}
+{#if session.asciiOpen && !session.showingResults && !session.showingReports && !idleMultiAi}
   <AsciiPanel />
 {/if}

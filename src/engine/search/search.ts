@@ -515,6 +515,7 @@ export const negamaxStrategy: MoveSelectionStrategy = (board, player, candidates
     }
     bestNode = result;
     depthReached = depth;
+    report.emit({ type: "searchStats", depth, nodes: nodeCounter.count });
     if (config.tt !== undefined && config.onDepthComplete !== undefined) {
       config.onDepthComplete(depth, config.tt.takeDirty());
     }

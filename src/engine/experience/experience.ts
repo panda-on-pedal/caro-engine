@@ -14,14 +14,106 @@ export const EMPTY_POSITION_KEY = "EMPTY";
  */
 export const MIN_EXPERIENCE_DEPTH = 1;
 
+/** Default give-up threshold; user-overridable via settings. An entry whose
+ *  `stallCount` reaches this is permanent (frozen — no further reinvest). */
+export const DEFAULT_SETTLE_GIVE_UP_SEARCHES = 3;
+
+export type SettleAction = "put" | "setStall" | "none";
+export type SettleKind = "new" | "improved" | "stalled" | "settled";
+
+export interface SettleTransition {
+  action: SettleAction;
+  /** Improvement counter after this transition (confidence; unbounded). */
+  settleLevel: number;
+  /** Consecutive non-improving searches after this transition (0..giveUp). */
+  stallCount: number;
+  /** True once stallCount has reached the give-up threshold. */
+  permanent: boolean;
+  emit: boolean;
+  kind: SettleKind;
+}
+
+/**
+ * Fold a fresh search result into a stored entry. `prev.move`/`cand.move` are
+ * BOTH in the canonical frame. `giveUp` (>=1) is the give-up threshold: after
+ * that many consecutive non-improving searches the entry freezes permanently.
+ * - new entry            → put at settleLevel 0, stall 0
+ * - beats baseline       → put at settleLevel prev+1, stall 0 (whether or not
+ *                          the move changed — a deeper/better result is always
+ *                          an upgrade, so settleLevel is monotonic with depth
+ *                          and never resets at a given position)
+ * - no improvement       → setStall: stall = prev+1 (permanent once >= giveUp),
+ *                          keep the stored move/score/depth and settleLevel
+ * - already permanent    → none (frozen for the session)
+ * Any improvement resets the stall counter to 0.
+ */
+export function computeSettleTransition(
+  prev: ExperienceEntry | undefined,
+  cand: ExperienceEntry,
+  giveUp: number
+): SettleTransition {
+  if (prev === undefined) {
+    return {
+      action: "put",
+      settleLevel: 0,
+      stallCount: 0,
+      permanent: false,
+      emit: true,
+      kind: "new",
+    };
+  }
+  const prevLevel = prev.settleLevel ?? 0;
+  const prevStall = prev.stallCount ?? 0;
+  if (prevStall >= giveUp) {
+    return {
+      action: "none",
+      settleLevel: prevLevel,
+      stallCount: prevStall,
+      permanent: true,
+      emit: false,
+      kind: "settled",
+    };
+  }
+  const beats = experienceBeatsBaseline(cand, prev);
+  if (beats) {
+    // Monotonic: any improvement (deeper, or equal-depth higher score) climbs
+    // one level and resets the stall counter — a changed move on a deeper search
+    // is an upgrade, not a confidence reset. `moveChanged` is still surfaced for
+    // the report independently (computed at the emit site).
+    return {
+      action: "put",
+      settleLevel: prevLevel + 1,
+      stallCount: 0,
+      permanent: false,
+      emit: true,
+      kind: "improved",
+    };
+  }
+  const stallCount = prevStall + 1;
+  const permanent = stallCount >= giveUp;
+  return {
+    action: "setStall",
+    settleLevel: prevLevel,
+    stallCount,
+    permanent,
+    emit: true,
+    kind: permanent ? "settled" : "stalled",
+  };
+}
+
 export interface ExperienceEntry {
   move: Move;
   score: number;
   depth: number;
-  /** True once a background re-search failed to out-depth this entry —
-   * it is fully reinvested and skips further background improvement. Cleared
-   * whenever a strictly better entry replaces it. */
-  settled?: boolean;
+  /** Improvement counter (confidence). Climbs +1 on every improvement (deeper,
+   *  or equal-depth higher score) and never resets at a given position, so it is
+   *  monotonic with depth. Unbounded. */
+  settleLevel?: number;
+  /** Consecutive non-improving searches since the last improvement. Reaching
+   *  the give-up threshold freezes the entry permanently. */
+  stallCount?: number;
+  /** Total nodes the search that produced this entry visited (search work). */
+  nodes?: number;
 }
 
 export interface StoredExperienceEntry extends ExperienceEntry {
@@ -236,7 +328,7 @@ export class ExperienceStore {
   private readonly map = new Map<string, StoredExperienceEntry>();
   private onEvict?: (key: string) => void;
 
-  constructor(maxEntries = 2000, onEvict?: (key: string) => void) {
+  constructor(maxEntries = 4000, onEvict?: (key: string) => void) {
     this.maxEntries = Math.max(1, maxEntries);
     this.onEvict = onEvict;
   }
@@ -257,7 +349,9 @@ export class ExperienceStore {
       move: entry.move,
       score: entry.score,
       depth: entry.depth,
-      settled: entry.settled,
+      settleLevel: entry.settleLevel ?? 0,
+      stallCount: entry.stallCount ?? 0,
+      nodes: entry.nodes,
     };
   }
 
@@ -266,33 +360,30 @@ export class ExperienceStore {
     if (existing !== undefined && !shouldReplaceExperience(existing, entry)) {
       return false;
     }
-    // A strictly better entry re-opens background improvement; an equal
-    // refresh keeps the existing settled verdict.
-    const settled =
-      existing !== undefined && !experienceBeatsBaseline(entry, existing)
-        ? existing.settled
-        : undefined;
     this.map.delete(key);
     this.map.set(key, {
       key,
       move: entry.move,
       score: entry.score,
       depth: entry.depth,
-      settled,
+      settleLevel: entry.settleLevel ?? 0,
+      stallCount: entry.stallCount ?? 0,
+      nodes: entry.nodes,
       updatedAt,
     });
     this.evictIfNeeded();
     return true;
   }
 
-  /** Flag an entry as fully reinvested. Returns false when the key is missing
-   * or the entry is already settled (nothing changed → nothing to save). */
-  markSettled(key: string): boolean {
+  /** Raise the stall counter on an existing entry without replacing
+   *  move/score/depth/settleLevel. Returns false when the key is missing or
+   *  the entry is already at/above `count` (monotonic). */
+  setStallCount(key: string, count: number): boolean {
     const entry = this.map.get(key);
-    if (entry === undefined || entry.settled === true) {
+    if (entry === undefined || (entry.stallCount ?? 0) >= count) {
       return false;
     }
-    entry.settled = true;
+    entry.stallCount = count;
     return true;
   }
 
@@ -308,7 +399,9 @@ export class ExperienceStore {
         move: { row: entry.move.row, col: entry.move.col },
         score: entry.score,
         depth: entry.depth,
-        settled: entry.settled === true ? true : undefined,
+        settleLevel: typeof entry.settleLevel === "number" ? entry.settleLevel : 0,
+        stallCount: typeof entry.stallCount === "number" ? entry.stallCount : 0,
+        nodes: typeof entry.nodes === "number" ? entry.nodes : undefined,
         updatedAt: entry.updatedAt,
       });
     }
@@ -322,7 +415,9 @@ export class ExperienceStore {
       move: { row: entry.move.row, col: entry.move.col },
       score: entry.score,
       depth: entry.depth,
-      settled: entry.settled,
+      settleLevel: entry.settleLevel ?? 0,
+      stallCount: entry.stallCount ?? 0,
+      nodes: entry.nodes,
       updatedAt: entry.updatedAt,
     }));
   }
@@ -353,7 +448,9 @@ function isStoredEntry(value: unknown): value is StoredExperienceEntry {
     typeof row.score === "number" &&
     typeof row.depth === "number" &&
     typeof row.updatedAt === "number" &&
-    (row.settled === undefined || typeof row.settled === "boolean") &&
+    (row.settleLevel === undefined || typeof row.settleLevel === "number") &&
+    (row.stallCount === undefined || typeof row.stallCount === "number") &&
+    (row.nodes === undefined || typeof row.nodes === "number") &&
     row.move !== null &&
     typeof row.move === "object" &&
     typeof row.move.row === "number" &&

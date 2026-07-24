@@ -350,6 +350,27 @@ describe("regression: manual playtesting findings (2026-07-16 session)", () => {
     const blocksRight = result.move.row === 3 && result.move.col === 6;
     expect(blocksLeft || blocksRight).toBe(true);
   });
+
+  it("emits a searchStats event per completed depth with growing node counts", () => {
+    // Open-two forces a real negamax search (not the quiet/pattern-only path).
+    const board = parseBoard("..XX...");
+    const stats: Array<{ depth: number; nodes: number }> = [];
+    const result = search(board, 1, {
+      maxDepth: 3,
+      onProgress: e => {
+        if (e.type === "searchStats") {
+          stats.push({ depth: e.depth, nodes: e.nodes });
+        }
+      },
+    });
+    expect(result.nodesVisited).toBeGreaterThan(0);
+    expect(stats.length).toBeGreaterThan(0);
+    // Node counter is cumulative across depths → monotonically non-decreasing.
+    for (let i = 1; i < stats.length; i += 1) {
+      expect(stats[i].depth).toBeGreaterThan(stats[i - 1].depth);
+      expect(stats[i].nodes).toBeGreaterThanOrEqual(stats[i - 1].nodes);
+    }
+  });
 });
 
 function createBoardWithSingleStone(row: number, col: number) {

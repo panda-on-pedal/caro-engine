@@ -1,5 +1,5 @@
 import type { SearchProgressEvent } from "../engine/search/searchProgress.ts";
-import { formatThought } from "./thoughts.ts";
+import { formatReportLine, formatThought } from "./thoughts.ts";
 
 describe("formatThought", () => {
   const cases: SearchProgressEvent[] = [
@@ -17,6 +17,7 @@ describe("formatThought", () => {
     { type: "bestSoFar", row: 10, col: 11 },
     { type: "deeper", depth: 3 },
     { type: "experienceHit", row: 5, col: 7, depth: 6 },
+    { type: "searchStats", depth: 6, nodes: 4200 },
   ];
 
   it.each(cases)("maps %j to a non-empty English string", event => {
@@ -30,5 +31,57 @@ describe("formatThought", () => {
     expect(formatThought({ type: "bestSoFar", row: 4, col: 9 })).toContain("4,9");
     expect(formatThought({ type: "experienceHit", row: 4, col: 9, depth: 4 })).toContain("4,9");
     expect(formatThought({ type: "candidates", count: 12, source: "forced" })).toContain("12");
+  });
+
+  it("formats a searchStats event", () => {
+    expect(formatThought({ type: "searchStats", depth: 6, nodes: 4200 })).toBe(
+      "Depth 6 · 4,200 nodes…"
+    );
+  });
+});
+
+describe("formatReportLine", () => {
+  it("formats an improved report line with move-changed and level", () => {
+    expect(
+      formatReportLine({
+        kind: "improved",
+        difficulty: "hard",
+        key: "k",
+        oldScore: 90,
+        newScore: 120,
+        oldDepth: 4,
+        newDepth: 6,
+        oldNodes: 2100,
+        newNodes: 48000,
+        moveChanged: true,
+        settleLevel: 3,
+        stallCount: 0,
+        giveUp: 3,
+        boardId: 1,
+        at: 0,
+      })
+    ).toBe("Improved — +120 · d4→d6 · L3 · move changed…");
+  });
+
+  it("formats a stalled report line with the give-up counter", () => {
+    expect(
+      formatReportLine({
+        kind: "stalled",
+        difficulty: "hard",
+        key: "k",
+        oldScore: 120,
+        newScore: 120,
+        oldDepth: 6,
+        newDepth: 6,
+        oldNodes: 48000,
+        newNodes: 49000,
+        moveChanged: false,
+        settleLevel: 3,
+        stallCount: 1,
+        giveUp: 3,
+        boardId: 1,
+        at: 0,
+      })
+    ).toBe("No gain — d6 · give up 1/3…");
   });
 });

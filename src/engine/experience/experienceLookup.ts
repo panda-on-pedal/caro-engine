@@ -2,6 +2,7 @@ import type { Board, Player } from "../board.ts";
 import { createEmptyBoard } from "../board.ts";
 import {
   canonicalExperienceKey,
+  DEFAULT_SETTLE_GIVE_UP_SEARCHES,
   isStrongExperienceHit,
   isUsableExperienceMove,
   EMPTY_POSITION_KEY,
@@ -15,9 +16,9 @@ import type { SearchResult } from "../search/search.ts";
 /**
  * Resolve a root experience hit for instant replay:
  * - `use` mode: any strong legal entry (background reinvest may still deepen it)
- * - `practice` mode: only when the entry is `settled` (a full-budget search
- *   already failed to beat it — no better result expected). When
- *   `practiceImprovement` is false the settled requirement is dropped: every
+ * - `practice` mode: only when the entry is permanent (`stallCount` has reached
+ *   the give-up threshold — no better result expected). When
+ *   `practiceImprovement` is false the permanent requirement is dropped: every
  *   strong hit replays instantly so games reach the edge of the cache faster.
  */
 export function tryUseExperienceHit(params: {
@@ -25,16 +26,19 @@ export function tryUseExperienceHit(params: {
   player: Player;
   mode: ExperienceMode;
   entry: ExperienceEntry | undefined;
-  /** Practice only. Default true — re-search unsettled hits to improve them. */
+  /** Practice only. Default true — re-search non-permanent hits to improve them. */
   practiceImprovement?: boolean;
+  /** Give-up threshold; a hit whose stallCount >= this replays instantly. */
+  settleGiveUpSearches?: number;
 }): SearchResult | null {
   if (params.mode === "off") {
     return null;
   }
+  const giveUp = params.settleGiveUpSearches ?? DEFAULT_SETTLE_GIVE_UP_SEARCHES;
   if (
     params.mode === "practice" &&
     params.practiceImprovement !== false &&
-    params.entry?.settled !== true
+    (params.entry?.stallCount ?? 0) < giveUp
   ) {
     return null;
   }

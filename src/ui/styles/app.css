@@ -850,6 +850,62 @@ main {
   opacity: 0.85;
 }
 
+#reports-panel {
+  min-width: 720px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+#reports-panel .reports-summary {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+}
+
+#reports-panel .reports-empty {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+  color: var(--graphite);
+}
+
+#reports-panel table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  background: var(--cell-paper);
+}
+
+#reports-panel th,
+#reports-panel td {
+  padding: 4px 8px;
+  border: 1px solid var(--rule-blue);
+  text-align: right;
+  white-space: nowrap;
+}
+
+#reports-panel th:first-child,
+#reports-panel td:first-child,
+#reports-panel .reports-key {
+  text-align: left;
+}
+
+#reports-panel tr[data-kind="improved"] td.reports-level,
+#reports-panel tr[data-kind="new"] td.reports-level {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+#reports-panel tr[data-kind="settled"] td.reports-settle {
+  font-weight: 600;
+}
+
+#reports-panel .stats-hint {
+  margin: 10px 0 0;
+  max-width: 42rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--graphite);
+  opacity: 0.85;
+}
+
 #ascii-panel {
   width: 100%;
   max-width: 480px;

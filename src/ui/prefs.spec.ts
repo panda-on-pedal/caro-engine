@@ -34,6 +34,7 @@ describe("prefs", () => {
     expect(DEFAULT_SETTINGS.showThoughts).toBe(true);
     expect(DEFAULT_SETTINGS.experienceImprovement).toBe(true);
     expect(DEFAULT_SETTINGS.practiceImprovement).toBe(true);
+    expect(DEFAULT_SETTINGS.settleGiveUpSearches).toBe(3);
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
   });
 
@@ -43,6 +44,7 @@ describe("prefs", () => {
       showThoughts: true,
       experienceImprovement: true,
       practiceImprovement: true,
+      settleGiveUpSearches: 3,
       lang: "en",
     });
     expect(loadSettings()).toEqual({
@@ -50,6 +52,7 @@ describe("prefs", () => {
       showThoughts: true,
       experienceImprovement: true,
       practiceImprovement: true,
+      settleGiveUpSearches: 3,
       lang: "en",
     });
     saveSettings({
@@ -57,6 +60,7 @@ describe("prefs", () => {
       showThoughts: false,
       experienceImprovement: false,
       practiceImprovement: false,
+      settleGiveUpSearches: 5,
       lang: "vi",
     });
     expect(loadSettings()).toEqual({
@@ -64,6 +68,7 @@ describe("prefs", () => {
       showThoughts: false,
       experienceImprovement: false,
       practiceImprovement: false,
+      settleGiveUpSearches: 5,
       lang: "vi",
     });
   });
@@ -83,7 +88,20 @@ describe("prefs", () => {
       showThoughts: true,
       experienceImprovement: true,
       practiceImprovement: true,
+      settleGiveUpSearches: 3,
       lang: "vi",
     });
+  });
+
+  it("defaults settleGiveUpSearches to 3", () => {
+    store = {};
+    expect(loadSettings().settleGiveUpSearches).toBe(3);
+  });
+
+  it("clamps a persisted settleGiveUpSearches into 1..9", () => {
+    store["caro.settings"] = JSON.stringify({ settleGiveUpSearches: 42 });
+    expect(loadSettings().settleGiveUpSearches).toBe(9);
+    store["caro.settings"] = JSON.stringify({ settleGiveUpSearches: 0 });
+    expect(loadSettings().settleGiveUpSearches).toBe(1);
   });
 });

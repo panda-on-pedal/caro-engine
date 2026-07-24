@@ -6,11 +6,14 @@ import { evictSlice } from "./ttPersist.ts";
 export const LEGACY_EXPERIENCE_STORAGE_KEY = "caro-engine-experience-v1";
 export const EXPERIENCE_STORAGE_KEY_PREFIX = "caro-engine-experience-v2-";
 export const HUMAN_BOOK_STORAGE_KEY = "caro-engine-human-book-v1";
+/** Legacy `settled: true` rows coerce to this stallCount (permanent under any
+ *  reasonable give-up threshold). */
+export const LEGACY_PERMANENT_STALLS = 99;
 
 const DIFFICULTIES: readonly Difficulty[] = ["easy", "medium", "hard", "expert"];
 
 interface ExperienceFile {
-  version: 2;
+  version: 2 | 3;
   entries: StoredExperienceEntry[];
 }
 
@@ -31,11 +34,24 @@ function readStorage(): Storage | null {
 
 function parseFile(raw: string): StoredExperienceEntry[] {
   try {
-    const parsed = JSON.parse(raw) as ExperienceFile;
-    if (parsed?.version !== 2 || !Array.isArray(parsed.entries)) {
+    const parsed = JSON.parse(raw) as {
+      version?: number;
+      entries?: Array<Record<string, unknown>>;
+    };
+    if ((parsed?.version !== 2 && parsed?.version !== 3) || !Array.isArray(parsed.entries)) {
       return [];
     }
-    return parsed.entries;
+    return parsed.entries.map(row => {
+      const legacySettled = row.settled === true;
+      const stallCount =
+        typeof row.stallCount === "number"
+          ? row.stallCount
+          : legacySettled
+            ? LEGACY_PERMANENT_STALLS
+            : 0;
+      const settleLevel = typeof row.settleLevel === "number" ? row.settleLevel : 0;
+      return { ...(row as unknown as StoredExperienceEntry), settleLevel, stallCount };
+    });
   } catch {
     return [];
   }
@@ -74,7 +90,7 @@ export function saveExperienceStore(store: ExperienceStore, difficulty: Difficul
     return;
   }
   const payload: ExperienceFile = {
-    version: 2,
+    version: 3,
     entries: store.entries(),
   };
   try {
@@ -104,7 +120,7 @@ export function saveHumanBook(store: ExperienceStore): void {
     return;
   }
   const payload: ExperienceFile = {
-    version: 2,
+    version: 3,
     entries: store.entries(),
   };
   try {
@@ -127,7 +143,7 @@ export class PersistentExperienceStore {
   private readonly debounceMs: number;
 
   constructor(options?: { maxEntries?: number; debounceMs?: number }) {
-    const maxEntries = options?.maxEntries ?? 2000;
+    const maxEntries = options?.maxEntries ?? 4000;
     this.debounceMs = options?.debounceMs ?? 250;
     this.books = {
       easy: new ExperienceStore(maxEntries, key => void evictSlice(key)),
@@ -159,8 +175,8 @@ export class PersistentExperienceStore {
     return changed;
   }
 
-  markSettled(difficulty: Difficulty, key: string): void {
-    if (this.books[difficulty].markSettled(key)) {
+  setStallCount(difficulty: Difficulty, key: string, count: number): void {
+    if (this.books[difficulty].setStallCount(key, count)) {
       this.scheduleSave(difficulty);
     }
   }

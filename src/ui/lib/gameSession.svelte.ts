@@ -12,17 +12,31 @@ import {
 import type { SearchProgressEvent } from "../../engine/search/search.ts";
 import type { GameResult } from "../../shared/results.ts";
 import { aggregateResults, firstPlayerWinPct, playerLeaderboard } from "../../shared/results.ts";
+import {
+  EMPTY_REPORT_COUNTS,
+  pushCapped,
+  summarizeReport,
+  tallyReportEvent,
+  type PracticeReportCounts,
+  type PracticeReportEvent,
+  type PracticeReportSummary,
+} from "../../shared/practiceReport.ts";
 import { logger } from "../../utils/logger.ts";
 import type { ExperienceMode } from "../../engine/experience/experience.ts";
 import { MIN_EXPERIENCE_DEPTH } from "../../engine/experience/experience.ts";
 import { humanWinBookEntries } from "../../engine/experience/experienceLookup.ts";
 import { CancelledError, EnginePool } from "../enginePool.ts";
 import { PersistentExperienceStore } from "../experiencePersist.ts";
+import {
+  clearPracticeReport,
+  loadPracticeReport,
+  savePracticeReport,
+} from "../practiceReportPersist.ts";
 import { fetchWithRetry } from "../apiClient.ts";
 import { isLocale, setLocale, t } from "../i18n/index.ts";
 import type { MessageKey } from "../i18n/index.ts";
 import { loadSettings, saveSettings, type CaroSettings } from "../prefs.ts";
-import { formatThought } from "../thoughts.ts";
+import { formatReportLine, formatThought } from "../thoughts.ts";
 import {
   DEFAULT_TOURNAMENT_BOARD_COUNT,
   maxTournamentBoards,
@@ -50,6 +64,8 @@ const GAME_END_PAUSE_MS = 2000;
 /** Minimum spacing between multi-AI moves so instant cache-hit replays step
  * visibly instead of blurring the board through many moves at once. */
 const MOVE_RENDER_DELAY_MS = 100;
+/** Max per-board report lines kept in the thoughts-area feed (rolling). */
+const BOARD_REPORT_FEED_CAP = 12;
 
 export interface BoardSession {
   id: number;
@@ -205,11 +221,18 @@ class GameSession {
   sessions = $state<BoardSession[]>([]);
   activeIndex = $state(0);
   viewingResults = $state(false);
+  viewingReports = $state(false);
   /** Multi-AI modes wait on the Start button before running their loops. */
   started = $state(false);
   boardCount = $state(DEFAULT_TOURNAMENT_BOARD_COUNT);
   maxBoardCount = $state(maxTournamentBoards(detectHardwareConcurrency()));
   gameResults = $state<GameResult[]>([]);
+  reportEvents = $state<PracticeReportEvent[]>([]);
+  reportCounts = $state<PracticeReportCounts>({ ...EMPTY_REPORT_COUNTS });
+  bookEntryCount = $state(0);
+  /** Per-board live report lines (newest last), keyed by BoardSession.id.
+   *  Rendered in the thoughts area for the active board in practice mode. */
+  boardReportLines = $state<Record<number, string[]>>({});
   serverNotice = $state<ServerNotice | null>(null);
   thoughtLines = $state<string[]>([]);
   thinkingCell = $state<{ row: number; col: number } | null>(null);
@@ -223,7 +246,17 @@ class GameSession {
   private patternStore = PatternStore.fromBoard(newGame().board);
   private generation = 0;
   private readonly experienceStore = new PersistentExperienceStore();
-  private pool = new EnginePool(1, this.experienceStore);
+  private reportSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private readonly reportSink = (event: PracticeReportEvent): void => {
+    this.reportCounts = tallyReportEvent(this.reportCounts, event);
+    this.reportEvents = pushCapped(this.reportEvents, event);
+    this.bookEntryCount = this.countBookEntries();
+    this.appendBoardReport(event);
+    this.scheduleReportSave();
+  };
+
+  private pool = new EnginePool(1, this.experienceStore, this.reportSink);
   private pairingCounter = 0;
   private sessionIdCounter = 0;
   private unsubUrl: (() => void) | null = null;
@@ -261,6 +294,22 @@ class GameSession {
     return isTournamentMode(this.mode) && this.viewingResults;
   }
 
+  get showingReports(): boolean {
+    return this.mode === "practice" && this.viewingReports;
+  }
+
+  get reportSummary(): PracticeReportSummary {
+    void this.localeTick;
+    return summarizeReport(this.reportCounts, this.bookEntryCount);
+  }
+
+  /** The active board's report lines — surfaced in the thoughts area (practice). */
+  get activeBoardReportLines(): string[] {
+    void this.localeTick;
+    const boardId = this.sessions[this.activeIndex]?.id;
+    return boardId === undefined ? [] : (this.boardReportLines[boardId] ?? []);
+  }
+
   private experienceMode(): ExperienceMode {
     return this.mode === "practice" ? "practice" : "use";
   }
@@ -295,7 +344,19 @@ class GameSession {
     if (this.serverNotice) {
       return t(this.serverNotice.key, this.serverNotice.params);
     }
-    if (this.settings.showThoughts && this.thoughtLines.length > 0) {
+    // Practice learning feed is independent of "Show computer thoughts" (that
+    // toggle is for live human-vs-AI search narration).
+    if (this.mode === "practice") {
+      const lines = this.activeBoardReportLines;
+      if (lines.length > 0) {
+        return lines.join("\n");
+      }
+      return "";
+    }
+    if (!this.settings.showThoughts) {
+      return "";
+    }
+    if (this.thoughtLines.length > 0) {
       return this.thoughtLines.join("\n");
     }
     return "";
@@ -383,7 +444,7 @@ class GameSession {
   }
 
   async init(): Promise<void> {
-    logger.setDebug(true);
+    // logger.setDebug(true);
     document.documentElement.style.setProperty("--cell-size", `${CELL_SIZE_PX}px`);
 
     this.maxBoardCount = maxTournamentBoards(detectHardwareConcurrency());
@@ -495,6 +556,12 @@ class GameSession {
     saveSettings(this.settings);
   }
 
+  setSettleGiveUpSearches(value: number): void {
+    const clamped = Math.min(9, Math.max(1, Math.round(value)));
+    this.settings = { ...this.settings, settleGiveUpSearches: clamped };
+    saveSettings(this.settings);
+  }
+
   toggleAscii(): void {
     this.asciiOpen = !this.asciiOpen;
   }
@@ -520,6 +587,7 @@ class GameSession {
 
   selectBoard(index: number): void {
     this.viewingResults = false;
+    this.viewingReports = false;
     this.activeIndex = index;
   }
 
@@ -530,9 +598,19 @@ class GameSession {
     this.viewingResults = true;
   }
 
+  selectReports(): void {
+    if (this.mode !== "practice") {
+      return;
+    }
+    this.viewingReports = true;
+  }
+
   async newGame(): Promise<void> {
     if (isTournamentMode(this.mode)) {
       await this.clearResults();
+    }
+    if (this.mode === "practice") {
+      this.clearReport();
     }
     await this.resetForMode(this.mode, true);
   }
@@ -759,7 +837,54 @@ class GameSession {
       return;
     }
     this.pool.terminate();
-    this.pool = new EnginePool(targetSize, this.experienceStore);
+    this.pool = new EnginePool(targetSize, this.experienceStore, this.reportSink);
+  }
+
+  /** Append one report line to its board's rolling thoughts-area feed. No-op for
+   *  background reports (no boardId). Newest last, capped. */
+  private appendBoardReport(event: PracticeReportEvent): void {
+    if (event.boardId === undefined) {
+      return;
+    }
+    const prior = this.boardReportLines[event.boardId] ?? [];
+    const next = [...prior, formatReportLine(event)].slice(-BOARD_REPORT_FEED_CAP);
+    this.boardReportLines = { ...this.boardReportLines, [event.boardId]: next };
+  }
+
+  private countBookEntries(): number {
+    return (["easy", "medium", "hard", "expert"] as const).reduce(
+      (sum, difficulty) => sum + this.experienceStore.book(difficulty).size,
+      0
+    );
+  }
+
+  private scheduleReportSave(): void {
+    if (this.reportSaveTimer !== null) {
+      clearTimeout(this.reportSaveTimer);
+    }
+    this.reportSaveTimer = setTimeout(() => {
+      this.reportSaveTimer = null;
+      savePracticeReport(this.reportCounts, this.reportEvents);
+    }, 250);
+  }
+
+  private loadReport(): void {
+    const { counts, events } = loadPracticeReport();
+    this.reportCounts = counts;
+    this.reportEvents = events;
+    this.bookEntryCount = this.countBookEntries();
+  }
+
+  private clearReport(): void {
+    if (this.reportSaveTimer !== null) {
+      clearTimeout(this.reportSaveTimer);
+      this.reportSaveTimer = null;
+    }
+    this.reportCounts = { ...EMPTY_REPORT_COUNTS };
+    this.reportEvents = [];
+    this.boardReportLines = {};
+    this.bookEntryCount = this.countBookEntries();
+    clearPracticeReport();
   }
 
   private async runAiMove(): Promise<void> {
@@ -780,6 +905,7 @@ class GameSession {
         await this.pool.requestMove(this.state.board, player, this.difficulty, undefined, {
           experienceMode: this.experienceMode(),
           persistExperience: this.persistExperience(),
+          settleGiveUpSearches: this.settings.settleGiveUpSearches,
           onProgress: event => {
             if (myGeneration !== this.generation) {
               return;
@@ -909,6 +1035,8 @@ class GameSession {
           experienceMode: this.experienceMode(),
           persistExperience: this.persistExperience(),
           practiceImprovement: this.settings.practiceImprovement,
+          settleGiveUpSearches: this.settings.settleGiveUpSearches,
+          reportBoardId: boardSession.id,
         }
       );
       move = result.move;
@@ -1066,11 +1194,15 @@ class GameSession {
       this.resizePool(desiredPoolSize(this.boardCount));
       this.pairingCounter = 0;
       this.viewingResults = false;
+      this.viewingReports = false;
       this.startTournament(this.boardCount);
       if (isTournamentMode(newMode)) {
         await this.refreshStats();
       } else {
         this.gameResults = [];
+      }
+      if (newMode === "practice") {
+        this.loadReport();
       }
       if (resume && this.started) {
         this.startAllSessionLoops();

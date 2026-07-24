@@ -9,7 +9,8 @@ export type SearchProgressEvent =
   | { type: "insight"; row: number; col: number; kind: InsightKind }
   | { type: "bestSoFar"; row: number; col: number }
   | { type: "deeper"; depth: number }
-  | { type: "experienceHit"; row: number; col: number; depth: number };
+  | { type: "experienceHit"; row: number; col: number; depth: number }
+  | { type: "searchStats"; depth: number; nodes: number };
 
 /** Throttles high-frequency examining/insight emits (~6–7/sec). */
 export class ProgressReporter {

@@ -22,6 +22,13 @@
     session.setPracticeImprovement(checked);
   }
 
+  function onGiveUp(event: Event): void {
+    const value = Number((event.currentTarget as HTMLInputElement).value);
+    if (!Number.isNaN(value)) {
+      session.setSettleGiveUpSearches(value);
+    }
+  }
+
   function onLang(event: Event): void {
     session.setLang((event.currentTarget as HTMLSelectElement).value);
   }
@@ -73,6 +80,19 @@
   <span>
     {session.localeTick >= 0 ? t('settings.practiceImprovement') : ''}
   </span>
+</label>
+
+<label class="settings-row settings-row-select">
+  <span>{session.localeTick >= 0 ? t('settings.settleGiveUpSearches') : ''}</span>
+  <input
+    id="pref-settle-giveup"
+    type="number"
+    min="1"
+    max="9"
+    step="1"
+    value={session.settings.settleGiveUpSearches}
+    onchange={onGiveUp}
+  />
 </label>
 
 <label class="settings-row settings-row-select">

@@ -1,5 +1,6 @@
 import {
   LEGACY_EXPERIENCE_STORAGE_KEY,
+  LEGACY_PERMANENT_STALLS,
   HUMAN_BOOK_STORAGE_KEY,
   experienceStorageKey,
   loadExperienceStore,
@@ -39,7 +40,7 @@ describe("experiencePersist", () => {
     store.put("k", { move: { row: 1, col: 2 }, score: 7, depth: 4 });
     saveExperienceStore(store, "easy");
 
-    expect(memory[experienceStorageKey("easy")]).toContain('"version":2');
+    expect(memory[experienceStorageKey("easy")]).toContain('"version":3');
     expect(memory[experienceStorageKey("hard")]).toBeUndefined();
 
     const restored = new ExperienceStore();
@@ -48,6 +49,8 @@ describe("experiencePersist", () => {
       move: { row: 1, col: 2 },
       score: 7,
       depth: 4,
+      settleLevel: 0,
+      stallCount: 0,
     });
   });
 
@@ -96,7 +99,7 @@ describe("experiencePersist", () => {
     expect(books.get("easy", "shape")).toBeUndefined();
     expect(books.getHuman("shape")?.move).toEqual({ row: 3, col: 4 });
     // Persisted under its own storage key, not a difficulty key.
-    expect(memory[HUMAN_BOOK_STORAGE_KEY]).toContain('"version":2');
+    expect(memory[HUMAN_BOOK_STORAGE_KEY]).toContain('"version":3');
     expect(memory[experienceStorageKey("easy")]).toBeUndefined();
 
     // Reloads from disk on a fresh instance.
@@ -111,14 +114,36 @@ describe("experiencePersist", () => {
     expect(books.getHuman("shape")?.move).toEqual({ row: 2, col: 2 });
   });
 
-  it("persists the settled flag across save/load", () => {
+  it("coerces a legacy v2 settled:true row to a permanent stallCount on load", () => {
+    const key = experienceStorageKey("hard");
+    memory[key] = JSON.stringify({
+      version: 2,
+      entries: [
+        { key: "p", move: { row: 1, col: 1 }, score: 50, depth: 4, settled: true, updatedAt: 1 },
+      ],
+    });
     const store = new ExperienceStore();
-    store.put("k", { move: { row: 1, col: 2 }, score: 7, depth: 4 });
-    store.markSettled("k");
-    saveExperienceStore(store, "hard");
+    loadExperienceStore(store, "hard");
+    expect(store.get("p")?.stallCount).toBe(LEGACY_PERMANENT_STALLS);
+  });
 
-    const restored = new ExperienceStore();
-    loadExperienceStore(restored, "hard");
-    expect(restored.get("k")?.settled).toBe(true);
+  it("round-trips settleLevel and stallCount through save/load as version 3", () => {
+    const store = new ExperienceStore();
+    store.put("p", {
+      move: { row: 2, col: 3 },
+      score: 70,
+      depth: 5,
+      settleLevel: 2,
+      stallCount: 1,
+    });
+    saveExperienceStore(store, "hard");
+    const raw = memory[experienceStorageKey("hard")];
+    expect(raw).toBeDefined();
+    const parsed = JSON.parse(raw) as { version: number };
+    expect(parsed.version).toBe(3);
+    const reload = new ExperienceStore();
+    loadExperienceStore(reload, "hard");
+    expect(reload.get("p")?.settleLevel).toBe(2);
+    expect(reload.get("p")?.stallCount).toBe(1);
   });
 });

@@ -5,8 +5,12 @@ import type {
   ExperienceMode,
   ExperienceTransform,
 } from "../engine/experience/experience.ts";
+import {
+  DEFAULT_SETTLE_GIVE_UP_SEARCHES,
+  isUsableExperienceMove,
+  isStrongExperienceHit,
+} from "../engine/experience/experience.ts";
 import { experienceKeyFor, tryUseExperienceHit } from "../engine/experience/experienceLookup.ts";
-import { isUsableExperienceMove, isStrongExperienceHit } from "../engine/experience/experience.ts";
 import { search, type SearchProgressEvent, type SearchResult } from "../engine/search/search.ts";
 import { TranspositionTable, type TTEntry } from "../engine/transposition/transposition.ts";
 import { PersistentExperienceStore } from "./experiencePersist.ts";
@@ -128,19 +132,22 @@ export function prepareExperienceForRequest(params: {
   difficulty: Difficulty;
   experienceMode: ExperienceMode;
   store: PersistentExperienceStore;
-  /** Practice only. Default true — re-search unsettled hits to improve them. */
+  /** Practice only. Default true — re-search non-permanent hits to improve them. */
   practiceImprovement?: boolean;
+  /** Give-up threshold; a hit whose stallCount >= this is permanent. */
+  settleGiveUpSearches?: number;
 }): {
   instant: SearchResult | null;
   baseline?: ExperienceEntry;
-  settled: boolean;
+  permanent: boolean;
   key: string;
   transform: ExperienceTransform;
 } {
+  const giveUp = params.settleGiveUpSearches ?? DEFAULT_SETTLE_GIVE_UP_SEARCHES;
   const { key, transform } = experienceKeyFor(params.board, params.player);
   // Shared human book wins over the per-difficulty book: any non-off mode
   // replays a legal human-win move instantly (true mimic) with no background
-  // improvement. `settled: true` + no baseline makes EnginePool skip the
+  // improvement. `permanent: true` + no baseline makes EnginePool skip the
   // reinvest path entirely.
   if (params.experienceMode !== "off") {
     const humanStored = params.store.getHuman(key);
@@ -159,7 +166,7 @@ export function prepareExperienceForRequest(params: {
           ? { experienceCacheHit: true, experienceStreakEligible: true }
           : {}),
       };
-      return { instant, settled: true, key, transform };
+      return { instant, permanent: true, key, transform };
     }
   }
   // Books are already split by difficulty in PersistentExperienceStore.
@@ -173,6 +180,7 @@ export function prepareExperienceForRequest(params: {
     mode: params.experienceMode,
     entry,
     practiceImprovement: params.practiceImprovement,
+    settleGiveUpSearches: giveUp,
   });
   // Any non-off mode seeds/floors the search on a usable hit; `use` mode
   // additionally replays it instantly while a background search improves it.
@@ -180,5 +188,11 @@ export function prepareExperienceForRequest(params: {
     params.experienceMode !== "off" && isUsableExperienceMove(params.board, entry)
       ? entry
       : undefined;
-  return { instant, baseline, settled: stored?.settled === true, key, transform };
+  return {
+    instant,
+    baseline,
+    permanent: (stored?.stallCount ?? 0) >= giveUp,
+    key,
+    transform,
+  };
 }

@@ -4,14 +4,20 @@
 
   let detailEl: HTMLParagraphElement | undefined = $state();
 
+  /** Live human-vs-AI thoughts OR practice per-board learning feed OR notices. */
   const showDetail = $derived(
-    Boolean(session.serverNotice) || session.settings.showThoughts,
+    Boolean(session.serverNotice) ||
+      session.settings.showThoughts ||
+      (session.mode === 'practice' && session.activeBoardReportLines.length > 0),
   );
 
   $effect(() => {
     void session.thoughtLines;
+    void session.boardReportLines;
+    void session.activeIndex;
     void session.serverNotice;
     void session.settings.showThoughts;
+    void session.mode;
     tick().then(() => {
       if (detailEl) {
         detailEl.scrollTop = detailEl.scrollHeight;

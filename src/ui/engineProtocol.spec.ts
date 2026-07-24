@@ -53,7 +53,7 @@ describe("handleEngineRequest", () => {
 });
 
 describe("prepareExperienceForRequest", () => {
-  it("returns a use-mode hit as instant AND baseline, with the settled flag", () => {
+  it("returns a use-mode hit as instant AND baseline, with the permanent flag", () => {
     const store = new PersistentExperienceStore();
     let state = newGame();
     state = applyMove(state, { row: 5, col: 5 }, 1);
@@ -69,9 +69,9 @@ describe("prepareExperienceForRequest", () => {
     const miss = prepareExperienceForRequest(params);
     expect(miss.instant).toBeNull();
     expect(miss.baseline).toBeUndefined();
-    expect(miss.settled).toBe(false);
+    expect(miss.permanent).toBe(false);
 
-    // Store in the canonical frame, exactly as EnginePool.rememberResult does.
+    // Store in the canonical frame, exactly as EnginePool.applyResult does.
     store.put("easy", miss.key, {
       move: miss.transform.toCanonical({ row: 4, col: 4 }),
       score: 10,
@@ -82,12 +82,12 @@ describe("prepareExperienceForRequest", () => {
     expect(hit.instant?.move).toEqual({ row: 4, col: 4 });
     expect(hit.baseline?.move).toEqual({ row: 4, col: 4 });
     expect(hit.baseline?.depth).toBe(3);
-    expect(hit.settled).toBe(false);
+    expect(hit.permanent).toBe(false);
 
-    store.markSettled("easy", miss.key);
-    const settledHit = prepareExperienceForRequest(params);
-    expect(settledHit.instant?.move).toEqual({ row: 4, col: 4 });
-    expect(settledHit.settled).toBe(true);
+    store.setStallCount("easy", miss.key, 3);
+    const permanentHit = prepareExperienceForRequest(params);
+    expect(permanentHit.instant?.move).toEqual({ row: 4, col: 4 });
+    expect(permanentHit.permanent).toBe(true);
   });
 
   it("replays a human-book hit ahead of the difficulty book, without a baseline", () => {
@@ -120,7 +120,7 @@ describe("prepareExperienceForRequest", () => {
     const hit = prepareExperienceForRequest(params);
     expect(hit.instant?.move).toEqual({ row: 3, col: 3 });
     expect(hit.baseline).toBeUndefined(); // no search seed → no background improvement
-    expect(hit.settled).toBe(true);
+    expect(hit.permanent).toBe(true);
   });
 
   it("tags a practice-mode human-book hit as a cache hit", () => {
@@ -170,7 +170,7 @@ describe("prepareExperienceForRequest", () => {
     expect(off.instant).toBeNull();
   });
 
-  it("practice mode only instant-replays settled entries", () => {
+  it("practice mode only instant-replays permanent entries", () => {
     const store = new PersistentExperienceStore();
     let state = newGame();
     state = applyMove(state, { row: 5, col: 5 }, 1);
@@ -190,19 +190,19 @@ describe("prepareExperienceForRequest", () => {
       depth: 3,
     });
 
-    const unsettled = prepareExperienceForRequest(params);
-    expect(unsettled.instant).toBeNull();
-    expect(unsettled.baseline?.move).toEqual({ row: 4, col: 4 });
-    expect(unsettled.settled).toBe(false);
+    const nonPermanent = prepareExperienceForRequest(params);
+    expect(nonPermanent.instant).toBeNull();
+    expect(nonPermanent.baseline?.move).toEqual({ row: 4, col: 4 });
+    expect(nonPermanent.permanent).toBe(false);
 
-    store.markSettled("easy", miss.key);
-    const settled = prepareExperienceForRequest(params);
-    expect(settled.instant?.move).toEqual({ row: 4, col: 4 });
-    expect(settled.instant?.experienceCacheHit).toBe(true);
-    expect(settled.settled).toBe(true);
+    store.setStallCount("easy", miss.key, 3);
+    const permanent = prepareExperienceForRequest(params);
+    expect(permanent.instant?.move).toEqual({ row: 4, col: 4 });
+    expect(permanent.instant?.experienceCacheHit).toBe(true);
+    expect(permanent.permanent).toBe(true);
   });
 
-  it("instant-replays unsettled practice hits when improvement is off", () => {
+  it("instant-replays non-permanent practice hits when improvement is off", () => {
     const store = new PersistentExperienceStore();
     let state = newGame();
     state = applyMove(state, { row: 5, col: 5 }, 1);
@@ -222,15 +222,15 @@ describe("prepareExperienceForRequest", () => {
       depth: 3,
     });
 
-    // Default (improvement on): unsettled hit still forces a foreground search.
+    // Default (improvement on): non-permanent hit still forces a foreground search.
     expect(prepareExperienceForRequest(params).instant).toBeNull();
 
-    // Improvement off: the unsettled hit replays instantly instead.
+    // Improvement off: the non-permanent hit replays instantly instead.
     const offParams = { ...params, practiceImprovement: false };
     const instant = prepareExperienceForRequest(offParams);
     expect(instant.instant?.move).toEqual({ row: 4, col: 4 });
     expect(instant.instant?.experienceCacheHit).toBe(true);
-    expect(instant.settled).toBe(false);
+    expect(instant.permanent).toBe(false);
   });
 });
 

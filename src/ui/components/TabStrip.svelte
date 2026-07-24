@@ -11,7 +11,7 @@
       class="tab-button"
       data-board-index={index}
       data-status={session.sessionTabStatus(boardSession)}
-      data-active={!session.viewingResults && index === session.activeIndex ? 'true' : undefined}
+      data-active={!session.viewingResults && !session.viewingReports && index === session.activeIndex ? 'true' : undefined}
       onclick={() => session.selectBoard(index)}
     >
       {session.tabLabel(index, boardSession)}
@@ -26,6 +26,16 @@
       onclick={() => session.selectResults()}
     >
       {session.localeTick >= 0 ? t('tabs.results') : ''}
+    </button>
+  {:else if session.mode === 'practice'}
+    <button
+      type="button"
+      class="tab-button tab-button-results"
+      data-reports="true"
+      data-active={session.viewingReports ? 'true' : undefined}
+      onclick={() => session.selectReports()}
+    >
+      {session.localeTick >= 0 ? t('tabs.reports') : ''}
     </button>
   {/if}
 </div>

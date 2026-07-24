@@ -1,13 +1,18 @@
 import { createEmptyBoard, placeMove, type Board, type Player } from "../board.ts";
 import {
   canonicalExperienceKey,
+  computeSettleTransition,
+  DEFAULT_SETTLE_GIVE_UP_SEARCHES,
   ExperienceStore,
   experienceBeatsBaseline,
   isStrongExperienceHit,
   shouldReplaceExperience,
   toCanonicalBoard,
+  type ExperienceEntry,
 } from "./experience.ts";
 import { tryUseExperienceHit } from "./experienceLookup.ts";
+
+const m = (row: number, col: number) => ({ row, col });
 
 /** Rotate/reflect a stone list onto a fresh board of the same size. */
 function build(size: number, stones: Array<[number, number, Player]>): Board {
@@ -174,6 +179,8 @@ describe("ExperienceStore", () => {
       move: { row: 3, col: 4 },
       score: 12,
       depth: 6,
+      settleLevel: 0,
+      stallCount: 0,
     });
   });
 });
@@ -193,10 +200,10 @@ describe("tryUseExperienceHit", () => {
     ).toEqual(entry.move);
   });
 
-  it("does not fire in practice on an unsettled entry", () => {
+  it("does not fire in practice on a non-permanent entry", () => {
     let board = createEmptyBoard(5);
     board = placeMove(board, 2, 2, 1);
-    const entry = { move: { row: 2, col: 3 }, score: 5, depth: 2 };
+    const entry = { move: { row: 2, col: 3 }, score: 5, depth: 2, stallCount: 0 };
     expect(
       tryUseExperienceHit({
         board,
@@ -207,14 +214,14 @@ describe("tryUseExperienceHit", () => {
     ).toBeNull();
   });
 
-  it("fires in practice when the entry is settled", () => {
+  it("fires in practice when stallCount reaches the give-up threshold", () => {
     let board = createEmptyBoard(5);
     board = placeMove(board, 2, 2, 1);
     const entry = {
       move: { row: 2, col: 3 },
       score: 5,
       depth: 2,
-      settled: true as const,
+      stallCount: DEFAULT_SETTLE_GIVE_UP_SEARCHES,
     };
     const hit = tryUseExperienceHit({
       board,
@@ -241,39 +248,130 @@ describe("tryUseExperienceHit", () => {
   });
 });
 
-describe("settled entries", () => {
-  it("marks an entry settled and round-trips it through entries/loadAll", () => {
-    const store = new ExperienceStore();
-    store.put("k", { move: { row: 1, col: 1 }, score: 5, depth: 3 });
-    expect(store.markSettled("k")).toBe(true);
-    expect(store.get("k")?.settled).toBe(true);
+describe("computeSettleTransition", () => {
+  const cand: ExperienceEntry = { move: m(1, 1), score: 100, depth: 4 };
 
-    const copy = new ExperienceStore();
-    copy.loadAll(store.entries());
-    expect(copy.get("k")?.settled).toBe(true);
+  it("stores a brand-new entry at level 0, stall 0", () => {
+    expect(computeSettleTransition(undefined, cand, 3)).toEqual({
+      action: "put",
+      settleLevel: 0,
+      stallCount: 0,
+      permanent: false,
+      emit: true,
+      kind: "new",
+    });
   });
 
-  it("keeps settled on an equal refresh, clears it when a better entry replaces", () => {
-    const store = new ExperienceStore();
-    store.put("k", { move: { row: 1, col: 1 }, score: 5, depth: 3 });
-    store.markSettled("k");
-
-    // Equal depth+score refresh (what a floored background result stores).
-    store.put("k", { move: { row: 1, col: 1 }, score: 5, depth: 3 });
-    expect(store.get("k")?.settled).toBe(true);
-
-    // Deeper entry re-opens improvement.
-    store.put("k", { move: { row: 2, col: 2 }, score: 9, depth: 4 });
-    expect(store.get("k")?.settled).toBeUndefined();
+  it("still climbs the settle level (never resets) when a deeper result changes the move", () => {
+    const prev: ExperienceEntry = {
+      move: m(2, 2),
+      score: 90,
+      depth: 3,
+      settleLevel: 2,
+      stallCount: 1,
+    };
+    expect(computeSettleTransition(prev, cand, 3)).toEqual({
+      action: "put",
+      settleLevel: 3,
+      stallCount: 0,
+      permanent: false,
+      emit: true,
+      kind: "improved",
+    });
   });
 
-  it("markSettled is a no-op for missing or already-settled keys", () => {
-    const store = new ExperienceStore();
-    expect(store.markSettled("nope")).toBe(false);
-    store.put("k", { move: { row: 1, col: 1 }, score: 5, depth: 3 });
-    store.markSettled("k");
-    expect(store.markSettled("k")).toBe(false);
+  it("climbs one settle level (stall reset) on a same-move refinement", () => {
+    const prev: ExperienceEntry = {
+      move: m(1, 1),
+      score: 90,
+      depth: 4,
+      settleLevel: 0,
+      stallCount: 2,
+    };
+    expect(computeSettleTransition(prev, cand, 3)).toEqual({
+      action: "put",
+      settleLevel: 1,
+      stallCount: 0,
+      permanent: false,
+      emit: true,
+      kind: "improved",
+    });
   });
+
+  it("increments stall (not yet permanent) on a stall below the give-up threshold", () => {
+    const prev: ExperienceEntry = {
+      move: m(1, 1),
+      score: 100,
+      depth: 4,
+      settleLevel: 2,
+      stallCount: 0,
+    };
+    expect(computeSettleTransition(prev, cand, 3)).toEqual({
+      action: "setStall",
+      settleLevel: 2,
+      stallCount: 1,
+      permanent: false,
+      emit: true,
+      kind: "stalled",
+    });
+  });
+
+  it("freezes (settled) when a stall reaches the give-up threshold", () => {
+    const prev: ExperienceEntry = {
+      move: m(1, 1),
+      score: 100,
+      depth: 4,
+      settleLevel: 2,
+      stallCount: 2,
+    };
+    expect(computeSettleTransition(prev, cand, 3)).toEqual({
+      action: "setStall",
+      settleLevel: 2,
+      stallCount: 3,
+      permanent: true,
+      emit: true,
+      kind: "settled",
+    });
+  });
+
+  it("does nothing for an already-permanent entry", () => {
+    const prev: ExperienceEntry = {
+      move: m(1, 1),
+      score: 90,
+      depth: 4,
+      settleLevel: 2,
+      stallCount: 3,
+    };
+    expect(computeSettleTransition(prev, cand, 3)).toEqual({
+      action: "none",
+      settleLevel: 2,
+      stallCount: 3,
+      permanent: true,
+      emit: false,
+      kind: "settled",
+    });
+  });
+});
+
+describe("ExperienceStore.setStallCount", () => {
+  it("raises the stall counter monotonically without touching move/score", () => {
+    const store = new ExperienceStore();
+    store.put("k", { move: m(1, 1), score: 100, depth: 4, settleLevel: 0, stallCount: 0 });
+    expect(store.setStallCount("k", 3)).toBe(true);
+    expect(store.get("k")).toMatchObject({
+      move: m(1, 1),
+      score: 100,
+      depth: 4,
+      stallCount: 3,
+    });
+    expect(store.setStallCount("k", 3)).toBe(false);
+    expect(store.setStallCount("k", 2)).toBe(false);
+    expect(store.setStallCount("missing", 3)).toBe(false);
+  });
+});
+
+it("DEFAULT_SETTLE_GIVE_UP_SEARCHES is 3", () => {
+  expect(DEFAULT_SETTLE_GIVE_UP_SEARCHES).toBe(3);
 });
 
 describe("toCanonicalBoard", () => {
@@ -286,8 +384,10 @@ describe("toCanonicalBoard", () => {
 
     const canonical = toCanonicalBoard(board, transform);
     const rekey = canonicalExperienceKey(canonical, 1);
-    expect(rekey.key).toBe(key);
-    const probe = { row: 5, col: 6 };
+    // Shape body is preserved; edge codes can differ because stones sit at the
+    // origin of the canonical board (closer to the wall than on the original).
+    expect(rekey.key.split("#")[0]).toBe(key.split("#")[0]);
+    const probe = { row: 0, col: 1 };
     expect(rekey.transform.toCanonical(probe)).toEqual(probe);
   });
 });

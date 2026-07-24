@@ -1,4 +1,5 @@
 import type { SearchProgressEvent } from "../engine/search/searchProgress.ts";
+import type { PracticeReportEvent } from "../shared/practiceReport.ts";
 
 /** English-only thought templates. Intentional: not routed through i18n. */
 export function formatThought(event: SearchProgressEvent): string {
@@ -22,7 +23,28 @@ export function formatThought(event: SearchProgressEvent): string {
     case "deeper":
       return "Looking a bit deeper…";
     case "experienceHit":
-      return `I remember this spot — ${event.row},${event.col} (depth ${event.depth})…`;
+      return `I remember this spot, ${event.row},${event.col} (depth ${event.depth})…`;
+    case "searchStats":
+      return `Depth ${event.depth} · ${event.nodes.toLocaleString("en-US")} nodes…`;
+  }
+}
+
+export function formatReportLine(ev: PracticeReportEvent): string {
+  const score = ev.newScore >= 0 ? `+${ev.newScore}` : `${ev.newScore}`;
+  const depth =
+    ev.oldDepth === null || ev.oldDepth === ev.newDepth
+      ? `d${ev.newDepth}`
+      : `d${ev.oldDepth}→d${ev.newDepth}`;
+  const moved = ev.moveChanged ? " · move changed" : "";
+  switch (ev.kind) {
+    case "new":
+      return `Learned a new spot, ${score} · ${depth} · L${ev.settleLevel}…`;
+    case "improved":
+      return `Improved, ${score} · ${depth} · L${ev.settleLevel}${moved}…`;
+    case "stalled":
+      return `No gain, ${depth} · give up ${ev.stallCount}/${ev.giveUp}…`;
+    case "settled":
+      return `Settled (frozen), ${score} · ${depth} · L${ev.settleLevel}…`;
   }
 }
 

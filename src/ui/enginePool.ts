@@ -1,16 +1,18 @@
 import type { Board, Player } from "../engine/board.ts";
 import type { Difficulty } from "../engine/engine.ts";
 import {
+  computeSettleTransition,
+  DEFAULT_SETTLE_GIVE_UP_SEARCHES,
   EMPTY_POSITION_KEY,
   IDENTITY_TRANSFORM,
   MIN_EXPERIENCE_DEPTH,
-  experienceBeatsBaseline,
   toCanonicalBoard,
   type ExperienceEntry,
   type ExperienceMode,
   type ExperienceTransform,
 } from "../engine/experience/experience.ts";
 import type { SearchProgressEvent, SearchResult } from "../engine/search/search.ts";
+import type { PracticeReportEvent } from "../shared/practiceReport.ts";
 import { logger } from "../utils/logger.ts";
 import {
   isProgressMessage,
@@ -48,6 +50,11 @@ export interface RequestMoveOptions {
    * edge of the cache — and restart — much faster.
    */
   practiceImprovement?: boolean;
+  /** Give-up threshold for this request. Default DEFAULT_SETTLE_GIVE_UP_SEARCHES. */
+  settleGiveUpSearches?: number;
+  /** Board this request belongs to; stamped onto the emitted report event so
+   *  the session can render a per-board live feed. Omit for non-board requests. */
+  reportBoardId?: number;
 }
 
 interface PendingEntry {
@@ -61,8 +68,10 @@ interface PendingEntry {
   persistExperience?: boolean;
   /** True for fire-and-forget hit-improvement jobs (preemptible). */
   background?: boolean;
-  /** Baseline used for this search — if the result does not beat it, settle. */
+  /** Baseline used for this search — if the result does not beat it, stall. */
   experienceBaseline?: ExperienceEntry;
+  settleGiveUpSearches?: number;
+  reportBoardId?: number;
 }
 
 interface QueuedJob {
@@ -77,8 +86,10 @@ interface QueuedJob {
   persistExperience?: boolean;
   /** True for fire-and-forget hit-improvement jobs (preemptible). */
   background?: boolean;
-  /** Baseline used for this search — if the result does not beat it, settle. */
+  /** Baseline used for this search — if the result does not beat it, stall. */
   experienceBaseline?: ExperienceEntry;
+  settleGiveUpSearches?: number;
+  reportBoardId?: number;
 }
 
 interface Slot {
@@ -97,14 +108,20 @@ export class EnginePool {
   private readonly pending = new Map<number, PendingEntry>();
   private nextId = 0;
   private readonly experience: PersistentExperienceStore;
+  private readonly onReport?: (event: PracticeReportEvent) => void;
 
-  constructor(size: number, experience?: PersistentExperienceStore) {
+  constructor(
+    size: number,
+    experience?: PersistentExperienceStore,
+    onReport?: (event: PracticeReportEvent) => void
+  ) {
     this.slots = Array.from({ length: size }, () => ({
       worker: null,
       busy: false,
       currentId: null,
     }));
     this.experience = experience ?? new PersistentExperienceStore();
+    this.onReport = onReport;
   }
 
   get size(): number {
@@ -121,6 +138,7 @@ export class EnginePool {
     const experienceMode = options?.experienceMode ?? "use";
     const persistExperience = options?.persistExperience !== false;
     const practiceImprovement = options?.practiceImprovement !== false;
+    const settleGiveUpSearches = options?.settleGiveUpSearches ?? DEFAULT_SETTLE_GIVE_UP_SEARCHES;
     const prepared = prepareExperienceForRequest({
       board,
       player,
@@ -128,6 +146,7 @@ export class EnginePool {
       experienceMode,
       store: this.experience,
       practiceImprovement,
+      settleGiveUpSearches,
     });
 
     if (prepared.instant !== null) {
@@ -141,14 +160,22 @@ export class EnginePool {
         key: prepared.key,
         move: prepared.instant.move,
         depth: prepared.instant.depth,
-        settled: prepared.settled,
+        permanent: prepared.permanent,
       });
       // Reinvest: replay instantly, but keep improving the entry in the
-      // background until a full-budget search can no longer out-depth it.
+      // background until stallCount reaches the give-up threshold.
       // Practice with improvement off replays every hit and never re-searches.
       const improvementAllowed = experienceMode !== "practice" || practiceImprovement;
-      if (!prepared.settled && persistExperience && improvementAllowed) {
-        this.enqueueBackgroundImprovement(board, player, difficulty, prepared, experienceMode);
+      if (!prepared.permanent && persistExperience && improvementAllowed) {
+        this.enqueueBackgroundImprovement(
+          board,
+          player,
+          difficulty,
+          prepared,
+          experienceMode,
+          settleGiveUpSearches,
+          options?.reportBoardId
+        );
       }
       return Promise.resolve(prepared.instant);
     }
@@ -184,6 +211,8 @@ export class EnginePool {
         experienceMode,
         persistExperience,
         experienceBaseline: prepared.baseline,
+        settleGiveUpSearches,
+        reportBoardId: options?.reportBoardId,
       };
       let idleSlot = this.slots.find(slot => !slot.busy);
       if (!idleSlot) {
@@ -211,7 +240,11 @@ export class EnginePool {
       key: string;
       transform: ExperienceTransform;
     },
-    experienceMode: ExperienceMode
+    experienceMode: ExperienceMode,
+    settleGiveUpSearches: number,
+    /** When the hit came from a visible board turn, stamp the background
+     *  report onto that board's thoughts feed. */
+    reportBoardId?: number
   ): void {
     const baseline = prepared.baseline;
     if (baseline === undefined) {
@@ -259,6 +292,8 @@ export class EnginePool {
         persistExperience: true,
         background: true,
         experienceBaseline: canonicalBaseline,
+        settleGiveUpSearches,
+        reportBoardId,
       });
     }).catch(error => {
       if (!(error instanceof CancelledError)) {
@@ -292,78 +327,63 @@ export class EnginePool {
     return slot;
   }
 
-  private rememberResult(
-    difficulty: Difficulty,
-    key: string | undefined,
-    transform: ExperienceTransform | undefined,
-    mode: ExperienceMode | undefined,
-    result: SearchResult,
-    persist: boolean
-  ): void {
+  /** Fold a completed search result into the book: store/improve/stall/freeze,
+   * and emit a practice-report event. Replaces rememberResult +
+   * maybeMarkSettled. */
+  private applyResult(entry: PendingEntry, result: SearchResult): void {
     if (
-      !persist ||
-      key === undefined ||
-      transform === undefined ||
-      mode === "off" ||
-      mode === undefined ||
-      // Skip the opening (empty board) and depth-0 quiet/fallback moves — no
-      // real search backs them, so they only add noise to the book.
-      key === EMPTY_POSITION_KEY ||
+      entry.persistExperience === false ||
+      entry.experienceKey === undefined ||
+      entry.experienceTransform === undefined ||
+      entry.experienceMode === "off" ||
+      entry.experienceMode === undefined ||
+      entry.experienceKey === EMPTY_POSITION_KEY ||
       result.depth < MIN_EXPERIENCE_DEPTH
     ) {
       return;
     }
-    // Store the move in the canonical frame so any symmetric position replays it.
-    const previous = this.experience.get(difficulty, key);
-    const next = {
-      move: transform.toCanonical(result.move),
+    const key = entry.experienceKey;
+    const difficulty = entry.difficulty;
+    const giveUp = entry.settleGiveUpSearches ?? DEFAULT_SETTLE_GIVE_UP_SEARCHES;
+    const prev = this.experience.get(difficulty, key);
+    const cand: ExperienceEntry = {
+      move: entry.experienceTransform.toCanonical(result.move),
       score: result.score,
       depth: result.depth,
+      nodes: result.nodesVisited,
     };
-    const changed = this.experience.put(difficulty, key, next);
-    if (changed && previous !== undefined && experienceBeatsBaseline(next, previous)) {
-      logger.log("experience improved", {
+    const transition = computeSettleTransition(prev, cand, giveUp);
+    if (transition.action === "put") {
+      this.experience.put(difficulty, key, {
+        ...cand,
+        settleLevel: transition.settleLevel,
+        stallCount: transition.stallCount,
+      });
+    } else if (transition.action === "setStall") {
+      this.experience.setStallCount(difficulty, key, transition.stallCount);
+    }
+    if (transition.emit && this.onReport) {
+      const moveChanged =
+        prev !== undefined &&
+        (cand.move.row !== prev.move.row || cand.move.col !== prev.move.col);
+      this.onReport({
+        kind: transition.kind,
         difficulty,
         key,
-        move: next.move,
-        depth: next.depth,
-        score: next.score,
-        previousDepth: previous.depth,
-        previousScore: previous.score,
+        oldScore: prev?.score ?? null,
+        newScore: cand.score,
+        oldDepth: prev?.depth ?? null,
+        newDepth: cand.depth,
+        oldNodes: prev?.nodes ?? null,
+        newNodes: cand.nodes ?? 0,
+        moveChanged,
+        settleLevel: transition.settleLevel,
+        stallCount: transition.stallCount,
+        giveUp,
+        boardId: entry.reportBoardId,
+        at: Date.now(),
       });
     }
-  }
-
-  /** Mark the book entry settled when this search failed to beat its baseline
-   * (no deeper / higher-scoring replacement). Applies to foreground practice
-   * searches and background reinvest alike. */
-  private maybeMarkSettled(entry: PendingEntry, result: SearchResult): void {
-    if (
-      entry.persistExperience === false ||
-      entry.experienceKey === undefined ||
-      entry.experienceBaseline === undefined
-    ) {
-      return;
-    }
-    const baseline = entry.experienceBaseline;
-    const candidate = {
-      move: result.move,
-      score: result.score,
-      depth: result.depth,
-    };
-    if (experienceBeatsBaseline(candidate, baseline)) {
-      return;
-    }
-    logger.log("experience settled", {
-      difficulty: entry.difficulty,
-      key: entry.experienceKey,
-      baselineDepth: baseline.depth,
-      baselineScore: baseline.score,
-      resultDepth: result.depth,
-      resultScore: result.score,
-      background: entry.background === true,
-    });
-    this.experience.markSettled(entry.difficulty, entry.experienceKey);
   }
 
   private ensureWorker(slot: Slot): Worker {
@@ -405,6 +425,8 @@ export class EnginePool {
       persistExperience: job.persistExperience,
       background: job.background,
       experienceBaseline: job.experienceBaseline,
+      settleGiveUpSearches: job.settleGiveUpSearches,
+      reportBoardId: job.reportBoardId,
     });
     this.ensureWorker(slot).postMessage(job.request);
   }
@@ -422,15 +444,7 @@ export class EnginePool {
     slot.currentId = null;
     if (entry) {
       if (message.ok) {
-        this.rememberResult(
-          entry.difficulty,
-          entry.experienceKey,
-          entry.experienceTransform,
-          entry.experienceMode,
-          message.result,
-          entry.persistExperience !== false
-        );
-        this.maybeMarkSettled(entry, message.result);
+        this.applyResult(entry, message.result);
         entry.resolve(message.result);
       } else {
         entry.reject(new Error(message.error));

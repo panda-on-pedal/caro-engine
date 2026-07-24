@@ -1,4 +1,4 @@
-import { isLegalMove } from "../engine/board.ts";
+import { isLegalMove, type Board } from "../engine/board.ts";
 import { toCanonicalBoard } from "../engine/experience/experience.ts";
 import { applyMove, newGame } from "../engine/state.ts";
 import {
@@ -10,16 +10,17 @@ import {
 } from "./engineProtocol.ts";
 import { CancelledError, EnginePool, toPlainBoard } from "./enginePool.ts";
 import { PersistentExperienceStore } from "./experiencePersist.ts";
+import type { PracticeReportEvent } from "../shared/practiceReport.ts";
 
 describe("toPlainBoard", () => {
   it("makes proxied boards structured-cloneable for Worker.postMessage", () => {
     const plain = newGame().board;
     plain[5][5] = 1;
     const proxied = new Proxy(plain, {
-      get(target, prop, receiver) {
-        const value = Reflect.get(target, prop, receiver);
+      get(target: Board, prop: string | symbol, receiver: unknown): unknown {
+        const value: unknown = Reflect.get(target, prop, receiver);
         if (typeof prop === "string" && /^\d+$/.test(prop) && Array.isArray(value)) {
-          return new Proxy(value, {});
+          return new Proxy(value as number[], {});
         }
         return value;
       },
@@ -305,10 +306,13 @@ describe("EnginePool background improvement", () => {
     pool.terminate();
   });
 
-  it("settles the entry when background cannot out-depth it, then skips background", async () => {
+  it("raises stallCount when background cannot out-depth it; freezes after give-up", async () => {
     const { store, board, player, key, transform } = seedHit();
     const pool = new EnginePool(1, store);
-    await pool.requestMove(board, player, "easy", undefined, { experienceMode: "use" });
+    await pool.requestMove(board, player, "easy", undefined, {
+      experienceMode: "use",
+      settleGiveUpSearches: 3,
+    });
     const worker = RecordingWorker.instances[0];
     const backgroundRequest = worker.posted[0];
     const canonicalMove = transform.toCanonical({ row: 4, col: 4 });
@@ -328,23 +332,37 @@ describe("EnginePool background improvement", () => {
       },
     } as MessageEvent<EngineMessage>);
 
-    expect(store.get("easy", key)?.settled).toBe(true);
+    expect(store.get("easy", key)?.stallCount).toBe(1);
+    expect(store.get("easy", key)?.stallCount).toBeLessThan(3);
 
-    // Second hit: still instant, but no new background dispatch anywhere.
+    // Still not permanent → another background reinvest is enqueued.
+    const postedBefore = RecordingWorker.instances.reduce((n, w) => n + w.posted.length, 0);
+    await pool.requestMove(board, player, "easy", undefined, {
+      experienceMode: "use",
+      settleGiveUpSearches: 3,
+    });
+    const postedAfterSecond = RecordingWorker.instances.reduce((n, w) => n + w.posted.length, 0);
+    expect(postedAfterSecond).toBeGreaterThan(postedBefore);
+
+    // Drive stallCount to the give-up threshold, then confirm freeze (no new background).
+    store.setStallCount("easy", key, 3);
+    const postedBeforeFreeze = RecordingWorker.instances.reduce((n, w) => n + w.posted.length, 0);
     const again = await pool.requestMove(board, player, "easy", undefined, {
       experienceMode: "use",
+      settleGiveUpSearches: 3,
     });
     expect(again.move).toEqual({ row: 4, col: 4 });
-    const totalPosted = RecordingWorker.instances.reduce((n, w) => n + w.posted.length, 0);
-    expect(totalPosted).toBe(1);
+    const postedAfterFreeze = RecordingWorker.instances.reduce((n, w) => n + w.posted.length, 0);
+    expect(postedAfterFreeze).toBe(postedBeforeFreeze);
     pool.terminate();
   });
 
-  it("settles on practice foreground when search does not beat the baseline", async () => {
+  it("raises stallCount on practice foreground when search does not beat the baseline", async () => {
     const { store, board, player, key } = seedHit();
     const pool = new EnginePool(1, store);
     const pending = pool.requestMove(board, player, "easy", undefined, {
       experienceMode: "practice",
+      settleGiveUpSearches: 3,
     });
     const worker = RecordingWorker.instances[0];
     expect(worker.posted).toHaveLength(1);
@@ -367,15 +385,16 @@ describe("EnginePool background improvement", () => {
     } as MessageEvent<EngineMessage>);
 
     await pending;
-    expect(store.get("easy", key)?.settled).toBe(true);
+    expect(store.get("easy", key)?.stallCount).toBe(1);
     pool.terminate();
   });
 
-  it("does not settle on practice foreground when search beats the baseline", async () => {
+  it("climbs settleLevel on practice foreground when search beats the baseline", async () => {
     const { store, board, player, key } = seedHit();
     const pool = new EnginePool(1, store);
     const pending = pool.requestMove(board, player, "easy", undefined, {
       experienceMode: "practice",
+      settleGiveUpSearches: 3,
     });
     const worker = RecordingWorker.instances[0];
 
@@ -395,8 +414,43 @@ describe("EnginePool background improvement", () => {
     } as MessageEvent<EngineMessage>);
 
     await pending;
-    expect(store.get("easy", key)?.settled).not.toBe(true);
+    expect(store.get("easy", key)?.stallCount).toBe(0);
+    expect(store.get("easy", key)?.settleLevel).toBeGreaterThan(0);
     expect(store.get("easy", key)?.depth).toBe(4);
     pool.terminate();
+  });
+
+  it("emits a 'new' report event when a searched position is first stored", async () => {
+    const events: PracticeReportEvent[] = [];
+    const store = new PersistentExperienceStore();
+    const pool = new EnginePool(1, store, ev => events.push(ev));
+    const board = newGame().board;
+    board[7][7] = 1;
+    const pending = pool.requestMove(board, 2, "easy", 50, {
+      experienceMode: "practice",
+      settleGiveUpSearches: 3,
+    });
+    const worker = RecordingWorker.instances[0];
+    expect(worker.posted).toHaveLength(1);
+    worker.onmessage?.({
+      data: {
+        id: worker.posted[0].id,
+        ok: true,
+        result: {
+          move: { row: 7, col: 8 },
+          score: 5,
+          depth: 2,
+          principalVariation: [{ row: 7, col: 8 }],
+          nodesVisited: 42,
+        },
+      },
+    } as MessageEvent<EngineMessage>);
+    await pending;
+    pool.terminate();
+    const firstNew = events.find(e => e.kind === "new");
+    expect(firstNew?.settleLevel).toBe(0);
+    expect(firstNew?.stallCount).toBe(0);
+    expect(firstNew?.difficulty).toBe("easy");
+    expect(firstNew?.newNodes).toBe(42);
   });
 });

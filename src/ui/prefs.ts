@@ -11,6 +11,9 @@ export interface CaroSettings {
    * — much faster.
    */
   practiceImprovement: boolean;
+  /** Give-up threshold: freeze a position after this many consecutive
+   *  non-improving searches. 1–9, default 3. */
+  settleGiveUpSearches: number;
   /** When true, show engine thought lines in the status detail panel. */
   showThoughts: boolean;
   lang: Locale;
@@ -20,6 +23,7 @@ export const DEFAULT_SETTINGS: CaroSettings = {
   highlightWhileThinking: false,
   experienceImprovement: true,
   practiceImprovement: true,
+  settleGiveUpSearches: 3,
   showThoughts: true,
   lang: "vi",
 };
@@ -50,6 +54,10 @@ export function loadSettings(): CaroSettings {
         typeof record.practiceImprovement === "boolean"
           ? record.practiceImprovement
           : DEFAULT_SETTINGS.practiceImprovement,
+      settleGiveUpSearches:
+        typeof record.settleGiveUpSearches === "number"
+          ? Math.min(9, Math.max(1, Math.round(record.settleGiveUpSearches)))
+          : DEFAULT_SETTINGS.settleGiveUpSearches,
       showThoughts:
         typeof record.showThoughts === "boolean"
           ? record.showThoughts
