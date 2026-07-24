@@ -50,3 +50,94 @@
     {session.localeTick >= 0 ? t('settings.back') : ''}
   </button>
 </div>
+
+<style>
+  #instructions-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    min-width: min(420px, 100%);
+    max-width: 36rem;
+    margin-top: var(--cell-size, 28px);
+    margin-left: var(--cell-size, 28px);
+  }
+
+  #instructions-panel h2 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--graphite);
+  }
+
+  .info-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .info-section h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ink-blue);
+  }
+
+  #instructions-panel .info-section h3 {
+    position: relative;
+    display: inline-block;
+    align-self: flex-start;
+    padding-bottom: 5px;
+  }
+
+  #instructions-panel .info-section h3::after {
+    content: "";
+    position: absolute;
+    left: 1px;
+    right: 3px;
+    bottom: 0;
+    height: 7px;
+    border-bottom: 2px solid var(--pen-red);
+    border-radius: 50%;
+    opacity: 0.7;
+    transform: rotate(-1deg);
+  }
+
+  .info-section ul {
+    margin: 0;
+    padding-left: 1.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.95rem;
+    line-height: 1.4;
+    color: var(--graphite);
+  }
+
+  #instructions-back {
+    padding: 10px 20px;
+    font-family: inherit;
+    font-size: 1rem;
+    color: var(--graphite);
+    background: var(--cell-paper);
+    border: 2px solid var(--graphite);
+    border-radius: 3px 3px 0 0;
+    box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+  }
+
+  #instructions-back:hover {
+    background: #f1ead8;
+  }
+
+  #instructions-back:active {
+    box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.1);
+    transform: translate(2px, 2px);
+  }
+
+  #instructions-back:focus-visible {
+    outline: 2px solid var(--ink-blue);
+    outline-offset: 2px;
+  }
+</style>

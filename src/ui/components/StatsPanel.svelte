@@ -72,3 +72,56 @@
   <p class="stats-hint">{session.localeTick >= 0 ? t('stats.hintCycle') : ''}</p>
   <p class="stats-hint">{session.localeTick >= 0 ? t('stats.hintReset') : ''}</p>
 </div>
+
+<style>
+  #stats-panel {
+    min-width: 560px;
+  }
+
+  #stats-panel:global([hidden]) {
+    display: none;
+  }
+
+  #stats-panel .stats-section {
+    margin-bottom: 1.1rem;
+  }
+
+  #stats-panel .stats-section h3 {
+    margin: 0 0 0.45rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  #stats-panel .stats-summary {
+    margin: 0;
+    font-size: 0.9rem;
+  }
+
+  #stats-panel table {
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    background: var(--cell-paper);
+  }
+
+  #stats-panel th,
+  #stats-panel td {
+    padding: 4px 10px;
+    border: 1px solid var(--rule-blue);
+    text-align: right;
+  }
+
+  #stats-panel th:first-child,
+  #stats-panel td:first-child {
+    text-align: left;
+  }
+
+  #stats-panel .stats-hint {
+    margin: 10px 0 0;
+    max-width: 42rem;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--graphite);
+    opacity: 0.85;
+  }
+</style>

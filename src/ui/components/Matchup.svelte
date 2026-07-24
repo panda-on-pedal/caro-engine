@@ -24,3 +24,34 @@
   </svg>
   <span id="matchup-p2" class="matchup-side" data-player="2">{sides.p2} (O)</span>
 </p>
+
+<style>
+  #matchup {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    align-self: stretch;
+    margin: 0 0 0 var(--cell-size, 28px);
+    font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+  }
+
+  .matchup-side[data-player="1"] {
+    color: var(--ink-blue);
+  }
+
+  .matchup-side[data-player="2"] {
+    color: var(--pen-red);
+  }
+
+  .matchup-vs {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    color: var(--graphite);
+    opacity: 0.7;
+  }
+</style>

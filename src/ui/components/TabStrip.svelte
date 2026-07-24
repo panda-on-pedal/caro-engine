@@ -39,3 +39,53 @@
     </button>
   {/if}
 </div>
+
+<style>
+  #tab-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: var(--cell-size, 28px);
+    margin-left: var(--cell-size, 28px);
+  }
+
+  #tab-strip:global([hidden]) {
+    display: none;
+  }
+
+  .tab-button {
+    padding: 4px 10px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    color: var(--graphite);
+    background: var(--cell-paper);
+    border: 2px solid var(--graphite);
+    border-radius: 3px 3px 0 0;
+    cursor: pointer;
+  }
+
+  .tab-button:hover {
+    background: #f1ead8;
+  }
+
+  .tab-button[data-active="true"] {
+    background-image: linear-gradient(180deg, transparent 55%, var(--highlighter) 55%);
+    font-weight: 600;
+  }
+
+  .tab-button[data-status="thinking"]::after {
+    content: " •";
+    color: var(--ink-blue);
+  }
+
+  .tab-button[data-status="restarting"]::after {
+    content: " •";
+    color: var(--pen-red);
+  }
+
+  .tab-button-results {
+    margin-left: 8px;
+    padding-left: 14px;
+    border-left: 2px dashed var(--muted);
+  }
+</style>

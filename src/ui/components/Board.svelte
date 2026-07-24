@@ -88,3 +88,112 @@
     {/each}
   </div>
 </div>
+
+<style>
+  #board-grid {
+    display: grid;
+    grid-template-columns: auto auto;
+    grid-template-rows: auto auto;
+  }
+
+  #board-corner {
+    width: var(--cell-size, 28px);
+    height: var(--cell-size, 28px);
+  }
+
+  #col-headers,
+  #row-headers {
+    display: grid;
+  }
+
+  .header-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
+    font-size: 9px;
+    color: var(--muted);
+  }
+
+  #board {
+    display: grid;
+    gap: 0;
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(to right, var(--rule-blue) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--rule-blue) 1px, transparent 1px);
+    background-size: var(--cell-size, 28px) var(--cell-size, 28px);
+    border: 2px solid var(--graphite);
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.08);
+  }
+
+  .cell {
+    width: var(--cell-size, 28px);
+    height: var(--cell-size, 28px);
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive;
+    font-size: 19px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+
+  .cell:not(:disabled):hover {
+    background: rgba(47, 93, 156, 0.14);
+  }
+
+  .cell:disabled {
+    cursor: default;
+  }
+
+  .cell[data-player="1"] {
+    color: var(--ink-blue);
+  }
+
+  .cell[data-player="2"] {
+    color: var(--pen-red);
+  }
+
+  .mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 78%;
+    height: 78%;
+    border-radius: 50%;
+    transition:
+      box-shadow 0.15s ease,
+      background-color 0.15s ease;
+  }
+
+  .mark[data-winning-cell="true"] {
+    font-weight: 700;
+    background-color: rgba(246, 214, 90, 0.65);
+  }
+
+  .mark[data-last-move="true"] {
+    background-color: rgba(246, 214, 90, 0.9);
+  }
+
+  .cell[data-thinking="true"] {
+    background-color: rgba(47, 93, 156, 0.12);
+  }
+
+  .cell[data-thinking="true"] .mark:not([data-last-move]):not([data-winning-cell]) {
+    box-shadow: inset 0 0 0 2px rgba(47, 93, 156, 0.35);
+  }
+
+  .cell:focus {
+    outline: none;
+  }
+
+  .cell:focus-visible {
+    outline: 2px solid var(--ink-blue);
+    outline-offset: -2px;
+  }
+</style>

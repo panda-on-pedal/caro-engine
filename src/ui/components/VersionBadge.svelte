@@ -41,3 +41,37 @@
     </a>
   {/if}
 </div>
+
+<style>
+  .version-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    margin-top: 10px;
+  }
+
+  .version-label {
+    margin: 0;
+    font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+
+  .version-update {
+    font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
+    font-size: 0.72rem;
+    color: var(--pen-red);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .version-update:hover {
+    color: #9e2f2c;
+  }
+
+  .version-update:focus-visible {
+    outline: 2px solid var(--ink-blue);
+    outline-offset: 2px;
+  }
+</style>

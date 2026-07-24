@@ -92,3 +92,67 @@
       : ''}
   </button>
 {/if}
+
+<style>
+  #game-mode,
+  #difficulty,
+  #board-count {
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    color: var(--graphite);
+    background: var(--cell-paper);
+    border: 2px solid var(--graphite);
+    border-radius: 3px;
+  }
+
+  #new-game,
+  #undo,
+  #redo,
+  #pause,
+  #ascii-toggle {
+    padding: 10px 20px;
+    font-family: inherit;
+    font-size: 1rem;
+    color: var(--graphite);
+    background: var(--cell-paper);
+    border: 2px solid var(--graphite);
+    border-radius: 3px 3px 0 0;
+    box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+  }
+
+  #new-game:hover,
+  #undo:hover:not(:disabled),
+  #redo:hover:not(:disabled),
+  #pause:hover:not(:disabled),
+  #ascii-toggle:hover {
+    background: #f1ead8;
+  }
+
+  #new-game:active,
+  #undo:active:not(:disabled),
+  #redo:active:not(:disabled),
+  #pause:active:not(:disabled),
+  #ascii-toggle:active {
+    box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.1);
+    transform: translate(2px, 2px);
+  }
+
+  #new-game:focus-visible,
+  #undo:focus-visible,
+  #redo:focus-visible,
+  #pause:focus-visible,
+  #ascii-toggle:focus-visible {
+    outline: 2px solid var(--ink-blue);
+    outline-offset: 2px;
+  }
+
+  #undo:disabled,
+  #redo:disabled,
+  #pause:disabled {
+    opacity: 0.45;
+    cursor: default;
+    box-shadow: none;
+  }
+</style>

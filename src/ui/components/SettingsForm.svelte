@@ -102,3 +102,39 @@
     <option value="en">{session.localeTick >= 0 ? t('lang.en') : ''}</option>
   </select>
 </label>
+
+<style>
+  .settings-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 0.95rem;
+    color: var(--graphite);
+    cursor: pointer;
+  }
+
+  .settings-row-select {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    cursor: default;
+  }
+
+  .settings-row-select select {
+    min-width: 12rem;
+  }
+
+  .settings-row input {
+    margin-top: 3px;
+  }
+
+  #lang {
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    color: var(--graphite);
+    background: var(--cell-paper);
+    border: 2px solid var(--graphite);
+    border-radius: 3px;
+  }
+</style>

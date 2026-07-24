@@ -59,3 +59,74 @@
     </svg>
   </a>
 </nav>
+
+<style>
+  .nav-rail {
+    /* Keep icons in the red-margin gutter (line sits at 55px), not the full 72px column. */
+    position: sticky;
+    top: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 20px 0 0;
+    width: 55px;
+    box-sizing: border-box;
+  }
+
+  .nav-rail-link {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    color: var(--ink-blue);
+    text-decoration: none;
+  }
+
+  .nav-rail-link:hover {
+    color: #1f4478;
+  }
+
+  .nav-rail-link:focus-visible {
+    outline: 2px solid var(--ink-blue);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  .nav-rail-icon {
+    display: block;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .nav-rail-marker {
+    position: absolute;
+    left: -2px;
+    top: 50%;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--pen-red);
+    transform: translateY(-50%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .nav-rail-link.active .nav-rail-marker {
+    opacity: 1;
+  }
+
+  .nav-rail-icon-fill {
+    fill: currentColor;
+    stroke: none;
+  }
+</style>

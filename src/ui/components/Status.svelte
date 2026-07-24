@@ -40,3 +40,45 @@
     </p>
   {/if}
 </div>
+
+<style>
+  .status-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    gap: 4px;
+  }
+
+  #status {
+    flex: 0 0 auto;
+    font-size: 1.05rem;
+    min-height: 1.4em;
+    margin: 0;
+  }
+
+  #status[data-done] {
+    font-weight: 600;
+    padding: 0 4px;
+    background-image: linear-gradient(180deg, transparent 60%, var(--highlighter) 60%);
+  }
+
+  #status-detail {
+    flex: 1;
+    min-height: 0;
+    margin: 0;
+    overflow-y: auto;
+    font-size: 0.85rem;
+    line-height: 1.35;
+    color: var(--muted);
+    white-space: pre-line;
+  }
+
+  #status-detail[data-severity="error"] {
+    color: var(--pen-red);
+  }
+
+  #status-detail:global([hidden]) {
+    display: none;
+  }
+</style>
