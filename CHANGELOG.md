@@ -1,5 +1,34 @@
 # Release notes
 
+## 1.1.0
+
+### Play & UI
+
+- UI rebuilt with **Svelte** (nav rail, version badge, loading indicator, language selector)
+- **Instructions** page covering rules, modes, and tips
+- Show who plays X/O under the board (matchup)
+- Narrate computer thinking mid-search (thought feed with optional cell highlight)
+- Retry failed state/results API calls with user-visible notices
+- Settings: show/hide engine thoughts; human vs computer narration toggle
+
+### Practice & experience
+
+- **Practice** mode: multi-board AI vs AI training without tournament scoring
+- Disk-persisted **experience cache** so the engine reuses past search results
+- Per-difficulty experience books, with canonical board orientation / symmetry matching
+- Shared **human book**: AI can mimic winning human moves across all difficulties
+- Practice opening moves and automatic restart when both sides leave known experience
+- Practice improvement toggle: disable background re-search on cache hits for faster cache-edge exploration
+- Graduated settle: entries freeze after N consecutive non-improving searches (configurable 1–9, default 3)
+- Live **practice reports** panel (new / improved / stalled / settled per board)
+
+### Engine
+
+- Transposition table (Zobrist) with book deepening and per-orientation TT persistence
+- Background reinvest on experience hits (full-budget search, preemptible by foreground play)
+- Step time by own stones (early fights no longer burn the full budget on open twos)
+- Settled / stall tracking so background search skips positions that no longer improve
+
 ## 1.0.0
 
 First public release of **Caro Tournament** (`caro-tournament`) — Caro / Gomoku (five-in-a-row) on a 20×20 board, with a local engine and multi-board tournament mode.
