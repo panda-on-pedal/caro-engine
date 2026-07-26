@@ -1,6 +1,11 @@
 import type { Board, Player } from "../engine/board.ts";
-import { resolveEngineSearchConfig, type Difficulty } from "../engine/engine.ts";
-import { narrowRootCandidates } from "../engine/search/search.ts";
+import {
+  DIFFICULTY_PROFILES,
+  resolveEngineSearchConfig,
+  type Difficulty,
+} from "../engine/engine.ts";
+import { WIN_SCORE } from "../engine/search/evaluate.ts";
+import { prepareRootMoves } from "../engine/search/search.ts";
 import { partitionCandidates, aggregateParallelResults } from "./parallelSearch.ts";
 import type { Move } from "../engine/state.ts";
 import {
@@ -46,7 +51,8 @@ export class CancelledError extends Error {
 export interface RequestMoveOptions {
   onProgress?: (event: SearchProgressEvent) => void;
   experienceMode?: ExperienceMode;
-  /** When false, skip writing the search result into the experience book. */
+  /** When false, skip writing *new* search results into the experience book.
+   *  Cache-hit background reinvest still runs and may update existing entries. */
   persistExperience?: boolean;
   /**
    * Practice only. Default true. When false, every strong cache hit replays
@@ -64,8 +70,14 @@ export interface RequestMoveOptions {
   /** Parallel root-partition slice for this worker (coordinator use only).
    *  Its presence marks a request as a slice, so it never re-enters fan-out. */
   rootCandidates?: Move[];
-  /** 1-based parallel slice id for debug logs (fan-out only). */
-  workerIndex?: number;
+  /** Debug log tag for parallel workers (e.g. "worker #1"). */
+  workerLabel?: string;
+  /** Synced-depth parallel: search only this ID depth (with maxDepth). */
+  minDepth?: number;
+  /** Override difficulty maxDepth for this request. */
+  maxDepth?: number;
+  /** When false, skip own-stone time stepping (remaining wall budget already set). */
+  stepTimeByOwnStones?: boolean;
 }
 
 interface PendingEntry {
@@ -175,9 +187,10 @@ export class EnginePool {
       });
       // Reinvest: replay instantly, but keep improving the entry in the
       // background until stallCount reaches the give-up threshold.
-      // Practice with improvement off replays every hit and never re-searches.
+      // Independent of persistExperience (that flag only gates *new* writes
+      // from foreground searches). Practice with improvement off still skips.
       const improvementAllowed = experienceMode !== "practice" || practiceImprovement;
-      if (!prepared.permanent && persistExperience && improvementAllowed) {
+      if (!prepared.permanent && improvementAllowed) {
         this.enqueueBackgroundImprovement(
           board,
           player,
@@ -229,10 +242,13 @@ export class EnginePool {
         player,
         difficulty,
         timeBudgetMs,
+        stepTimeByOwnStones: options?.stepTimeByOwnStones,
         experienceMode,
         experienceBaseline: prepared.baseline,
         rootCandidates: options?.rootCandidates,
-        workerIndex: options?.workerIndex,
+        workerLabel: options?.workerLabel,
+        minDepth: options?.minDepth,
+        maxDepth: options?.maxDepth,
       };
       this.nextId += 1;
       const job: QueuedJob = {
@@ -429,21 +445,24 @@ export class EnginePool {
     difficulty: Difficulty,
     timeBudgetMs: number | undefined,
     slice: Move[],
-    workerIndex: number
+    workerIndex: number,
+    depth: number
   ): Promise<SearchResult> {
     return this.requestMove(board, player, difficulty, timeBudgetMs, {
       experienceMode: "off",
       persistExperience: false,
       rootCandidates: slice,
-      workerIndex,
+      workerLabel: `worker #${workerIndex}`,
+      minDepth: depth,
+      maxDepth: depth,
+      stepTimeByOwnStones: false,
     });
   }
 
-  /** Root-partition parallel search. Narrows once on the main thread, splits the
-   *  candidate set across idle workers, folds the aggregate into the book, and
-   *  resolves. Returns null when there is nothing worth splitting (too few
-   *  candidates, non-tactical position, or fewer than 2 idle workers) — the
-   *  caller then uses the single-worker path. */
+  /** Root-partition parallel search with synced iterative deepening.
+   *  Prepares the full tactical root (narrow + threat merge) once, partitions
+   *  it, then advances depth-by-depth across workers and aggregates only at
+   *  matching completed depths. Returns null when fan-out is not worthwhile. */
   private runParallelSearch(
     board: Board,
     player: Player,
@@ -454,45 +473,94 @@ export class EnginePool {
     options?: RequestMoveOptions
   ): Promise<SearchResult> | null {
     const idle = this.slots.filter(slot => !slot.busy).length;
-    if (Math.min(parallelism, idle) < 2) {
+    if (idle < 2 || parallelism < 2) {
       return null;
     }
     const plain = toPlainBoard(board);
-    const { narrowed } = narrowRootCandidates(
+    const { narrowed, rootMoves } = prepareRootMoves(
       plain,
       player,
       resolveEngineSearchConfig({ difficulty })
     );
-    if (narrowed.source !== "tactical" || narrowed.moves.length < 2) {
+    if (narrowed.source !== "tactical" || rootMoves.length < 2) {
       return null;
     }
-    const width = Math.min(parallelism, idle, narrowed.moves.length);
+    const width = Math.min(parallelism, idle, rootMoves.length);
     if (width < 2) {
       return null;
     }
-    const slices = partitionCandidates(narrowed.moves, width);
-    return Promise.all(
-      slices.map((slice, i) =>
-        this.searchSlice(plain, player, difficulty, timeBudgetMs, slice, i + 1)
-      )
-    ).then(results => {
-      const aggregated = aggregateParallelResults(results);
+    const slices = partitionCandidates(rootMoves, width);
+    const profile = DIFFICULTY_PROFILES[difficulty];
+    const budgetMs = timeBudgetMs ?? profile.timeBudgetMs;
+    const maxDepth = profile.maxDepth;
+    const deadline = Date.now() + budgetMs;
+
+    return (async () => {
+      let best: SearchResult | null = null;
+      let nodesVisited = 0;
+
+      for (let depth = 1; depth <= maxDepth; depth += 1) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+          break;
+        }
+        const results = await Promise.all(
+          slices.map((slice, i) =>
+            this.searchSlice(plain, player, difficulty, remaining, slice, i + 1, depth)
+          )
+        );
+        nodesVisited += results.reduce((sum, r) => sum + r.nodesVisited, 0);
+        const incomplete = results.some(r => r.complete === false);
+        if (incomplete) {
+          if (best === null) {
+            best = { ...aggregateParallelResults(results), nodesVisited, depth };
+          }
+          logger.log("[pool] parallel depth incomplete — keeping prior", {
+            depth,
+            priorDepth: best.depth,
+            nodes: nodesVisited,
+          });
+          break;
+        }
+        const aggregated = aggregateParallelResults(results);
+        best = { ...aggregated, nodesVisited, depth };
+        logger.log("[pool] parallel depth", {
+          depth,
+          chosen: `${best.move.row},${best.move.col}`,
+          score: best.score,
+          nodes: nodesVisited,
+          slices: results.map((r, i) => ({
+            worker: `#${i + 1}`,
+            move: `${r.move.row},${r.move.col}`,
+            score: r.score,
+            nodes: r.nodesVisited,
+          })),
+        });
+        if (Math.abs(best.score) >= WIN_SCORE) {
+          break;
+        }
+      }
+
+      if (best === null) {
+        // No depth produced a result — fall back to first candidate.
+        best = {
+          move: rootMoves[0],
+          score: 0,
+          depth: 0,
+          principalVariation: [rootMoves[0]],
+          nodesVisited,
+        };
+      }
+
       logger.log("[pool] parallel choice", {
-        chosen: `${aggregated.move.row},${aggregated.move.col}`,
-        score: aggregated.score,
-        depth: aggregated.depth,
-        nodes: aggregated.nodesVisited,
-        slices: results.map((r, i) => ({
-          worker: `#${i + 1}`,
-          move: `${r.move.row},${r.move.col}`,
-          score: r.score,
-          depth: r.depth,
-          nodes: r.nodesVisited,
-        })),
+        chosen: `${best.move.row},${best.move.col}`,
+        score: best.score,
+        depth: best.depth,
+        nodes: best.nodesVisited,
       });
-      this.applyAggregatedResult(prepared, difficulty, aggregated, options);
-      return aggregated;
-    });
+      this.applyAggregatedResult(prepared, difficulty, best, options);
+      return best;
+    })();
   }
 
   /** Fold a parallel aggregate into the book (mirrors the single-worker

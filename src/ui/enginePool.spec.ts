@@ -272,6 +272,24 @@ describe("EnginePool background improvement", () => {
     pool.terminate();
   });
 
+  it("reinvests on a cache hit even when persistExperience is false", async () => {
+    const { store, board, player, key } = seedHit();
+    const pool = new EnginePool(1, store);
+
+    const result = await pool.requestMove(board, player, "easy", undefined, {
+      experienceMode: "use",
+      persistExperience: false,
+    });
+    expect(result.move).toEqual({ row: 4, col: 4 });
+
+    expect(RecordingWorker.instances).toHaveLength(1);
+    const background = RecordingWorker.instances[0].posted;
+    expect(background).toHaveLength(1);
+    expect(background[0].bookDeepening).toBe(true);
+    expect(background[0].canonicalKey).toBe(key);
+    pool.terminate();
+  });
+
   it("preempts the background search when a foreground request arrives", async () => {
     const { store, board, player } = seedHit();
     const pool = new EnginePool(1, store);

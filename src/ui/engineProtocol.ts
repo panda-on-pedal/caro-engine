@@ -31,8 +31,12 @@ export interface EngineRequest {
   experienceBaseline?: ExperienceEntry;
   /** Parallel root-partition: this worker searches only these root moves. */
   rootCandidates?: Move[];
-  /** 1-based parallel slice id for debug logs (fan-out only). */
-  workerIndex?: number;
+  /** Debug log tag for parallel workers (e.g. "worker #1"). */
+  workerLabel?: string;
+  /** Synced-depth parallel: search only this ID depth (with maxDepth). */
+  minDepth?: number;
+  /** Override difficulty maxDepth for this request. */
+  maxDepth?: number;
   /** Background book-deepening job: search the canonical board, persist the TT. */
   bookDeepening?: boolean;
   /** Experience canonical key naming the persisted TT slice. */
@@ -78,8 +82,10 @@ export function handleEngineRequest(
         experienceMode: request.experienceMode,
         experienceBaseline: request.experienceBaseline,
         rootCandidates: request.rootCandidates,
+        minDepth: request.minDepth,
+        maxDepth: request.maxDepth,
       }),
-      workerIndex: request.workerIndex,
+      workerLabel: request.workerLabel,
       onProgress,
     });
     return { id: request.id, ok: true, result };

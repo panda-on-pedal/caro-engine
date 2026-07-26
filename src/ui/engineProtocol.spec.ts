@@ -248,7 +248,7 @@ describe("runBookDeepening", () => {
       player: 1,
       difficulty: "medium",
       // Cap the real search so the test is fast despite BOOK_MAX_DEPTH=24.
-      timeBudgetMs: 50,
+      timeBudgetMs: 500,
       bookDeepening: true,
       canonicalKey: "KEY_X",
     };

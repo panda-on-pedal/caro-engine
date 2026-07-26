@@ -48,21 +48,26 @@ afterEach(() => {
 
 class StubPool extends EnginePool {
   public sliceCalls: Move[][] = [];
+  public depthCalls: number[] = [];
+
   protected override searchSlice(
     _board: Board,
     _player: Player,
     _difficulty: Difficulty,
     _budget: number | undefined,
     slice: Move[],
-    _workerIndex: number
+    _workerIndex: number,
+    depth: number
   ): Promise<SearchResult> {
     this.sliceCalls.push(slice);
+    this.depthCalls.push(depth);
     // Score each slice by its first candidate's column so we can assert the winner.
     const move = slice[0];
     return Promise.resolve({
       move,
       score: move.col * 10,
-      depth: 6,
+      depth,
+      complete: true,
       principalVariation: [move],
       nodesVisited: 1,
     });
@@ -83,10 +88,53 @@ describe("EnginePool parallel route", () => {
       parallelism: 3,
     });
     expect(pool.sliceCalls.length).toBeGreaterThan(1); // fanned out
+    // Synced depths: same slice set re-searched per depth (expert maxDepth=8).
+    expect(pool.depthCalls[0]).toBe(1);
+    expect(new Set(pool.depthCalls).size).toBeGreaterThan(1);
     const best = pool.sliceCalls
       .map(s => s[0])
       .reduce((a, b) => (b.col > a.col ? b : a));
     expect(result.move).toEqual(best);
+    pool.terminate();
+  });
+
+  it("keeps the prior depth when a synced depth is incomplete", async () => {
+    class IncompleteAtThreePool extends StubPool {
+      protected override searchSlice(
+        _board: Board,
+        _player: Player,
+        _difficulty: Difficulty,
+        _budget: number | undefined,
+        slice: Move[],
+        _workerIndex: number,
+        depth: number
+      ): Promise<SearchResult> {
+        this.sliceCalls.push(slice);
+        this.depthCalls.push(depth);
+        const move = slice[0];
+        return Promise.resolve({
+          move,
+          // Depth 2 prefers higher col; depth 3 (incomplete) would flip if kept.
+          score: depth >= 3 ? -move.col * 100 : move.col * 10,
+          depth,
+          complete: depth < 3,
+          principalVariation: [move],
+          nodesVisited: 1,
+        });
+      }
+    }
+    const pool = new IncompleteAtThreePool(4);
+    const board = createEmptyBoard();
+    board[7][7] = 1;
+    board[7][8] = 1;
+    board[7][9] = 1;
+    const result = await pool.requestMove(board, 2, "expert", undefined, {
+      experienceMode: "use",
+      parallelism: 3,
+    });
+    expect(result.depth).toBe(2);
+    expect(pool.depthCalls).toContain(3);
+    expect(Math.max(...pool.depthCalls)).toBe(3);
     pool.terminate();
   });
 

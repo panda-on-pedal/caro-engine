@@ -71,6 +71,10 @@ export interface EngineConfig {
   bookDeepening?: boolean;
   /** Restrict the root search to these moves (parallel root-partition). */
   rootCandidates?: Move[];
+  /** Override profile maxDepth (parallel synced-depth sets min===max). */
+  maxDepth?: number;
+  /** First ID depth (inclusive). Default 1. */
+  minDepth?: number;
 }
 
 const DEFAULT_CONFIG: EngineConfig = { difficulty: "medium" };
@@ -79,7 +83,10 @@ const DEFAULT_CONFIG: EngineConfig = { difficulty: "medium" };
 export function resolveEngineSearchConfig(config: EngineConfig): SearchConfig {
   const profile = DIFFICULTY_PROFILES[config.difficulty];
   return {
-    maxDepth: config.bookDeepening ? BOOK_MAX_DEPTH : profile.maxDepth,
+    maxDepth: config.bookDeepening
+      ? BOOK_MAX_DEPTH
+      : (config.maxDepth ?? profile.maxDepth),
+    minDepth: config.minDepth,
     timeBudgetMs: config.timeBudgetMs ?? profile.timeBudgetMs,
     // Practice has no human waiting — use the full difficulty budget.
     stepTimeByOwnStones:

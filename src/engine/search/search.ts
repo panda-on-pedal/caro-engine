@@ -25,6 +25,10 @@ import {
 import { resolveEffectiveTimeBudget } from "../timeBudget.ts";
 import { TranspositionTable, TTFlag, type TTEntry } from "../transposition/transposition.ts";
 import { SIDE_TO_MOVE_KEY } from "../transposition/zobrist.ts";
+import {
+  discoverOpponentThreatBlocks,
+  mergeThreatBlocksIntoRoot,
+} from "./threatProbe.ts";
 
 export type { InsightKind, SearchProgressEvent } from "./searchProgress.ts";
 
@@ -401,6 +405,9 @@ export interface SearchResult {
   depth: number;
   principalVariation: Move[];
   nodesVisited: number;
+  /** False when this result's depth iteration stopped early (deadline).
+   *  Parallel synced-depth uses this to keep the prior completed depth. */
+  complete?: boolean;
   /** Practice-mode signal: did this position have a usable experience
    * baseline (cache hit), regardless of whether search beat or floored to
    * it? Undefined outside practice mode. */
@@ -413,6 +420,9 @@ export interface SearchResult {
 
 export interface SearchConfig {
   maxDepth: number;
+  /** First iterative-deepening depth (inclusive). Default 1. Parallel
+   *  synced-depth sets minDepth === maxDepth for one depth per request. */
+  minDepth?: number;
   timeBudgetMs?: number;
   /**
    * When false, skip own-stone time stepping (practice / background reinvest).
@@ -445,8 +455,8 @@ export interface SearchConfig {
    *  (filtered to legal) and skip narrowing. Used by parallel root-partition
    *  search — each worker owns one slice of the narrowed candidate set. */
   rootCandidates?: Move[];
-  /** 1-based parallel slice id for debug logs (fan-out only). */
-  workerIndex?: number;
+  /** Debug log tag for parallel workers (e.g. "worker #1", "worker #threat"). */
+  workerLabel?: string;
   /** Root experience policy for this call. Default: off inside search. */
   experienceMode?: ExperienceMode;
   /** Practice baseline (and optional move-ordering seed). */
@@ -479,22 +489,18 @@ export type MoveSelectionStrategy = (
   config: SearchConfig
 ) => SearchResult;
 
-function workerLogSuffix(workerIndex: number | undefined): string {
-  return workerIndex !== undefined ? ` - worker #${workerIndex}` : "";
+function workerLogSuffix(config: { workerLabel?: string }): string {
+  return config.workerLabel !== undefined ? ` - ${config.workerLabel}` : "";
 }
 
-function logRootChoice(
-  depth: number,
-  result: SearchNode,
-  workerIndex: number | undefined
-): void {
+function logRootChoice(depth: number, result: SearchNode, config: SearchConfig): void {
   const chosen = result.principalVariation[0];
   if (chosen === undefined || result.rootExamined === undefined) {
     return;
   }
   const ranked = [...result.rootExamined].sort((a, b) => b.compareScore - a.compareScore);
   const chosenKey = moveKey(chosen);
-  logger.log(`[search] root choice @ depth ${depth}${workerLogSuffix(workerIndex)}`, {
+  logger.log(`[search] root choice @ depth ${depth}${workerLogSuffix(config)}`, {
     complete: result.complete !== false,
     chosen: `${chosen.row},${chosen.col}`,
     score: result.score,
@@ -529,8 +535,10 @@ export const negamaxStrategy: MoveSelectionStrategy = (board, player, candidates
 
   let bestNode: SearchNode | null = null;
   let depthReached = 0;
+  let lastComplete = true;
+  const startDepth = Math.max(1, config.minDepth ?? 1);
 
-  for (let depth = 1; depth <= config.maxDepth; depth += 1) {
+  for (let depth = startDepth; depth <= config.maxDepth; depth += 1) {
     if (deadline !== null && Date.now() > deadline) {
       break;
     }
@@ -555,12 +563,13 @@ export const negamaxStrategy: MoveSelectionStrategy = (board, player, candidates
     if (result.principalVariation.length === 0) {
       break;
     }
-    logRootChoice(depth, result, config.workerIndex);
+    logRootChoice(depth, result, config);
     // Discard a partial deeper iteration when a fully examined shallower
     // depth already exists — a mid-root deadline must not overwrite that
     // with an ordering-biased partial. If this is the first depth and it
     // was cut short, keep the partial best (still better than candidates[0]).
     if (result.complete === false) {
+      lastComplete = false;
       if (bestNode === null && result.principalVariation.length > 0) {
         bestNode = result;
         depthReached = depth;
@@ -579,6 +588,7 @@ export const negamaxStrategy: MoveSelectionStrategy = (board, player, candidates
     }
     bestNode = result;
     depthReached = depth;
+    lastComplete = true;
     report.emit({ type: "searchStats", depth, nodes: nodeCounter.count });
     if (config.tt !== undefined && config.onDepthComplete !== undefined) {
       config.onDepthComplete(depth, config.tt.takeDirty());
@@ -595,6 +605,7 @@ export const negamaxStrategy: MoveSelectionStrategy = (board, player, candidates
       depth: 0,
       principalVariation: [],
       nodesVisited: nodeCounter.count,
+      complete: false,
     };
   }
 
@@ -604,6 +615,7 @@ export const negamaxStrategy: MoveSelectionStrategy = (board, player, candidates
     depth: depthReached,
     principalVariation: bestNode.principalVariation,
     nodesVisited: nodeCounter.count,
+    complete: lastComplete,
   };
 };
 
@@ -692,6 +704,57 @@ export function narrowRootCandidates(
   return { narrowed, store, moveCount };
 }
 
+/**
+ * Shared root prep for single-worker and parallel: narrow (or honor
+ * rootCandidates override), seed experience baseline, then merge threat
+ * blocks when this is a full tactical root (not a partition slice).
+ */
+export function prepareRootMoves(
+  board: Board,
+  player: Player,
+  config: SearchConfig
+): {
+  narrowed: NarrowResult;
+  rootMoves: Move[];
+  store: PatternStore;
+  moveCount: number;
+  isOverride: boolean;
+} {
+  const { narrowed, store, moveCount } = narrowRootCandidates(board, player, config);
+  const overrideMoves =
+    config.rootCandidates && config.rootCandidates.length > 0
+      ? config.rootCandidates.filter(m => store.board[m.row][m.col] === 0)
+      : null;
+  const isOverride = overrideMoves !== null && overrideMoves.length > 0;
+  const effectiveNarrowed: NarrowResult = isOverride
+    ? { moves: overrideMoves, source: narrowed.source }
+    : narrowed;
+
+  const baselineMove =
+    config.experienceMode !== undefined &&
+    config.experienceMode !== "off" &&
+    isUsableExperienceMove(store.board, config.experienceBaseline)
+      ? config.experienceBaseline.move
+      : undefined;
+  let rootMoves = seedBaselineMove(effectiveNarrowed.moves, baselineMove);
+
+  // Full tactical roots only — parallel slices already include merged blocks.
+  if (!isOverride && effectiveNarrowed.source === "tactical") {
+    const threatBlocks = discoverOpponentThreatBlocks(store.board, player, {
+      excludeMoves: rootMoves,
+      store,
+    });
+    if (threatBlocks.length > 0) {
+      rootMoves = mergeThreatBlocksIntoRoot(rootMoves, threatBlocks);
+      logger.log(`[search] threat blocks merged${workerLogSuffix(config)}`, {
+        blocks: threatBlocks.map(m => `${m.row},${m.col}`),
+      });
+    }
+  }
+
+  return { narrowed: effectiveNarrowed, rootMoves, store, moveCount, isOverride };
+}
+
 export function search(
   board: Board,
   player: Player,
@@ -701,16 +764,11 @@ export function search(
   const report = new ProgressReporter(config.onProgress);
   report.emit({ type: "phase", phase: "scanning" });
 
-  const { narrowed, store, moveCount } = narrowRootCandidates(board, player, config);
-
-  const overrideMoves =
-    config.rootCandidates && config.rootCandidates.length > 0
-      ? config.rootCandidates.filter(m => store.board[m.row][m.col] === 0)
-      : null;
-  const isOverride = overrideMoves !== null && overrideMoves.length > 0;
-  const effectiveNarrowed: NarrowResult = isOverride
-    ? { moves: overrideMoves, source: narrowed.source }
-    : narrowed;
+  const { narrowed, rootMoves, store, moveCount, isOverride } = prepareRootMoves(
+    board,
+    player,
+    config
+  );
   const effectiveTimeBudgetMs =
     config.timeBudgetMs !== undefined
       ? resolveEffectiveTimeBudget({
@@ -720,7 +778,7 @@ export function search(
         })
       : config.timeBudgetMs;
 
-  if (effectiveNarrowed.moves.length === 0) {
+  if (rootMoves.length === 0) {
     const fallbackMoves = findCandidateMoves(store.board);
     report.emit({ type: "phase", phase: "quiet" });
     return withPracticeStreakEligible(
@@ -740,20 +798,11 @@ export function search(
     );
   }
 
-  const baselineMove =
-    config.experienceMode !== undefined &&
-    config.experienceMode !== "off" &&
-    isUsableExperienceMove(store.board, config.experienceBaseline)
-      ? config.experienceBaseline.move
-      : undefined;
-  const rootMoves = seedBaselineMove(effectiveNarrowed.moves, baselineMove);
-
-  const isQuietPath =
-    !isOverride && (rootMoves.length === 1 || effectiveNarrowed.source === "quiet");
+  const isQuietPath = !isOverride && (rootMoves.length === 1 || narrowed.source === "quiet");
   report.emit({
     type: "candidates",
     count: rootMoves.length,
-    source: effectiveNarrowed.source,
+    source: narrowed.source,
   });
   report.emit({
     type: "phase",
@@ -761,7 +810,7 @@ export function search(
   });
 
   const progressBlockKeys =
-    effectiveNarrowed.source === "forced" ? new Set(rootMoves.map(moveKey)) : undefined;
+    narrowed.source === "forced" ? new Set(rootMoves.map(moveKey)) : undefined;
 
   const searchConfig: SearchConfig = {
     ...config,
@@ -772,10 +821,10 @@ export function search(
 
   const resolvedStrategy = strategy ?? (isQuietPath ? patternOnlyStrategy : negamaxStrategy);
 
-  logger.log(`[search] root candidates${workerLogSuffix(config.workerIndex)}`, {
+  logger.log(`[search] root candidates${workerLogSuffix(config)}`, {
     player,
     moveCount,
-    source: effectiveNarrowed.source,
+    source: narrowed.source,
     effectiveTimeBudgetMs,
     strategy:
       resolvedStrategy === patternOnlyStrategy

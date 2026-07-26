@@ -317,7 +317,9 @@ class GameSession {
     return this.mode === "practice" ? "practice" : "use";
   }
 
-  /** Human games only write when the Settings toggle is on; Practice/Tournament always write. */
+  /** Gates writing *new* experience from foreground searches. Human games
+   *  follow the Settings toggle; Practice/Tournament always write. Cache-hit
+   *  reinvest ignores this and always updates existing entries. */
   private persistExperience(): boolean {
     if (this.mode === "practice" || this.mode === "ai-ai") {
       return true;
