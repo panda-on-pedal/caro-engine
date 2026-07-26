@@ -153,16 +153,17 @@ describe("DIFFICULTY_PROFILES", () => {
     });
     expect(DIFFICULTY_PROFILES.hard.recognizedForkPatterns).toEqual(ALL_FORK_PATTERN_NAMES);
     expect(DIFFICULTY_PROFILES.expert).toMatchObject({
-      maxDepth: 6,
+      maxDepth: 8,
       timeBudgetMs: 10000,
       rootScoreJitter: 0.02,
+      parallelism: 3,
     });
     expect(DIFFICULTY_PROFILES.expert.recognizedForkPatterns).toEqual(ALL_FORK_PATTERN_NAMES);
   });
 
   it("resolveEngineSearchConfig merges profile with overrides", () => {
     const base = resolveEngineSearchConfig({ difficulty: "expert" });
-    expect(base.maxDepth).toBe(6);
+    expect(base.maxDepth).toBe(8);
     expect(base.timeBudgetMs).toBe(10000);
 
     const overridden = resolveEngineSearchConfig({
@@ -195,7 +196,7 @@ describe("bookDeepening depth override", () => {
       difficulty: "expert",
       bookDeepening: true,
     });
-    expect(normal.maxDepth).toBe(6);
+    expect(normal.maxDepth).toBe(8);
     expect(deep.maxDepth).toBe(BOOK_MAX_DEPTH);
     expect(deep.timeBudgetMs).toBe(normal.timeBudgetMs);
   });

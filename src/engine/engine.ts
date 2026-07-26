@@ -2,7 +2,7 @@ import { search, type SearchConfig, type SearchResult } from "./search/search.ts
 import { DEFAULT_DECAY_CONFIG } from "./search/search.ts";
 import { ALL_FORK_PATTERN_NAMES, type ForkPatternName } from "./search/narrow.ts";
 import type { ExperienceEntry, ExperienceMode } from "./experience/experience.ts";
-import type { GameState } from "./state.ts";
+import type { GameState, Move } from "./state.ts";
 import { DEFAULT_MIN_TIME_BUDGET_MS } from "./timeBudget.ts";
 
 export type Difficulty = "easy" | "medium" | "hard" | "expert";
@@ -16,6 +16,9 @@ export interface DifficultyProfile {
   timeBudgetMs: number;
   recognizedForkPatterns: ReadonlySet<ForkPatternName>;
   rootScoreJitter: number;
+  /** Max workers a single move search may fan out to via root-candidate
+   *  partitioning. Omitted or 1 = today's single-worker behavior. */
+  parallelism?: number;
 }
 
 /**
@@ -42,10 +45,13 @@ export const DIFFICULTY_PROFILES: Record<Difficulty, DifficultyProfile> = {
     rootScoreJitter: 0.05,
   },
   expert: {
-    maxDepth: 6,
+    // by timeBudgetMs, so it never overruns — it reaches 7-8 only when the
+    // position prunes well, which the parallel fan-out (below) makes likely.
+    maxDepth: 8,
     timeBudgetMs: 10000,
     recognizedForkPatterns: ALL_FORK_PATTERN_NAMES,
     rootScoreJitter: 0.02,
+    parallelism: 3,
   },
 };
 
@@ -63,6 +69,8 @@ export interface EngineConfig {
   experienceBaseline?: ExperienceEntry;
   /** Background book deepening: use BOOK_MAX_DEPTH instead of difficulty maxDepth. */
   bookDeepening?: boolean;
+  /** Restrict the root search to these moves (parallel root-partition). */
+  rootCandidates?: Move[];
 }
 
 const DEFAULT_CONFIG: EngineConfig = { difficulty: "medium" };
@@ -81,6 +89,7 @@ export function resolveEngineSearchConfig(config: EngineConfig): SearchConfig {
     rootScoreJitter: config.rootScoreJitter ?? profile.rootScoreJitter,
     experienceMode: config.experienceMode,
     experienceBaseline: config.experienceBaseline,
+    rootCandidates: config.rootCandidates,
   };
 }
 
@@ -91,4 +100,9 @@ export function resolveEngineSearchConfig(config: EngineConfig): SearchConfig {
  */
 export function chooseMove(state: GameState, config: EngineConfig = DEFAULT_CONFIG): SearchResult {
   return search(state.board, state.nextPlayer, resolveEngineSearchConfig(config));
+}
+
+/** Fan-out width for a difficulty: its profile `parallelism`, floored at 1. */
+export function parallelismFor(difficulty: Difficulty): number {
+  return Math.max(1, DIFFICULTY_PROFILES[difficulty].parallelism ?? 1);
 }

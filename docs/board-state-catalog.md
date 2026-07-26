@@ -311,6 +311,24 @@ O's moves:
  15  .  .  .  .  .  .
 ```
 
+# 20
+X's moves:
+
+
+```
+     3  4  5  6  7  8  9 10 11 12 13 14
+  6  .  .  .  .  .  .  .  .  .  .  .  .
+  7  .  .  O  .  O  .  X  O  .  .  .  .
+  8  .  X  .  X  .  O  .  O  .  O  .  .
+  9  .  .  O  .  X  O  O  X  X  .  .  .
+ 10  .  O  X  X  X  X  O  X  .  X  .  .
+ 11  .  .  .  O  X  O  X  X  X  O  X  .
+ 12  .  .  .  .  O  X  .  O  .  .  .  .
+ 13  .  .  .  .  .  .  O  .  .  .  .  .
+ 14  .  .  .  O  .  .  .  .  .  .  .  .
+ 15  .  .  .  .  .  .  .  .  .  .  .  .
+```
+
 So, with above scenarios:
 
 - If cases with only one candidate: Just play it, no search needed.

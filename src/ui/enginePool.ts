@@ -1,5 +1,8 @@
 import type { Board, Player } from "../engine/board.ts";
-import type { Difficulty } from "../engine/engine.ts";
+import { resolveEngineSearchConfig, type Difficulty } from "../engine/engine.ts";
+import { narrowRootCandidates } from "../engine/search/search.ts";
+import { partitionCandidates, aggregateParallelResults } from "./parallelSearch.ts";
+import type { Move } from "../engine/state.ts";
 import {
   computeSettleTransition,
   DEFAULT_SETTLE_GIVE_UP_SEARCHES,
@@ -15,6 +18,7 @@ import type { SearchProgressEvent, SearchResult } from "../engine/search/search.
 import type { PracticeReportEvent } from "../shared/practiceReport.ts";
 import { logger } from "../utils/logger.ts";
 import {
+  isLogMessage,
   isProgressMessage,
   prepareExperienceForRequest,
   type EngineMessage,
@@ -55,6 +59,13 @@ export interface RequestMoveOptions {
   /** Board this request belongs to; stamped onto the emitted report event so
    *  the session can render a per-board live feed. Omit for non-board requests. */
   reportBoardId?: number;
+  /** Desired fan-out width for a parallel-capable difficulty (coordinator use). */
+  parallelism?: number;
+  /** Parallel root-partition slice for this worker (coordinator use only).
+   *  Its presence marks a request as a slice, so it never re-enters fan-out. */
+  rootCandidates?: Move[];
+  /** 1-based parallel slice id for debug logs (fan-out only). */
+  workerIndex?: number;
 }
 
 interface PendingEntry {
@@ -180,6 +191,28 @@ export class EnginePool {
       return Promise.resolve(prepared.instant);
     }
 
+    const parallelism = options?.parallelism ?? 1;
+    if (
+      options?.rootCandidates === undefined &&
+      parallelism > 1 &&
+      experienceMode === "use" &&
+      prepared.baseline === undefined
+    ) {
+      const parallel = this.runParallelSearch(
+        board,
+        player,
+        difficulty,
+        timeBudgetMs,
+        parallelism,
+        prepared,
+        options
+      );
+      if (parallel !== null) {
+        return parallel;
+      }
+      // null -> not worth / not room to parallelize; fall through to single worker.
+    }
+
     if (prepared.baseline !== undefined) {
       options?.onProgress?.({
         type: "experienceHit",
@@ -198,6 +231,8 @@ export class EnginePool {
         timeBudgetMs,
         experienceMode,
         experienceBaseline: prepared.baseline,
+        rootCandidates: options?.rootCandidates,
+        workerIndex: options?.workerIndex,
       };
       this.nextId += 1;
       const job: QueuedJob = {
@@ -386,6 +421,105 @@ export class EnginePool {
     }
   }
 
+  /** Seam for tests: run one raw slice search on an idle worker. Overridable so
+   *  tests can inject canned results without real Workers. */
+  protected searchSlice(
+    board: Board,
+    player: Player,
+    difficulty: Difficulty,
+    timeBudgetMs: number | undefined,
+    slice: Move[],
+    workerIndex: number
+  ): Promise<SearchResult> {
+    return this.requestMove(board, player, difficulty, timeBudgetMs, {
+      experienceMode: "off",
+      persistExperience: false,
+      rootCandidates: slice,
+      workerIndex,
+    });
+  }
+
+  /** Root-partition parallel search. Narrows once on the main thread, splits the
+   *  candidate set across idle workers, folds the aggregate into the book, and
+   *  resolves. Returns null when there is nothing worth splitting (too few
+   *  candidates, non-tactical position, or fewer than 2 idle workers) — the
+   *  caller then uses the single-worker path. */
+  private runParallelSearch(
+    board: Board,
+    player: Player,
+    difficulty: Difficulty,
+    timeBudgetMs: number | undefined,
+    parallelism: number,
+    prepared: { baseline?: ExperienceEntry; key: string; transform: ExperienceTransform },
+    options?: RequestMoveOptions
+  ): Promise<SearchResult> | null {
+    const idle = this.slots.filter(slot => !slot.busy).length;
+    if (Math.min(parallelism, idle) < 2) {
+      return null;
+    }
+    const plain = toPlainBoard(board);
+    const { narrowed } = narrowRootCandidates(
+      plain,
+      player,
+      resolveEngineSearchConfig({ difficulty })
+    );
+    if (narrowed.source !== "tactical" || narrowed.moves.length < 2) {
+      return null;
+    }
+    const width = Math.min(parallelism, idle, narrowed.moves.length);
+    if (width < 2) {
+      return null;
+    }
+    const slices = partitionCandidates(narrowed.moves, width);
+    return Promise.all(
+      slices.map((slice, i) =>
+        this.searchSlice(plain, player, difficulty, timeBudgetMs, slice, i + 1)
+      )
+    ).then(results => {
+      const aggregated = aggregateParallelResults(results);
+      logger.log("[pool] parallel choice", {
+        chosen: `${aggregated.move.row},${aggregated.move.col}`,
+        score: aggregated.score,
+        depth: aggregated.depth,
+        nodes: aggregated.nodesVisited,
+        slices: results.map((r, i) => ({
+          worker: `#${i + 1}`,
+          move: `${r.move.row},${r.move.col}`,
+          score: r.score,
+          depth: r.depth,
+          nodes: r.nodesVisited,
+        })),
+      });
+      this.applyAggregatedResult(prepared, difficulty, aggregated, options);
+      return aggregated;
+    });
+  }
+
+  /** Fold a parallel aggregate into the book (mirrors the single-worker
+   *  applyResult path but for a result produced outside the message pump).
+   *  applyResult already guards on mode/persist/key/depth. */
+  private applyAggregatedResult(
+    prepared: { key: string; transform: ExperienceTransform },
+    difficulty: Difficulty,
+    result: SearchResult,
+    options?: RequestMoveOptions
+  ): void {
+    this.applyResult(
+      {
+        resolve: () => {},
+        reject: () => {},
+        difficulty,
+        experienceKey: prepared.key,
+        experienceTransform: prepared.transform,
+        experienceMode: options?.experienceMode ?? "use",
+        persistExperience: options?.persistExperience !== false,
+        settleGiveUpSearches: options?.settleGiveUpSearches,
+        reportBoardId: options?.reportBoardId,
+      },
+      result
+    );
+  }
+
   private ensureWorker(slot: Slot): Worker {
     if (slot.worker) {
       return slot.worker;
@@ -432,6 +566,10 @@ export class EnginePool {
   }
 
   private handleMessage(slot: Slot, message: EngineMessage): void {
+    if (isLogMessage(message)) {
+      logger.write(message.level, message.args);
+      return;
+    }
     if (isProgressMessage(message)) {
       const entry = this.pending.get(message.id);
       entry?.onProgress?.(message.event);

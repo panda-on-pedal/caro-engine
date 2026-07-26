@@ -1,4 +1,5 @@
 import type { Board, Player } from "../engine/board.ts";
+import type { Move } from "../engine/state.ts";
 import { resolveEngineSearchConfig, type Difficulty } from "../engine/engine.ts";
 import type {
   ExperienceEntry,
@@ -28,6 +29,10 @@ export interface EngineRequest {
   stepTimeByOwnStones?: boolean;
   experienceMode?: ExperienceMode;
   experienceBaseline?: ExperienceEntry;
+  /** Parallel root-partition: this worker searches only these root moves. */
+  rootCandidates?: Move[];
+  /** 1-based parallel slice id for debug logs (fan-out only). */
+  workerIndex?: number;
   /** Background book-deepening job: search the canonical board, persist the TT. */
   bookDeepening?: boolean;
   /** Experience canonical key naming the persisted TT slice. */
@@ -43,10 +48,21 @@ export type EngineProgressMessage = {
   event: SearchProgressEvent;
 };
 
-export type EngineMessage = EngineResponse | EngineProgressMessage;
+/** Generic worker → main log line (any logger call, not search-specific). */
+export type EngineLogMessage = {
+  type: "log";
+  level: "log" | "warn" | "error";
+  args: unknown[];
+};
+
+export type EngineMessage = EngineResponse | EngineProgressMessage | EngineLogMessage;
 
 export function isProgressMessage(message: EngineMessage): message is EngineProgressMessage {
   return "type" in message && message.type === "progress";
+}
+
+export function isLogMessage(message: EngineMessage): message is EngineLogMessage {
+  return "type" in message && message.type === "log";
 }
 
 export function handleEngineRequest(
@@ -61,7 +77,9 @@ export function handleEngineRequest(
         stepTimeByOwnStones: request.stepTimeByOwnStones,
         experienceMode: request.experienceMode,
         experienceBaseline: request.experienceBaseline,
+        rootCandidates: request.rootCandidates,
       }),
+      workerIndex: request.workerIndex,
       onProgress,
     });
     return { id: request.id, ok: true, result };

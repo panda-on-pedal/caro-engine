@@ -9,6 +9,7 @@ import {
   recognizedForkPoints,
   type ForkPatternName,
   type NarrowConfig,
+  type NarrowResult,
 } from "./narrow.ts";
 import { PatternStore } from "../patterns/patternStore.ts";
 import type { DecayConfig } from "../randomize.ts";
@@ -46,11 +47,24 @@ export const DEFAULT_DECAY_CONFIG: DecayConfig = {
   stepDown: 0.05,
 };
 
+/** Per-root-candidate scores collected during one iterative-deepening depth. */
+interface RootCandidateScore {
+  move: Move;
+  score: number;
+  compareScore: number;
+  /** True when examined under a raised alpha window and it failed to become best. */
+  bound: boolean;
+}
+
 interface SearchNode {
   score: number;
   principalVariation: Move[];
   /** False when the root candidate loop stopped early (deadline). */
   complete?: boolean;
+  /** Root frame only: every candidate examined this depth. */
+  rootExamined?: RootCandidateScore[];
+  /** Root frame only: candidates skipped after a deadline cut. */
+  rootUnexamined?: Move[];
 }
 
 function otherPlayer(player: Player): Player {
@@ -205,6 +219,7 @@ function negamax(
 
   let examinedCount = 0;
   let rootIncomplete = false;
+  const rootExamined: RootCandidateScore[] = [];
   for (const move of moves) {
     if (deadline !== null && Date.now() > deadline) {
       if (isRootFrame) {
@@ -277,7 +292,16 @@ function negamax(
     store.undo();
     examinedCount += 1;
 
+    const hadPriorBest = best.score !== -Infinity;
     const compareScore = rootJitter ? rootJitter(node.score) : node.score;
+    if (isRootFrame) {
+      rootExamined.push({
+        move,
+        score: node.score,
+        compareScore,
+        bound: hadPriorBest && compareScore <= bestCompare,
+      });
+    }
     if (compareScore > bestCompare) {
       bestCompare = compareScore;
       best = {
@@ -314,6 +338,8 @@ function negamax(
 
   if (isRootFrame) {
     best.complete = !rootIncomplete;
+    best.rootExamined = rootExamined;
+    best.rootUnexamined = rootIncomplete ? moves.slice(examinedCount) : [];
   }
   if (tt !== undefined && !isRootFrame) {
     const flag =
@@ -415,6 +441,12 @@ export interface SearchConfig {
   onProgress?: (event: SearchProgressEvent) => void;
   /** Root moves that are forced blocks — used for insight.kind === "block". */
   progressBlockKeys?: ReadonlySet<string>;
+  /** When present and non-empty, restrict the root to exactly these moves
+   *  (filtered to legal) and skip narrowing. Used by parallel root-partition
+   *  search — each worker owns one slice of the narrowed candidate set. */
+  rootCandidates?: Move[];
+  /** 1-based parallel slice id for debug logs (fan-out only). */
+  workerIndex?: number;
   /** Root experience policy for this call. Default: off inside search. */
   experienceMode?: ExperienceMode;
   /** Practice baseline (and optional move-ordering seed). */
@@ -446,6 +478,37 @@ export type MoveSelectionStrategy = (
   candidates: Move[],
   config: SearchConfig
 ) => SearchResult;
+
+function workerLogSuffix(workerIndex: number | undefined): string {
+  return workerIndex !== undefined ? ` - worker #${workerIndex}` : "";
+}
+
+function logRootChoice(
+  depth: number,
+  result: SearchNode,
+  workerIndex: number | undefined
+): void {
+  const chosen = result.principalVariation[0];
+  if (chosen === undefined || result.rootExamined === undefined) {
+    return;
+  }
+  const ranked = [...result.rootExamined].sort((a, b) => b.compareScore - a.compareScore);
+  const chosenKey = moveKey(chosen);
+  logger.log(`[search] root choice @ depth ${depth}${workerLogSuffix(workerIndex)}`, {
+    complete: result.complete !== false,
+    chosen: `${chosen.row},${chosen.col}`,
+    score: result.score,
+    candidates: ranked.map(c => {
+      const key = moveKey(c.move);
+      const star = key === chosenKey ? " ★" : "";
+      const bound = c.bound ? " (bound)" : "";
+      return `${key}  score=${c.score}  compare=${c.compareScore}${star}${bound}`;
+    }),
+    ...(result.rootUnexamined && result.rootUnexamined.length > 0
+      ? { unexamined: result.rootUnexamined.map(m => `${m.row},${m.col}`) }
+      : {}),
+  });
+}
 
 export const negamaxStrategy: MoveSelectionStrategy = (board, player, candidates, config) => {
   const deadline = config.timeBudgetMs !== undefined ? Date.now() + config.timeBudgetMs : null;
@@ -492,6 +555,7 @@ export const negamaxStrategy: MoveSelectionStrategy = (board, player, candidates
     if (result.principalVariation.length === 0) {
       break;
     }
+    logRootChoice(depth, result, config.workerIndex);
     // Discard a partial deeper iteration when a fully examined shallower
     // depth already exists — a mid-root deadline must not overwrite that
     // with an ordering-biased partial. If this is the first depth and it
@@ -611,6 +675,23 @@ function withPracticeStreakEligible(
   return { ...result, experienceStreakEligible: streakEligible };
 }
 
+/** The root-narrowing prelude shared by `search()` and the parallel
+ *  coordinator: builds the pattern store and returns the narrowed candidate
+ *  set exactly as `search()` computes it internally, so a coordinator can
+ *  split that set across workers and hand each a `rootCandidates` slice. */
+export function narrowRootCandidates(
+  board: Board,
+  player: Player,
+  config: SearchConfig
+): { narrowed: NarrowResult; store: PatternStore; moveCount: number } {
+  const store = config.patternStore ?? PatternStore.fromBoard(board);
+  const baseNarrow = resolveNarrowConfig(config);
+  const moveCount = countStones(store.board);
+  const narrowConfig = narrowConfigForStore(store, player, baseNarrow);
+  const narrowed = narrowCandidates(store.board, player, moveCount, narrowConfig);
+  return { narrowed, store, moveCount };
+}
+
 export function search(
   board: Board,
   player: Player,
@@ -620,12 +701,16 @@ export function search(
   const report = new ProgressReporter(config.onProgress);
   report.emit({ type: "phase", phase: "scanning" });
 
-  const store = config.patternStore ?? PatternStore.fromBoard(board);
-  const baseNarrow = resolveNarrowConfig(config);
-  const moveCount = countStones(store.board);
-  const narrowConfig = narrowConfigForStore(store, player, baseNarrow);
+  const { narrowed, store, moveCount } = narrowRootCandidates(board, player, config);
 
-  const narrowed = narrowCandidates(store.board, player, moveCount, narrowConfig);
+  const overrideMoves =
+    config.rootCandidates && config.rootCandidates.length > 0
+      ? config.rootCandidates.filter(m => store.board[m.row][m.col] === 0)
+      : null;
+  const isOverride = overrideMoves !== null && overrideMoves.length > 0;
+  const effectiveNarrowed: NarrowResult = isOverride
+    ? { moves: overrideMoves, source: narrowed.source }
+    : narrowed;
   const effectiveTimeBudgetMs =
     config.timeBudgetMs !== undefined
       ? resolveEffectiveTimeBudget({
@@ -635,7 +720,7 @@ export function search(
         })
       : config.timeBudgetMs;
 
-  if (narrowed.moves.length === 0) {
+  if (effectiveNarrowed.moves.length === 0) {
     const fallbackMoves = findCandidateMoves(store.board);
     report.emit({ type: "phase", phase: "quiet" });
     return withPracticeStreakEligible(
@@ -661,13 +746,14 @@ export function search(
     isUsableExperienceMove(store.board, config.experienceBaseline)
       ? config.experienceBaseline.move
       : undefined;
-  const rootMoves = seedBaselineMove(narrowed.moves, baselineMove);
+  const rootMoves = seedBaselineMove(effectiveNarrowed.moves, baselineMove);
 
-  const isQuietPath = rootMoves.length === 1 || narrowed.source === "quiet";
+  const isQuietPath =
+    !isOverride && (rootMoves.length === 1 || effectiveNarrowed.source === "quiet");
   report.emit({
     type: "candidates",
     count: rootMoves.length,
-    source: narrowed.source,
+    source: effectiveNarrowed.source,
   });
   report.emit({
     type: "phase",
@@ -675,7 +761,7 @@ export function search(
   });
 
   const progressBlockKeys =
-    narrowed.source === "forced" ? new Set(rootMoves.map(moveKey)) : undefined;
+    effectiveNarrowed.source === "forced" ? new Set(rootMoves.map(moveKey)) : undefined;
 
   const searchConfig: SearchConfig = {
     ...config,
@@ -686,10 +772,10 @@ export function search(
 
   const resolvedStrategy = strategy ?? (isQuietPath ? patternOnlyStrategy : negamaxStrategy);
 
-  logger.log("[search] root candidates", {
+  logger.log(`[search] root candidates${workerLogSuffix(config.workerIndex)}`, {
     player,
     moveCount,
-    source: narrowed.source,
+    source: effectiveNarrowed.source,
     effectiveTimeBudgetMs,
     strategy:
       resolvedStrategy === patternOnlyStrategy

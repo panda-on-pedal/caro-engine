@@ -1,5 +1,5 @@
 import { BOARD_SIZE, type Board, type Player } from "../../engine/board.ts";
-import { type Difficulty } from "../../engine/engine.ts";
+import { parallelismFor, type Difficulty } from "../../engine/engine.ts";
 import { PatternStore } from "../../engine/patterns/patternStore.ts";
 import {
   applyMove,
@@ -154,8 +154,11 @@ function detectHardwareConcurrency(): number {
   return 4;
 }
 
-function desiredPoolSize(count: number): number {
-  return Math.max(1, Math.min(count, maxTournamentBoards(detectHardwareConcurrency())));
+/** Always span the full core budget so a parallel-capable difficulty (expert)
+ *  can fan its root search out to multiple workers even in single-board play.
+ *  Workers spawn lazily (ensureWorker), so idle slots cost nothing until used. */
+function desiredPoolSize(): number {
+  return maxTournamentBoards(detectHardwareConcurrency());
 }
 
 function inkTiltDegrees(row: number, col: number): number {
@@ -444,7 +447,7 @@ class GameSession {
   }
 
   async init(): Promise<void> {
-    // logger.setDebug(true);
+    logger.setDebug(true);
     document.documentElement.style.setProperty("--cell-size", `${CELL_SIZE_PX}px`);
 
     this.maxBoardCount = maxTournamentBoards(detectHardwareConcurrency());
@@ -489,7 +492,7 @@ class GameSession {
       this.future = [];
     }
     this.patternStore = PatternStore.fromBoard(this.state.board);
-    this.resizePool(desiredPoolSize(this.boardCount));
+    this.resizePool(desiredPoolSize());
     this.ready = true;
     await this.advanceIfAiTurn();
   }
@@ -906,6 +909,7 @@ class GameSession {
           experienceMode: this.experienceMode(),
           persistExperience: this.persistExperience(),
           settleGiveUpSearches: this.settings.settleGiveUpSearches,
+          parallelism: parallelismFor(this.difficulty),
           onProgress: event => {
             if (myGeneration !== this.generation) {
               return;
@@ -1036,6 +1040,7 @@ class GameSession {
           persistExperience: this.persistExperience(),
           practiceImprovement: this.settings.practiceImprovement,
           settleGiveUpSearches: this.settings.settleGiveUpSearches,
+          parallelism: parallelismFor(difficulty),
           reportBoardId: boardSession.id,
         }
       );
@@ -1191,7 +1196,7 @@ class GameSession {
     this.autoplayPaused = false;
 
     if (isMultiAiMode(newMode)) {
-      this.resizePool(desiredPoolSize(this.boardCount));
+      this.resizePool(desiredPoolSize());
       this.pairingCounter = 0;
       this.viewingResults = false;
       this.viewingReports = false;
@@ -1214,7 +1219,7 @@ class GameSession {
 
     this.started = false;
     this.sessions = [];
-    this.resizePool(desiredPoolSize(this.boardCount));
+    this.resizePool(desiredPoolSize());
     this.busy = false;
     this.past = [];
     this.future = [];
