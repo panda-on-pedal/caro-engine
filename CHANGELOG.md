@@ -1,5 +1,18 @@
 # Release notes
 
+## 1.2.0
+
+### Engine
+
+- **Parallel search** for expert mode: root candidates are partitioned across idle workers
+- Synced iterative deepening: workers advance depth-by-depth together and keep the last fully completed depth when a slice hits the deadline
+- Threat-block probe merges urgent defensive/offensive blocks into tactical root partitions before parallel fan-out
+- Background reinvest search runs independently of the persist-experience flag
+
+### Play & UI
+
+- Component styles moved out of the shared stylesheet into scoped Svelte styles (`app.css` keeps only shared vars, reset, and the mount grid)
+
 ## 1.1.0
 
 ### Play & UI
