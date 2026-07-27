@@ -1,5 +1,17 @@
 # Release notes
 
+## 1.2.1
+
+### Play & UI
+
+- Version badge links to the matching GitHub release and shows when the app is up to date
+- Favicon added
+- Vietnamese difficulty labels improved
+
+### Dev
+
+- Compile-time `__DEBUG__` flag via Vite mode (guards logger and cell titles; `dev:ui` / `dev:ui:build` scripts)
+
 ## 1.2.0
 
 ### Engine

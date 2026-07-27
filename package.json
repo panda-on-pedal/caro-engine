@@ -1,6 +1,6 @@
 {
   "name": "caro-tournament",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Caro (Gomoku) five-in-a-row with a local engine and AI tournament mode",
   "type": "module",
   "bin": {
