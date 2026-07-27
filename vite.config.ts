@@ -12,7 +12,7 @@ const pkg = JSON.parse(readFileSync(resolve(rootDir, "package.json"), "utf8")) a
 export default defineConfig(({ mode }) => ({
   plugins: [svelte()],
   root: rootDir,
-  publicDir: false,
+  publicDir: "public",
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __DEBUG__: JSON.stringify(mode !== "production"),
