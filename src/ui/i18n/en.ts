@@ -67,6 +67,7 @@ export const en: Messages = {
     "At the same time, block the opponent’s strongest threats before they become unstoppable.",
   "status.loading": "Loading…",
   "version.updateAvailable": "Update available · v{version}",
+  "version.upToDate": "Latest · v{version}",
   "status.yourTurn": "Your turn",
   "status.aiThinking": "Computer thinking…",
   "status.youWin": "You win!",

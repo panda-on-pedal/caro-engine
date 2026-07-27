@@ -414,6 +414,7 @@ class GameSession {
   }
 
   cellTitle(row: number, col: number): string {
+    if (!__DEBUG__) return '';
     void this.localeTick;
     return t("cell.title", { row, col });
   }
@@ -449,7 +450,7 @@ class GameSession {
   }
 
   async init(): Promise<void> {
-    logger.setDebug(true);
+    logger.setDebug(__DEBUG__);
     document.documentElement.style.setProperty("--cell-size", `${CELL_SIZE_PX}px`);
 
     this.maxBoardCount = maxTournamentBoards(detectHardwareConcurrency());

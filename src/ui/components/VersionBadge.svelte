@@ -2,8 +2,8 @@
   import { onMount } from 'svelte';
   import {
     APP_VERSION,
-    GITHUB_RELEASES_URL,
     isNewerVersion,
+    releaseTagUrl,
     resolveLatestVersion,
   } from '../lib/appVersion.ts';
   import { session } from '../lib/gameSession.svelte.ts';
@@ -11,6 +11,11 @@
 
   let updateAvailable = $state(false);
   let latestVersion = $state<string | null>(null);
+
+  const currentReleaseUrl = releaseTagUrl(APP_VERSION);
+  let upToDate = $derived(
+    latestVersion !== null && !updateAvailable && !isNewerVersion(APP_VERSION, latestVersion),
+  );
 
   onMount(() => {
     let cancelled = false;
@@ -32,12 +37,32 @@
 </script>
 
 <div class="version-block">
-  <p class="version-label" title={`caro-tournament@${APP_VERSION}`}>
+  <a
+    class="version-label"
+    href={currentReleaseUrl}
+    target="_blank"
+    rel="noopener noreferrer"
+    title={`caro-tournament@${APP_VERSION}`}
+  >
     v{APP_VERSION}
-  </p>
+  </a>
   {#if updateAvailable && latestVersion}
-    <a class="version-update" href={GITHUB_RELEASES_URL} target="_blank" rel="noopener noreferrer">
+    <a
+      class="version-update"
+      href={releaseTagUrl(latestVersion)}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
       {session.localeTick >= 0 ? t('version.updateAvailable', { version: latestVersion }) : ''}
+    </a>
+  {:else if upToDate}
+    <a
+      class="version-uptodate"
+      href={currentReleaseUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {session.localeTick >= 0 ? t('version.upToDate', { version: APP_VERSION }) : ''}
     </a>
   {/if}
 </div>
@@ -56,21 +81,42 @@
     font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
     font-size: 0.75rem;
     color: var(--muted);
+    text-decoration: none;
+  }
+
+  .version-label:hover {
+    color: var(--ink-blue);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .version-update,
+  .version-uptodate {
+    font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
+    font-size: 0.72rem;
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
 
   .version-update {
-    font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
-    font-size: 0.72rem;
     color: var(--pen-red);
-    text-decoration: underline;
-    text-underline-offset: 2px;
   }
 
   .version-update:hover {
     color: #9e2f2c;
   }
 
-  .version-update:focus-visible {
+  .version-uptodate {
+    color: var(--muted);
+  }
+
+  .version-uptodate:hover {
+    color: var(--ink-blue);
+  }
+
+  .version-label:focus-visible,
+  .version-update:focus-visible,
+  .version-uptodate:focus-visible {
     outline: 2px solid var(--ink-blue);
     outline-offset: 2px;
   }

@@ -15,9 +15,11 @@
   ],
   "scripts": {
     "build": "npm run build:ui && npm run build:cli",
-    "build:ui": "vite build && esbuild src/ui/engineWorker.ts --bundle --outfile=dist/ui/engineWorker.js",
+    "build:ui": "vite build && esbuild src/ui/engineWorker.ts --bundle --outfile=dist/ui/engineWorker.js --define:__DEBUG__=false",
     "build:cli": "esbuild src/cli.ts --bundle --platform=node --format=esm --outfile=dist/cli.js --banner:js=\"#!/usr/bin/env node\"",
+    "dev": "npm run dev:ui:build && npm run build:cli && node dist/cli.js",
     "dev:ui": "vite",
+    "dev:ui:build": "vite build --mode development && esbuild src/ui/engineWorker.ts --bundle --outfile=dist/ui/engineWorker.js --define:__DEBUG__=true",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

@@ -10,6 +10,7 @@ import {
   normalizeVersion,
   parseGithubLatestTag,
   parseNpmLatestVersion,
+  releaseTagUrl,
   readVersionCheckCache,
   resolveLatestVersion,
   shouldFetchLatest,
@@ -21,6 +22,13 @@ describe("normalizeVersion", () => {
     expect(normalizeVersion("v1.2.3")).toBe("1.2.3");
     expect(normalizeVersion("V2.0.0")).toBe("2.0.0");
     expect(normalizeVersion("1.0.0")).toBe("1.0.0");
+  });
+});
+
+describe("releaseTagUrl", () => {
+  it("builds a tag-specific release URL and normalizes the version", () => {
+    expect(releaseTagUrl("1.2.0")).toBe(`${GITHUB_REPO_URL}/releases/tag/1.2.0`);
+    expect(releaseTagUrl("v1.2.0")).toBe(`${GITHUB_REPO_URL}/releases/tag/1.2.0`);
   });
 });
 

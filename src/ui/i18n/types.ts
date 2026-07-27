@@ -58,6 +58,7 @@ export type Messages = {
   "instructions.tips.block": string;
   "status.loading": string;
   "version.updateAvailable": string;
+  "version.upToDate": string;
   "status.yourTurn": string;
   "status.aiThinking": string;
   "status.youWin": string;

@@ -87,7 +87,8 @@ Useful scripts:
 
 | Command             | What it does                                    |
 | ------------------- | ----------------------------------------------- |
-| `npm start`         | Build and serve on port 2026                    |
+| `npm start`         | Production build and serve on port 2026         |
+| `npm run dev`       | Dev build (debug on) and serve on port 2026     |
 | `npm run build`     | Build UI (`dist/ui`) and CLI                    |
 | `npm run dev:ui`    | Vite HMR for the UI (proxy `/api` to port 2026) |
 | `npm test`          | Run tests                                       |

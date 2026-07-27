@@ -29,6 +29,11 @@ export function normalizeVersion(raw: string): string {
   return raw.trim().replace(/^[vV]/, "");
 }
 
+/** Build the GitHub release-notes URL for a specific version tag. */
+export function releaseTagUrl(version: string): string {
+  return `${GITHUB_REPO_URL}/releases/tag/${normalizeVersion(version)}`;
+}
+
 /**
  * Compare two dotted numeric versions (e.g. 1.2.3).
  * Returns negative if a < b, 0 if equal, positive if a > b.

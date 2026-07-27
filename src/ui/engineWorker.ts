@@ -17,7 +17,7 @@ const scope = self as unknown as WorkerScope;
 
 // Search runs here; forward every log to the main thread so console order
 // matches arrival order across parallel workers (main prints via logger.write).
-logger.setDebug(true);
+logger.setDebug(__DEBUG__);
 logger.setSink((level, args) => {
   scope.postMessage({ type: "log", level, args: [...args] });
 });
