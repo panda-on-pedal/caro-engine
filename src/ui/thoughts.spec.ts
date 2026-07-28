@@ -17,6 +17,7 @@ describe("formatThought", () => {
     { type: "bestSoFar", row: 10, col: 11 },
     { type: "deeper", depth: 3 },
     { type: "experienceHit", row: 5, col: 7, depth: 6 },
+    { type: "pvFollowHit", row: 5, col: 7, depth: 6 },
     { type: "searchStats", depth: 6, nodes: 4200 },
   ];
 
@@ -30,6 +31,7 @@ describe("formatThought", () => {
     expect(formatThought({ type: "examining", row: 4, col: 9 })).toContain("4,9");
     expect(formatThought({ type: "bestSoFar", row: 4, col: 9 })).toContain("4,9");
     expect(formatThought({ type: "experienceHit", row: 4, col: 9, depth: 4 })).toContain("4,9");
+    expect(formatThought({ type: "pvFollowHit", row: 4, col: 9, depth: 4 })).toContain("4,9");
     expect(formatThought({ type: "candidates", count: 12, source: "forced" })).toContain("12");
   });
 

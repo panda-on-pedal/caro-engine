@@ -30,8 +30,17 @@ import {
   type EngineRequest,
 } from "./engineProtocol.ts";
 import { PersistentExperienceStore } from "./experiencePersist.ts";
+import { tryArmPvFollow, tryConsumePvFollow, type PvFollowState } from "./pvFollow.ts";
 
 const WORKER_URL = "/engineWorker.js";
+
+/** Extra pause on a PV-follow hit so the reply does not feel instant
+ *  (stacks with the session's pre-request think delay → ~550ms total). */
+export const PV_FOLLOW_DELAY_MS = 250;
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 /**
  * Copy a board into plain nested arrays. Svelte `$state` boards are Proxies;
@@ -85,6 +94,9 @@ interface PendingEntry {
   reject: (error: Error) => void;
   onProgress?: (event: SearchProgressEvent) => void;
   difficulty: Difficulty;
+  /** Plain request board — needed to arm PV follow after a foreground result. */
+  board: Board;
+  player: Player;
   experienceKey?: string;
   experienceTransform?: ExperienceTransform;
   experienceMode?: ExperienceMode;
@@ -103,6 +115,9 @@ interface QueuedJob {
   reject: (error: Error) => void;
   onProgress?: (event: SearchProgressEvent) => void;
   difficulty: Difficulty;
+  /** Plain request board — needed to arm PV follow after a foreground result. */
+  board: Board;
+  player: Player;
   experienceKey?: string;
   experienceTransform?: ExperienceTransform;
   experienceMode?: ExperienceMode;
@@ -132,6 +147,8 @@ export class EnginePool {
   private nextId = 0;
   private readonly experience: PersistentExperienceStore;
   private readonly onReport?: (event: PracticeReportEvent) => void;
+  /** In-memory PV continuation for `"use"` mode (not persisted). */
+  private pvFollow: PvFollowState | null = null;
 
   constructor(
     size: number,
@@ -173,6 +190,7 @@ export class EnginePool {
     });
 
     if (prepared.instant !== null) {
+      this.pvFollow = null;
       options?.onProgress?.({
         type: "experienceHit",
         row: prepared.instant.move.row,
@@ -202,6 +220,52 @@ export class EnginePool {
         );
       }
       return Promise.resolve(prepared.instant);
+    }
+
+    const plainBoard = toPlainBoard(board);
+    const consumed = tryConsumePvFollow({
+      state: this.pvFollow,
+      experienceMode,
+      difficulty,
+      board: plainBoard,
+      player,
+    });
+    if (consumed !== null) {
+      this.pvFollow = consumed.next;
+      options?.onProgress?.({
+        type: "pvFollowHit",
+        row: consumed.hit.move.row,
+        col: consumed.hit.move.col,
+        depth: consumed.hit.depth,
+      });
+      logger.log("pv follow hit", {
+        move: consumed.hit.move,
+        depth: consumed.hit.depth,
+        remaining: consumed.next?.remaining.length ?? 0,
+      });
+      this.enqueueBackgroundImprovement(
+        board,
+        player,
+        difficulty,
+        {
+          baseline: {
+            move: consumed.hit.move,
+            score: consumed.hit.score,
+            depth: consumed.hit.depth,
+          },
+          key: prepared.key,
+          transform: prepared.transform,
+        },
+        experienceMode,
+        settleGiveUpSearches,
+        options?.reportBoardId
+      );
+      return delay(PV_FOLLOW_DELAY_MS).then(() => consumed.hit);
+    }
+    // Real use-mode requests that miss clear a stale cursor. Parallel slices
+    // (rootCandidates + experienceMode off) must not wipe a parent cursor.
+    if (options?.rootCandidates === undefined) {
+      this.pvFollow = null;
     }
 
     const parallelism = options?.parallelism ?? 1;
@@ -257,6 +321,8 @@ export class EnginePool {
         reject,
         onProgress: options?.onProgress,
         difficulty,
+        board: plainBoard,
+        player,
         experienceKey: prepared.key,
         experienceTransform: prepared.transform,
         experienceMode,
@@ -336,6 +402,8 @@ export class EnginePool {
         resolve,
         reject,
         difficulty,
+        board: canonicalBoard,
+        player,
         experienceKey: prepared.key,
         // Result move is already canonical → store unchanged.
         experienceTransform: IDENTITY_TRANSFORM,
@@ -558,7 +626,7 @@ export class EnginePool {
         depth: best.depth,
         nodes: best.nodesVisited,
       });
-      this.applyAggregatedResult(prepared, difficulty, best, options);
+      this.applyAggregatedResult(plain, player, prepared, difficulty, best, options);
       return best;
     })();
   }
@@ -567,25 +635,37 @@ export class EnginePool {
    *  applyResult path but for a result produced outside the message pump).
    *  applyResult already guards on mode/persist/key/depth. */
   private applyAggregatedResult(
+    board: Board,
+    player: Player,
     prepared: { key: string; transform: ExperienceTransform },
     difficulty: Difficulty,
     result: SearchResult,
     options?: RequestMoveOptions
   ): void {
+    const experienceMode = options?.experienceMode ?? "use";
     this.applyResult(
       {
         resolve: () => {},
         reject: () => {},
         difficulty,
+        board,
+        player,
         experienceKey: prepared.key,
         experienceTransform: prepared.transform,
-        experienceMode: options?.experienceMode ?? "use",
+        experienceMode,
         persistExperience: options?.persistExperience !== false,
         settleGiveUpSearches: options?.settleGiveUpSearches,
         reportBoardId: options?.reportBoardId,
       },
       result
     );
+    this.pvFollow = tryArmPvFollow({
+      experienceMode,
+      difficulty,
+      requestBoard: board,
+      enginePlayer: player,
+      result,
+    });
   }
 
   private ensureWorker(slot: Slot): Worker {
@@ -621,6 +701,8 @@ export class EnginePool {
       reject: job.reject,
       onProgress: job.onProgress,
       difficulty: job.difficulty,
+      board: job.board,
+      player: job.player,
       experienceKey: job.experienceKey,
       experienceTransform: job.experienceTransform,
       experienceMode: job.experienceMode,
@@ -651,6 +733,15 @@ export class EnginePool {
     if (entry) {
       if (message.ok) {
         this.applyResult(entry, message.result);
+        if (entry.background !== true) {
+          this.pvFollow = tryArmPvFollow({
+            experienceMode: entry.experienceMode ?? "off",
+            difficulty: entry.difficulty,
+            requestBoard: entry.board,
+            enginePlayer: entry.player,
+            result: message.result,
+          });
+        }
         entry.resolve(message.result);
       } else {
         entry.reject(new Error(message.error));
@@ -674,6 +765,7 @@ export class EnginePool {
    * Busy workers are terminated (not merely orphaned) and respawned lazily
    * on next use, so a running search can never delay a later request. */
   cancelAll(): void {
+    this.pvFollow = null;
     const queued = this.queue.splice(0, this.queue.length);
     for (const job of queued) {
       this.pending.delete(job.request.id);

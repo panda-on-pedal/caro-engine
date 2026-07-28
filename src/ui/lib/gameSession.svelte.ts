@@ -731,7 +731,8 @@ class GameSession {
       (event.type === "examining" ||
         event.type === "insight" ||
         event.type === "bestSoFar" ||
-        event.type === "experienceHit")
+        event.type === "experienceHit" ||
+        event.type === "pvFollowHit")
     ) {
       this.thinkingCell = { row: event.row, col: event.col };
     }

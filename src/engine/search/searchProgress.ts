@@ -10,6 +10,7 @@ export type SearchProgressEvent =
   | { type: "bestSoFar"; row: number; col: number }
   | { type: "deeper"; depth: number }
   | { type: "experienceHit"; row: number; col: number; depth: number }
+  | { type: "pvFollowHit"; row: number; col: number; depth: number }
   | { type: "searchStats"; depth: number; nodes: number };
 
 /** Throttles high-frequency examining/insight emits (~6–7/sec). */

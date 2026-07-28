@@ -24,6 +24,8 @@ export function formatThought(event: SearchProgressEvent): string {
       return "Looking a bit deeper…";
     case "experienceHit":
       return `I remember this spot, ${event.row},${event.col} (depth ${event.depth})…`;
+    case "pvFollowHit":
+      return `Still on my line, ${event.row},${event.col} (depth ${event.depth})…`;
     case "searchStats":
       return `Depth ${event.depth} · ${event.nodes.toLocaleString("en-US")} nodes…`;
   }
