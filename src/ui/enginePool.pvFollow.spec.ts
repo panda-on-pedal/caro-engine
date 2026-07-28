@@ -65,7 +65,6 @@ describe("EnginePool PV follow", () => {
   });
 
   it("plays the PV reply after a short delay when the human stays on the line", async () => {
-    jest.useFakeTimers();
     const pool = new EnginePool(1);
     const start = newGame().board;
     const first = await pool.requestMove(start, 1, "easy", undefined, {
@@ -78,6 +77,7 @@ describe("EnginePool PV follow", () => {
     const afterEngine = placeMove(start, e0.row, e0.col, 1);
     const afterHuman = placeMove(afterEngine, h1.row, h1.col, 2);
     const progress: string[] = [];
+    jest.useFakeTimers();
     const secondPromise = pool.requestMove(afterHuman, 1, "easy", undefined, {
       experienceMode: "use",
       persistExperience: false,

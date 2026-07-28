@@ -1,5 +1,16 @@
 # Release notes
 
+## 1.2.2
+
+### Engine
+
+- **PV follow**: engine remembers and replays the principal variation across successive "use"-mode requests, skipping full searches on known continuations (falls back to normal search on mismatch)
+
+### Play & UI
+
+- New thought narration for PV follow hits
+- PV follow cell highlight shown mid-search
+
 ## 1.2.1
 
 ### Play & UI
