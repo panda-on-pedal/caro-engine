@@ -6,6 +6,7 @@ import {
   NPM_LATEST_URL,
   VERSION_CHECK_INTERVAL_MS,
   compareSemver,
+  experienceCacheUrl,
   isNewerVersion,
   normalizeVersion,
   parseGithubLatestTag,
@@ -29,6 +30,23 @@ describe("releaseTagUrl", () => {
   it("builds a tag-specific release URL and normalizes the version", () => {
     expect(releaseTagUrl("1.2.0")).toBe(`${GITHUB_REPO_URL}/releases/tag/1.2.0`);
     expect(releaseTagUrl("v1.2.0")).toBe(`${GITHUB_REPO_URL}/releases/tag/1.2.0`);
+  });
+});
+
+describe("experienceCacheUrl", () => {
+  it("points at data/cache on the release tag (no v prefix)", () => {
+    expect(experienceCacheUrl("easy", "1.2.2")).toBe(
+      "https://raw.githubusercontent.com/panda-on-pedal/caro-engine/1.2.2/data/cache/easy.json"
+    );
+    expect(experienceCacheUrl("expert", "v1.2.2")).toBe(
+      "https://raw.githubusercontent.com/panda-on-pedal/caro-engine/1.2.2/data/cache/expert.json"
+    );
+  });
+
+  it("defaults the tag to the bundled APP_VERSION", () => {
+    expect(experienceCacheUrl("medium")).toBe(
+      `https://raw.githubusercontent.com/panda-on-pedal/caro-engine/${normalizeVersion(APP_VERSION)}/data/cache/medium.json`
+    );
   });
 });
 

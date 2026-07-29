@@ -24,8 +24,19 @@ function build(size: number, stones: Array<[number, number, Player]>): Board {
 }
 
 describe("canonicalExperienceKey", () => {
+  it("maps empty and single-stone boards to EMPTY (openings are not booked)", () => {
+    const empty = createEmptyBoard(5);
+    const one = build(5, [[2, 2, 1]]);
+    expect(canonicalExperienceKey(empty, 1).key).toBe("EMPTY");
+    expect(canonicalExperienceKey(one, 1).key).toBe("EMPTY");
+    expect(canonicalExperienceKey(one, 2).key).toBe("EMPTY");
+  });
+
   it("differs by side to move on the same board", () => {
-    const board = build(5, [[2, 2, 1]]);
+    const board = build(5, [
+      [2, 2, 1],
+      [2, 3, 2],
+    ]);
     expect(canonicalExperienceKey(board, 1).key).not.toBe(canonicalExperienceKey(board, 2).key);
   });
 

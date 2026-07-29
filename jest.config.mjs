@@ -1,5 +1,6 @@
 export default {
   testEnvironment: "node",
+  setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
   testMatch: ["<rootDir>/src/**/*.spec.ts"],
   testPathIgnorePatterns: ["/node_modules/", "/\\.claude/"],
   modulePathIgnorePatterns: ["<rootDir>/\\.claude/"],

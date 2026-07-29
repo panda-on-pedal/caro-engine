@@ -146,4 +146,73 @@ describe("experiencePersist", () => {
     expect(reload.get("p")?.settleLevel).toBe(2);
     expect(reload.get("p")?.stallCount).toBe(1);
   });
+
+  it("background-seeds missing difficulty keys from the repo URL and persists them", async () => {
+    const fetchImpl = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      expect(url).toContain("/data/cache/");
+      const difficulty = url.slice(url.lastIndexOf("/") + 1).replace(".json", "");
+      return {
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            version: 3,
+            entries: [
+              {
+                key: `seed-${difficulty}`,
+                move: { row: 4, col: 4 },
+                score: 10,
+                depth: 3,
+                updatedAt: 1,
+              },
+            ],
+          }),
+      } as Response;
+    });
+
+    const books = new PersistentExperienceStore({ fetchImpl });
+    expect(books.get("easy", "seed-easy")).toBeUndefined();
+
+    await books.whenSeeded();
+
+    expect(books.get("easy", "seed-easy")?.depth).toBe(3);
+    expect(books.get("medium", "seed-medium")?.depth).toBe(3);
+    expect(books.get("hard", "seed-hard")?.depth).toBe(3);
+    expect(books.get("expert", "seed-expert")?.depth).toBe(3);
+    expect(memory[experienceStorageKey("easy")]).toContain("seed-easy");
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not fetch difficulties that already have a localStorage key", async () => {
+    memory[experienceStorageKey("easy")] = JSON.stringify({
+      version: 3,
+      entries: [
+        { key: "local", move: { row: 1, col: 1 }, score: 1, depth: 2, updatedAt: 1 },
+      ],
+    });
+    const fetchImpl = jest.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify({ version: 3, entries: [] }),
+    }));
+
+    const books = new PersistentExperienceStore({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    await books.whenSeeded();
+
+    expect(books.get("easy", "local")?.depth).toBe(2);
+    const fetchedUrls = fetchImpl.mock.calls.map((call: unknown[]) => String(call[0]));
+    expect(fetchedUrls.some((url: string) => url.endsWith("/easy.json"))).toBe(false);
+    expect(fetchedUrls).toHaveLength(3);
+  });
+
+  it("leaves books empty when the seed fetch fails", async () => {
+    const fetchImpl = jest.fn(async () => {
+      throw new Error("network down");
+    }) as unknown as typeof fetch;
+
+    const books = new PersistentExperienceStore({ fetchImpl });
+    await books.whenSeeded();
+
+    expect(books.book("easy").size).toBe(0);
+    expect(memory[experienceStorageKey("easy")]).toBeUndefined();
+  });
 });

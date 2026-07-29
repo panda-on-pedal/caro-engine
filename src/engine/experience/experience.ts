@@ -4,7 +4,12 @@ import type { Move } from "../state.ts";
 
 export type ExperienceMode = "use" | "practice" | "off";
 
-/** Key for the empty board — the opening move is not worth recording. */
+/**
+ * Key for positions with no tactical content worth booking: the empty board
+ * and the single-stone opening reply. All mid-board single-stone shapes would
+ * otherwise collapse onto one canonical key, so a single stored reply (e.g.
+ * top-left of the stone) would lock every first-move answer forever.
+ */
 export const EMPTY_POSITION_KEY = "EMPTY";
 
 /**
@@ -205,7 +210,9 @@ export function canonicalExperienceKey(board: Board, sideToMove: Player): Canoni
     }
   }
 
-  if (stones.length === 0) {
+  // Empty board and lone-stone replies: every quiet neighbor scores equally,
+  // so booking one answer makes the engine repeat the same relative move.
+  if (stones.length <= 1) {
     return { key: EMPTY_POSITION_KEY, transform: IDENTITY_TRANSFORM };
   }
 

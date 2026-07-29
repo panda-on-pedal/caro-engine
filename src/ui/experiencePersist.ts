@@ -1,6 +1,7 @@
 import type { Difficulty } from "../engine/engine.ts";
 import { ExperienceStore, type StoredExperienceEntry } from "../engine/experience/experience.ts";
 import { logger } from "../utils/logger.ts";
+import { experienceCacheUrl } from "./lib/appVersion.ts";
 import { evictSlice } from "./ttPersist.ts";
 
 export const LEGACY_EXPERIENCE_STORAGE_KEY = "caro-engine-experience-v1";
@@ -70,6 +71,19 @@ export function discardLegacyExperienceStorage(): void {
   }
 }
 
+/** True when localStorage already has a key for this difficulty (even if empty JSON). */
+export function hasExperienceStorageKey(difficulty: Difficulty): boolean {
+  const storage = readStorage();
+  if (!storage) {
+    return false;
+  }
+  try {
+    return storage.getItem(experienceStorageKey(difficulty)) !== null;
+  } catch {
+    return false;
+  }
+}
+
 /** Load disk-backed experience into `store`. Safe no-op when storage missing/corrupt. */
 export function loadExperienceStore(store: ExperienceStore, difficulty: Difficulty): void {
   const storage = readStorage();
@@ -81,6 +95,50 @@ export function loadExperienceStore(store: ExperienceStore, difficulty: Difficul
     return;
   }
   store.loadAll(parseFile(raw));
+}
+
+async function seedMissingBooks(
+  books: Record<Difficulty, ExperienceStore>,
+  missing: readonly Difficulty[],
+  fetchImpl: typeof fetch
+): Promise<void> {
+  if (missing.length === 0) {
+    return;
+  }
+  await Promise.all(
+    missing.map(async difficulty => {
+      try {
+        const response = await fetchImpl(experienceCacheUrl(difficulty));
+        if (!response.ok) {
+          return;
+        }
+        const raw = await response.text();
+        const entries = parseFile(raw);
+        if (entries.length === 0) {
+          return;
+        }
+        // Merge rather than loadAll: a live session may already have written
+        // entries while this download was in flight.
+        for (const entry of entries) {
+          books[difficulty].put(
+            entry.key,
+            {
+              move: entry.move,
+              score: entry.score,
+              depth: entry.depth,
+              settleLevel: entry.settleLevel,
+              stallCount: entry.stallCount,
+              nodes: entry.nodes,
+            },
+            entry.updatedAt
+          );
+        }
+        saveExperienceStore(books[difficulty], difficulty);
+      } catch (error) {
+        logger.error(`Failed to seed experience cache for ${difficulty}:`, error);
+      }
+    })
+  );
 }
 
 /** Persist `store` to localStorage. Debounce via callers if needed. */
@@ -133,6 +191,8 @@ export function saveHumanBook(store: ExperienceStore): void {
 /**
  * Main-thread experience books: one LRU store + localStorage key per difficulty.
  * Workers receive baselines via the engine protocol; they do not own disk.
+ * Missing localStorage keys are background-seeded from the release-tagged
+ * GitHub raw books under data/cache/ (does not block construction).
  */
 export class PersistentExperienceStore {
   private readonly books: Record<Difficulty, ExperienceStore>;
@@ -141,8 +201,13 @@ export class PersistentExperienceStore {
   private humanDirty = false;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly debounceMs: number;
+  private readonly seedPromise: Promise<void>;
 
-  constructor(options?: { maxEntries?: number; debounceMs?: number }) {
+  constructor(options?: {
+    maxEntries?: number;
+    debounceMs?: number;
+    fetchImpl?: typeof fetch;
+  }) {
     const maxEntries = options?.maxEntries ?? 4000;
     this.debounceMs = options?.debounceMs ?? 250;
     this.books = {
@@ -152,11 +217,22 @@ export class PersistentExperienceStore {
       expert: new ExperienceStore(maxEntries, key => void evictSlice(key)),
     };
     discardLegacyExperienceStorage();
+    const missing: Difficulty[] = [];
     for (const difficulty of DIFFICULTIES) {
-      loadExperienceStore(this.books[difficulty], difficulty);
+      if (hasExperienceStorageKey(difficulty)) {
+        loadExperienceStore(this.books[difficulty], difficulty);
+      } else {
+        missing.push(difficulty);
+      }
     }
     this.humanBook = new ExperienceStore(maxEntries);
     loadHumanBook(this.humanBook);
+    this.seedPromise = seedMissingBooks(this.books, missing, options?.fetchImpl ?? fetch);
+  }
+
+  /** Resolves when background repo seeding finishes (tests / optional await). */
+  whenSeeded(): Promise<void> {
+    return this.seedPromise;
   }
 
   book(difficulty: Difficulty): ExperienceStore {

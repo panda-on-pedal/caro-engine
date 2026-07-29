@@ -82,7 +82,8 @@ export interface HumanBookEntry {
  * Walk a finished game's move list and return the canonical (key, move) pairs
  * for every move the human made — used to seed the shared human book after a
  * human win. Player 1 always moves on even indices, so `humanPlayer` selects
- * moves by parity. The empty-board opening (no shape to key) is skipped.
+ * moves by parity. Empty-board and single-stone openings are skipped (no
+ * tactical shape worth locking).
  */
 export function humanWinBookEntries(
   moveHistory: readonly Move[],

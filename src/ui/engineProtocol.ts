@@ -8,6 +8,7 @@ import type {
 } from "../engine/experience/experience.ts";
 import {
   DEFAULT_SETTLE_GIVE_UP_SEARCHES,
+  EMPTY_POSITION_KEY,
   isUsableExperienceMove,
   isStrongExperienceHit,
 } from "../engine/experience/experience.ts";
@@ -169,6 +170,10 @@ export function prepareExperienceForRequest(params: {
 } {
   const giveUp = params.settleGiveUpSearches ?? DEFAULT_SETTLE_GIVE_UP_SEARCHES;
   const { key, transform } = experienceKeyFor(params.board, params.player);
+  // Openings (empty / single-stone) share EMPTY — never replay or seed them.
+  if (key === EMPTY_POSITION_KEY) {
+    return { instant: null, permanent: false, key, transform };
+  }
   // Shared human book wins over the per-difficulty book: any non-off mode
   // replays a legal human-win move instantly (true mimic) with no background
   // improvement. `permanent: true` + no baseline makes EnginePool skip the

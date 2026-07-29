@@ -4,6 +4,9 @@ export const GITHUB_LATEST_RELEASE_API =
   "https://api.github.com/repos/panda-on-pedal/caro-engine/releases/latest";
 export const NPM_LATEST_URL = "https://registry.npmjs.org/caro-tournament/latest";
 
+/** owner/repo path derived from GITHUB_REPO_URL for raw.githubusercontent.com. */
+const GITHUB_RAW_REPO = GITHUB_REPO_URL.replace("https://github.com/", "");
+
 /** Injected by Vite from package.json. */
 declare const __APP_VERSION__: string;
 
@@ -15,6 +18,20 @@ function resolveBundledVersion(): string {
 }
 
 export const APP_VERSION: string = resolveBundledVersion();
+
+/** GitHub raw base for release-tagged experience books under data/cache/. */
+export function experienceCacheBaseUrl(version: string = APP_VERSION): string {
+  const tag = normalizeVersion(version);
+  return `https://raw.githubusercontent.com/${GITHUB_RAW_REPO}/${tag}/data/cache`;
+}
+
+/** Full URL for one difficulty book (e.g. easy.json) on the release tag. */
+export function experienceCacheUrl(
+  difficulty: string,
+  version: string = APP_VERSION
+): string {
+  return `${experienceCacheBaseUrl(version)}/${difficulty}.json`;
+}
 
 export const VERSION_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 const STORAGE_KEY = "caro.versionCheck";

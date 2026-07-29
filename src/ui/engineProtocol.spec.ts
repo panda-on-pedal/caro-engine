@@ -53,6 +53,40 @@ describe("handleEngineRequest", () => {
 });
 
 describe("prepareExperienceForRequest", () => {
+  it("does not book or replay the single-stone opening reply", () => {
+    // Regression: canonical keys used to collapse every mid-board lone stone
+    // onto one entry, so a stored NW reply locked all first-move answers.
+    const store = new PersistentExperienceStore();
+    let state = newGame();
+    state = applyMove(state, { row: 10, col: 10 }, 1);
+    const prepared = prepareExperienceForRequest({
+      board: state.board,
+      player: 2,
+      difficulty: "medium",
+      experienceMode: "use",
+      store,
+    });
+    expect(prepared.key).toBe("EMPTY");
+    expect(prepared.instant).toBeNull();
+    expect(prepared.baseline).toBeUndefined();
+
+    store.put("medium", "EMPTY", {
+      move: { row: 9, col: 9 },
+      score: 10,
+      depth: 4,
+      stallCount: 3,
+    });
+    const again = prepareExperienceForRequest({
+      board: state.board,
+      player: 2,
+      difficulty: "medium",
+      experienceMode: "use",
+      store,
+    });
+    expect(again.instant).toBeNull();
+    expect(again.baseline).toBeUndefined();
+  });
+
   it("returns a use-mode hit as instant AND baseline, with the permanent flag", () => {
     const store = new PersistentExperienceStore();
     let state = newGame();

@@ -1,5 +1,16 @@
 # Release notes
 
+## 1.2.3
+
+### Practice & experience
+
+- **Prebuilt experience books**: on first launch (missing localStorage keys), seed each difficulty book in the background from GitHub raw `data/cache/{difficulty}.json` on the release tag matching `APP_VERSION` — not shipped in the npm package
+- Opening lock fix: empty **and** single-stone positions share `EMPTY` and are never booked or instantly replayed (avoids one stored first reply locking every opening)
+
+### Play & UI
+
+- Vietnamese easy difficulty label: "Dễ xơi"
+
 ## 1.2.2
 
 ### Engine

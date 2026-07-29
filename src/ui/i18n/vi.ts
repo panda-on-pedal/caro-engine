@@ -9,7 +9,7 @@ export const vi: Messages = {
   "mode.practice": "Luyện tập",
   "matchup.human": "Người",
   "matchup.computer": "Máy tính",
-  "difficulty.easy": "Dễ",
+  "difficulty.easy": "Dễ xơi",
   "difficulty.medium": "Vừa tầm",
   "difficulty.hard": "Xứng tầm",
   "difficulty.expert": "Sừng sỏ",
