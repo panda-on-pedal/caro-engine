@@ -46,7 +46,7 @@ export const vi: Messages = {
   "settings.experienceImprovement": "Học từ ván Người vs Máy (lưu kinh nghiệm mới)",
   "settings.practiceImprovement": "Tiếp tục cải thiện kinh nghiệm khi luyện tập (chậm hơn)",
   "settings.neverGiveUp": "Không bao giờ bỏ cuộc (luôn cải thiện mọi thế cờ)",
-  "settings.settleGiveUpSearches": "Bỏ cuộc sau N lần tìm (1–50)",
+  "settings.settleGiveUpSearches": "Bỏ cuộc sau N lần tìm (10-50)",
   "instructions.title": "Hướng dẫn",
   "instructions.rulesTitle": "Luật chơi",
   "instructions.rules.place": "Hai bên lần lượt đặt X và O trên bàn cờ.",

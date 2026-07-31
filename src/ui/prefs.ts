@@ -15,7 +15,7 @@ function isDifficulty(value: unknown): value is Difficulty {
 }
 
 /** Range the give-up setting offers; the maximum doubles as the default. */
-export const MIN_SETTLE_GIVE_UP_SEARCHES = 1;
+export const MIN_SETTLE_GIVE_UP_SEARCHES = 10;
 export const MAX_SETTLE_GIVE_UP_SEARCHES = 50;
 
 export function clampSettleGiveUpSearches(value: number): number {

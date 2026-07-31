@@ -44,7 +44,7 @@ export const en = {
   "settings.experienceImprovement": "Learn from Human vs Computer games (save new experience)",
   "settings.practiceImprovement": "Keep improving experience while practicing (slower)",
   "settings.neverGiveUp": "Never give up (keep improving every position)",
-  "settings.settleGiveUpSearches": "Give up after N searches (1–50)",
+  "settings.settleGiveUpSearches": "Give up after N searches (10-50)",
   "instructions.title": "Instructions",
   "instructions.rulesTitle": "Rules",
   "instructions.rules.place": "Players take turns placing X and O on the board.",
