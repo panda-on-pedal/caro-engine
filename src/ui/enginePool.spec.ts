@@ -1,5 +1,4 @@
 import { isLegalMove, type Board } from "../engine/board.ts";
-import { toCanonicalBoard } from "../engine/experience/experience.ts";
 import { applyMove, newGame } from "../engine/state.ts";
 import {
   handleEngineRequest,
@@ -236,8 +235,9 @@ describe("EnginePool background improvement", () => {
       experienceMode: "use",
       store,
     });
+    const hitMove = { row: 4, col: 4 };
     store.put("easy", prepared.key, {
-      move: prepared.transform.toCanonical({ row: 4, col: 4 }),
+      move: prepared.transform.toCanonical(hitMove),
       score: 10,
       depth: 3,
     });
@@ -247,17 +247,18 @@ describe("EnginePool background improvement", () => {
       player: state.nextPlayer,
       key: prepared.key,
       transform: prepared.transform,
+      hitMove,
     };
   }
 
   it("replays a hit instantly and dispatches a full-budget background search", async () => {
-    const { store, board, player, key, transform } = seedHit();
+    const { store, board, player, key, hitMove } = seedHit();
     const pool = new EnginePool(1, store);
 
     const result = await pool.requestMove(board, player, "easy", undefined, {
       experienceMode: "use",
     });
-    expect(result.move).toEqual({ row: 4, col: 4 });
+    expect(result.move).toEqual(hitMove);
 
     expect(RecordingWorker.instances).toHaveLength(1);
     const background = RecordingWorker.instances[0].posted;
@@ -265,22 +266,20 @@ describe("EnginePool background improvement", () => {
     expect(background[0].bookDeepening).toBe(true);
     expect(background[0].canonicalKey).toBe(key);
     expect(background[0].stepTimeByOwnStones).toBe(false);
-    expect(background[0].board).toEqual(toCanonicalBoard(toPlainBoard(board), transform));
-    expect(background[0].experienceBaseline?.move).toEqual(
-      transform.toCanonical({ row: 4, col: 4 })
-    );
+    expect(background[0].board).toEqual(toPlainBoard(board));
+    expect(background[0].experienceBaseline?.move).toEqual(hitMove);
     pool.terminate();
   });
 
   it("reinvests on a cache hit even when persistExperience is false", async () => {
-    const { store, board, player, key } = seedHit();
+    const { store, board, player, key, hitMove } = seedHit();
     const pool = new EnginePool(1, store);
 
     const result = await pool.requestMove(board, player, "easy", undefined, {
       experienceMode: "use",
       persistExperience: false,
     });
-    expect(result.move).toEqual({ row: 4, col: 4 });
+    expect(result.move).toEqual(hitMove);
 
     expect(RecordingWorker.instances).toHaveLength(1);
     const background = RecordingWorker.instances[0].posted;
@@ -324,7 +323,10 @@ describe("EnginePool background improvement", () => {
     pool.terminate();
   });
 
-  it("raises stallCount when background cannot out-depth it; freezes after give-up", async () => {
+  it("adopts an equal-depth move change from the background search", async () => {
+    // The background search seeds the stored move as a root candidate, so a
+    // different cell at the same depth is a head-to-head verdict — the book
+    // takes it (and its lower score) instead of counting a stall.
     const { store, board, player, key, transform } = seedHit();
     const pool = new EnginePool(1, store);
     await pool.requestMove(board, player, "easy", undefined, {
@@ -333,18 +335,81 @@ describe("EnginePool background improvement", () => {
     });
     const worker = RecordingWorker.instances[0];
     const backgroundRequest = worker.posted[0];
-    const canonicalMove = transform.toCanonical({ row: 4, col: 4 });
+    const betterMove = { row: 6, col: 4 };
 
-    // Background search comes back floored at the canonical baseline — no better result.
     worker.onmessage?.({
       data: {
         id: backgroundRequest.id,
         ok: true,
         result: {
-          move: canonicalMove,
+          move: betterMove,
+          score: -22,
+          depth: 3,
+          principalVariation: [betterMove],
+          nodesVisited: 100,
+        },
+      },
+    } as MessageEvent<EngineMessage>);
+
+    const stored = store.get("easy", key);
+    expect(stored?.move).toEqual(transform.toCanonical(betterMove));
+    expect(stored?.score).toBe(-22);
+    expect(stored?.stallCount).toBe(0);
+    pool.terminate();
+  });
+
+  it("ignores a background result that got less deep than the stored entry", async () => {
+    const { store, board, player, key, transform, hitMove } = seedHit();
+    const pool = new EnginePool(1, store);
+    await pool.requestMove(board, player, "easy", undefined, {
+      experienceMode: "use",
+      settleGiveUpSearches: 3,
+    });
+    const worker = RecordingWorker.instances[0];
+    const backgroundRequest = worker.posted[0];
+
+    worker.onmessage?.({
+      data: {
+        id: backgroundRequest.id,
+        ok: true,
+        result: {
+          move: { row: 6, col: 4 },
+          score: 999,
+          depth: 2,
+          principalVariation: [{ row: 6, col: 4 }],
+          nodesVisited: 10,
+        },
+      },
+    } as MessageEvent<EngineMessage>);
+
+    const stored = store.get("easy", key);
+    expect(stored?.move).toEqual(transform.toCanonical(hitMove));
+    expect(stored?.depth).toBe(3);
+    expect(stored?.stallCount).toBe(0);
+    pool.terminate();
+  });
+
+  it("raises stallCount when background cannot out-depth it; freezes after give-up", async () => {
+    const { store, board, player, key, hitMove } = seedHit();
+    const pool = new EnginePool(1, store);
+    await pool.requestMove(board, player, "easy", undefined, {
+      experienceMode: "use",
+      settleGiveUpSearches: 3,
+    });
+    const worker = RecordingWorker.instances[0];
+    const backgroundRequest = worker.posted[0];
+    const displayMove = hitMove;
+
+    // Background search comes back floored at the baseline — no better result.
+    worker.onmessage?.({
+      data: {
+        id: backgroundRequest.id,
+        ok: true,
+        result: {
+          move: displayMove,
           score: 10,
           depth: 3,
-          principalVariation: [canonicalMove],
+          principalVariation: [displayMove],
           nodesVisited: 100,
         },
       },
@@ -369,14 +434,14 @@ describe("EnginePool background improvement", () => {
       experienceMode: "use",
       settleGiveUpSearches: 3,
     });
-    expect(again.move).toEqual({ row: 4, col: 4 });
+    expect(again.move).toEqual(hitMove);
     const postedAfterFreeze = RecordingWorker.instances.reduce((n, w) => n + w.posted.length, 0);
     expect(postedAfterFreeze).toBe(postedBeforeFreeze);
     pool.terminate();
   });
 
   it("raises stallCount on practice foreground when search does not beat the baseline", async () => {
-    const { store, board, player, key } = seedHit();
+    const { store, board, player, key, hitMove } = seedHit();
     const pool = new EnginePool(1, store);
     const pending = pool.requestMove(board, player, "easy", undefined, {
       experienceMode: "practice",
@@ -392,10 +457,10 @@ describe("EnginePool background improvement", () => {
         id: worker.posted[0].id,
         ok: true,
         result: {
-          move: { row: 4, col: 4 },
+          move: hitMove,
           score: 10,
           depth: 3,
-          principalVariation: [{ row: 4, col: 4 }],
+          principalVariation: [hitMove],
           nodesVisited: 50,
           experienceCacheHit: true,
         },
@@ -408,23 +473,24 @@ describe("EnginePool background improvement", () => {
   });
 
   it("climbs settleLevel on practice foreground when search beats the baseline", async () => {
-    const { store, board, player, key } = seedHit();
+    const { store, board, player, key, hitMove } = seedHit();
     const pool = new EnginePool(1, store);
     const pending = pool.requestMove(board, player, "easy", undefined, {
       experienceMode: "practice",
       settleGiveUpSearches: 3,
     });
     const worker = RecordingWorker.instances[0];
+    const betterMove = { row: hitMove.row, col: hitMove.col + 1 };
 
     worker.onmessage?.({
       data: {
         id: worker.posted[0].id,
         ok: true,
         result: {
-          move: { row: 4, col: 5 },
+          move: betterMove,
           score: 20,
           depth: 4,
-          principalVariation: [{ row: 4, col: 5 }],
+          principalVariation: [betterMove],
           nodesVisited: 80,
           experienceCacheHit: true,
         },
@@ -444,7 +510,8 @@ describe("EnginePool background improvement", () => {
     const pool = new EnginePool(1, store, ev => events.push(ev));
     const board = newGame().board;
     board[7][7] = 1;
-    const pending = pool.requestMove(board, 2, "easy", 50, {
+    board[7][8] = 2;
+    const pending = pool.requestMove(board, 1, "easy", 50, {
       experienceMode: "practice",
       settleGiveUpSearches: 3,
     });
@@ -455,10 +522,10 @@ describe("EnginePool background improvement", () => {
         id: worker.posted[0].id,
         ok: true,
         result: {
-          move: { row: 7, col: 8 },
+          move: { row: 7, col: 9 },
           score: 5,
           depth: 2,
-          principalVariation: [{ row: 7, col: 8 }],
+          principalVariation: [{ row: 7, col: 9 }],
           nodesVisited: 42,
         },
       },

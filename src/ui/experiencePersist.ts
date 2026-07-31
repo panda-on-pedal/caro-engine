@@ -211,10 +211,18 @@ export class PersistentExperienceStore {
     const maxEntries = options?.maxEntries ?? 4000;
     this.debounceMs = options?.debounceMs ?? 250;
     this.books = {
-      easy: new ExperienceStore(maxEntries, key => void evictSlice(key)),
-      medium: new ExperienceStore(maxEntries, key => void evictSlice(key)),
-      hard: new ExperienceStore(maxEntries, key => void evictSlice(key)),
-      expert: new ExperienceStore(maxEntries, key => void evictSlice(key)),
+      easy: new ExperienceStore(maxEntries, key => {
+        void evictSlice(key).catch(() => {});
+      }),
+      medium: new ExperienceStore(maxEntries, key => {
+        void evictSlice(key).catch(() => {});
+      }),
+      hard: new ExperienceStore(maxEntries, key => {
+        void evictSlice(key).catch(() => {});
+      }),
+      expert: new ExperienceStore(maxEntries, key => {
+        void evictSlice(key).catch(() => {});
+      }),
     };
     discardLegacyExperienceStorage();
     const missing: Difficulty[] = [];
@@ -249,6 +257,15 @@ export class PersistentExperienceStore {
       this.scheduleSave(difficulty);
     }
     return changed;
+  }
+
+  /** Drop a difficulty-book key (persists + evicts TT slice via store onEvict). */
+  delete(difficulty: Difficulty, key: string): boolean {
+    const removed = this.books[difficulty].delete(key);
+    if (removed) {
+      this.scheduleSave(difficulty);
+    }
+    return removed;
   }
 
   setStallCount(difficulty: Difficulty, key: string, count: number): void {

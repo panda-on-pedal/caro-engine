@@ -4,6 +4,7 @@ import { findPatterns } from "../patterns/patterns.ts";
 import { PatternStore } from "../patterns/patternStore.ts";
 import type { Move } from "../state.ts";
 import { logger } from "../../utils/logger.ts";
+import { logMoveKey } from "./logMove.ts";
 
 /** Only threes: playing a gain creates a four (two-gains only make threes). */
 const SEED_PATTERN_TYPES = new Set(["three", "open-three"]);
@@ -96,7 +97,7 @@ export function discoverOpponentThreatBlocks(
   const store = config.store ?? PatternStore.fromBoard(board);
 
   const seeds = collectThreatSeeds(store.board, defender, exclude, store).slice(0, maxSeeds);
-  logger.log('[threat] seeds', seeds);
+  logger.log("[threat] seeds", seeds.map(logMoveKey));
 
   const blocks: Move[] = [];
   for (const seed of seeds) {

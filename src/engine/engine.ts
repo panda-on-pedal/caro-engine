@@ -93,10 +93,15 @@ export function resolveEngineSearchConfig(config: EngineConfig): SearchConfig {
       config.stepTimeByOwnStones ?? (config.experienceMode === "practice" ? false : undefined),
     recognizedForkPatterns: profile.recognizedForkPatterns,
     decay: DEFAULT_DECAY_CONFIG,
-    rootScoreJitter: config.rootScoreJitter ?? profile.rootScoreJitter,
+    // Jitter makes near-equal candidates interchangeable so play feels varied.
+    // Nobody watches a background deepening search, and its result decides a
+    // book entry — a perturbed score there is noise in a stored verdict.
+    rootScoreJitter:
+      config.rootScoreJitter ?? (config.bookDeepening ? 0 : profile.rootScoreJitter),
     experienceMode: config.experienceMode,
     experienceBaseline: config.experienceBaseline,
     rootCandidates: config.rootCandidates,
+    bookDeepening: config.bookDeepening,
   };
 }
 
@@ -106,7 +111,11 @@ export function resolveEngineSearchConfig(config: EngineConfig): SearchConfig {
  * reached, and the principal variation for debugging or future bridging.
  */
 export function chooseMove(state: GameState, config: EngineConfig = DEFAULT_CONFIG): SearchResult {
-  return search(state.board, state.nextPlayer, resolveEngineSearchConfig(config));
+  return search({
+    board: state.board,
+    player: state.nextPlayer,
+    ...resolveEngineSearchConfig(config),
+  });
 }
 
 /** Fan-out width for a difficulty: its profile `parallelism`, floored at 1. */

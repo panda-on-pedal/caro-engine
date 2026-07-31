@@ -200,4 +200,24 @@ describe("bookDeepening depth override", () => {
     expect(deep.maxDepth).toBe(BOOK_MAX_DEPTH);
     expect(deep.timeBudgetMs).toBe(normal.timeBudgetMs);
   });
+
+  it("drops root jitter so a book verdict is not decided by noise", () => {
+    const normal = resolveEngineSearchConfig({ difficulty: "expert" });
+    const deep = resolveEngineSearchConfig({
+      difficulty: "expert",
+      bookDeepening: true,
+    });
+    expect(normal.rootScoreJitter).toBeGreaterThan(0);
+    expect(deep.rootScoreJitter).toBe(0);
+    expect(deep.bookDeepening).toBe(true);
+  });
+
+  it("still honors an explicit jitter override", () => {
+    const deep = resolveEngineSearchConfig({
+      difficulty: "expert",
+      bookDeepening: true,
+      rootScoreJitter: 0.5,
+    });
+    expect(deep.rootScoreJitter).toBe(0.5);
+  });
 });

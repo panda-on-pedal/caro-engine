@@ -79,7 +79,7 @@ describe("search", () => {
       .....
       .....
     `);
-    const result = search(board, 2, { maxDepth: 4 });
+    const result = search({ board: board, player: 2, maxDepth: 4 });
     expect(result.depth).toBe(0);
     expect(result.nodesVisited).toBe(0);
     expect(board[result.move.row][result.move.col]).toBe(0);
@@ -91,7 +91,7 @@ describe("search", () => {
   it("searches when an open-two is present", () => {
     const board = parseBoard("..XX...");
     const openTwo = findPatterns(board, 1).find(p => p.type === "open-two")!;
-    const result = search(board, 1, { maxDepth: 2 });
+    const result = search({ board: board, player: 1, maxDepth: 2 });
     expect(result.depth).toBeGreaterThan(0);
     expect(result.nodesVisited).toBeGreaterThan(0);
     expect(openTwo.criticalGains).toContainEqual(result.move);
@@ -99,7 +99,7 @@ describe("search", () => {
 
   it("reaches the requested depth on a tactical board", () => {
     const board = parseBoard("..XX...");
-    const result = search(board, 1, { maxDepth: 2 });
+    const result = search({ board: board, player: 1, maxDepth: 2 });
     expect(result.depth).toBe(2);
     expect(result.principalVariation.length).toBeGreaterThan(0);
     expect(board[result.move.row][result.move.col]).toBe(0);
@@ -114,7 +114,7 @@ describe("search", () => {
       ..........
     `);
     const start = Date.now();
-    const result = search(board, 1, { maxDepth: 8, timeBudgetMs: 100 });
+    const result = search({ board: board, player: 1, maxDepth: 8, timeBudgetMs: 100 });
     const elapsedMs = Date.now() - start;
 
     // Budget is soft: a single in-flight node may finish after the deadline
@@ -131,7 +131,7 @@ describe("search", () => {
       .OXXXX....
       ..........
     `);
-    const result = search(board, 1, { maxDepth: 3 });
+    const result = search({ board: board, player: 1, maxDepth: 3 });
     expect(result.move).toEqual({ row: 1, col: 6 });
   });
 
@@ -173,7 +173,7 @@ describe("search", () => {
       .XXX..
       ......
     `);
-    const result = search(board, 1, { maxDepth: 6, timeBudgetMs: 15000 });
+    const result = search({ board: board, player: 1, maxDepth: 6, timeBudgetMs: 15000 });
     expect(result.score).toBeGreaterThanOrEqual(9_000_000);
   }, 20000);
 });
@@ -200,7 +200,7 @@ describe("top-K narrowing bound (scored top-K candidate plan)", () => {
     });
     expect(narrowed.moves.length).toBeLessThanOrEqual(DEFAULT_TOP_K);
 
-    const result = search(board, 1, { maxDepth: 2, timeBudgetMs: 2000 });
+    const result = search({ board: board, player: 1, maxDepth: 2, timeBudgetMs: 2000 });
     expect(result.move).toBeDefined();
     expect(board[result.move.row][result.move.col]).toBe(0);
   });
@@ -234,31 +234,27 @@ describe("root score jitter (dynamic play among near-equal candidates)", () => {
   });
 
   it("without jitter the same rng stream always yields the same move", () => {
-    const a = search(board(), 1, { maxDepth: 2, rng: lcg(7) });
-    const b = search(board(), 1, { maxDepth: 2, rng: lcg(7) });
+    const a = search({ board: board(), player: 1, maxDepth: 2, rng: lcg(7) });
+    const b = search({ board: board(), player: 1, maxDepth: 2, rng: lcg(7) });
     expect(a.move).toEqual(b.move);
   });
 
   it("with jitter, different rng streams break the tie differently", () => {
     const chosen = new Set<string>();
     for (let seed = 1; seed <= 12; seed += 1) {
-      const result = search(board(), 1, {
-        maxDepth: 2,
+      const result = search({ board: board(), player: 1, maxDepth: 2,
         rootScoreJitter: 0.5,
-        rng: lcg(seed),
-      });
+        rng: lcg(seed), });
       chosen.add(`${result.move.row},${result.move.col}`);
     }
     expect(chosen.size).toBeGreaterThan(1);
   });
 
   it("reports the true (unjittered) score of the chosen move", () => {
-    const result = search(board(), 1, {
-      maxDepth: 2,
+    const result = search({ board: board(), player: 1, maxDepth: 2,
       rootScoreJitter: 0.5,
-      rng: lcg(3),
-    });
-    const clean = search(board(), 1, { maxDepth: 2, rng: lcg(3) });
+      rng: lcg(3), });
+    const clean = search({ board: board(), player: 1, maxDepth: 2, rng: lcg(3) });
     // The symmetric position's candidates tie, so whichever one jitter
     // picks must report the same true score as the deterministic run.
     expect(result.score).toBe(clean.score);
@@ -268,14 +264,14 @@ describe("root score jitter (dynamic play among near-equal candidates)", () => {
 describe("pluggable move-selection strategy", () => {
   it("defaults to negamax on tactical boards and explores multiple nodes", () => {
     const board = parseBoard("..XX...");
-    const result = search(board, 1, { maxDepth: 2 });
+    const result = search({ board: board, player: 1, maxDepth: 2 });
     expect(result.nodesVisited).toBeGreaterThan(1);
     expect(typeof negamaxStrategy).toBe("function");
   });
 
   it("patternOnlyStrategy takes narrowing's top pick with zero search overhead", () => {
     const board = parseBoard("OXXXX.");
-    const result = search(board, 1, { maxDepth: 4 }, patternOnlyStrategy);
+    const result = search({ board, player: 1, maxDepth: 4, strategy: patternOnlyStrategy });
     expect(result.move).toEqual({ row: 0, col: 5 });
     expect(result.nodesVisited).toBe(0);
   });
@@ -289,7 +285,7 @@ describe("pluggable move-selection strategy", () => {
       nodesVisited: 0,
     });
     const board = parseBoard("OXXXX.");
-    const result = search(board, 1, { maxDepth: 4 }, alwaysFirstCandidate);
+    const result = search({ board, player: 1, maxDepth: 4, strategy: alwaysFirstCandidate });
     // Forced-block narrowing still yields exactly one candidate here, so
     // "always take the first" and "negamax" agree — the point of this
     // test is that a hand-rolled strategy function works at all.
@@ -313,7 +309,7 @@ describe("regression: manual playtesting findings (2026-07-16 session)", () => {
       ..O.................
       ....................
     `);
-    const result = search(board, 2, { maxDepth: 4, timeBudgetMs: 2000 });
+    const result = search({ board: board, player: 2, maxDepth: 4, timeBudgetMs: 2000 });
     const blocksLeft = result.move.row === 3 && result.move.col === 2;
     const blocksRight = result.move.row === 3 && result.move.col === 6;
     expect(blocksLeft || blocksRight).toBe(true);
@@ -328,7 +324,7 @@ describe("regression: manual playtesting findings (2026-07-16 session)", () => {
     const offsets = new Set<string>();
     for (const [row, col] of positions) {
       const board = createBoardWithSingleStone(row, col);
-      const result = search(board, 2, { maxDepth: 2, timeBudgetMs: 500 });
+      const result = search({ board: board, player: 2, maxDepth: 2, timeBudgetMs: 500 });
       offsets.add(`${result.move.row - row},${result.move.col - col}`);
     }
     expect(offsets.size).toBeGreaterThan(1);
@@ -344,7 +340,7 @@ describe("regression: manual playtesting findings (2026-07-16 session)", () => {
       ..O.................
       ....................
     `);
-    const result = search(board, 2, { maxDepth: 4 }, patternOnlyStrategy);
+    const result = search({ board: board, player: 2, maxDepth: 4 , strategy: patternOnlyStrategy });
     expect(result.nodesVisited).toBe(0);
     const blocksLeft = result.move.row === 3 && result.move.col === 2;
     const blocksRight = result.move.row === 3 && result.move.col === 6;
@@ -355,8 +351,7 @@ describe("regression: manual playtesting findings (2026-07-16 session)", () => {
     // Open-two forces a real negamax search (not the quiet/pattern-only path).
     const board = parseBoard("..XX...");
     const stats: Array<{ depth: number; nodes: number }> = [];
-    const result = search(board, 1, {
-      maxDepth: 3,
+    const result = search({ board: board, player: 1, maxDepth: 3,
       onProgress: e => {
         if (e.type === "searchStats") {
           stats.push({ depth: e.depth, nodes: e.nodes });

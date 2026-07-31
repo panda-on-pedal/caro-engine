@@ -290,13 +290,6 @@ describe("EnginePool PV follow", () => {
 
     const afterEngine = placeMove(toPlainBoard(start), e0.row, e0.col, 1);
     const afterHuman = placeMove(afterEngine, h1.row, h1.col, 2);
-    const prepared = prepareExperienceForRequest({
-      board: afterHuman,
-      player: 1,
-      difficulty: "easy",
-      experienceMode: "use",
-      store: new PersistentExperienceStore(),
-    });
     const second = await pool.requestMove(afterHuman, 1, "easy", undefined, {
       experienceMode: "use",
     });
@@ -304,7 +297,7 @@ describe("EnginePool PV follow", () => {
 
     const bg = posted.filter(r => r.bookDeepening === true);
     expect(bg.length).toBeGreaterThanOrEqual(1);
-    expect(bg[0].experienceBaseline?.move).toEqual(prepared.transform.toCanonical(e2));
+    expect(bg[0].experienceBaseline?.move).toEqual(e2);
 
     // Remaining line still works for the next hop (cursor not replaced by bg).
     let board = placeMove(afterHuman, e2.row, e2.col, 1);

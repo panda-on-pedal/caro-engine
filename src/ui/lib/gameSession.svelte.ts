@@ -35,7 +35,13 @@ import {
 import { fetchWithRetry } from "../apiClient.ts";
 import { isLocale, setLocale, t } from "../i18n/index.ts";
 import type { MessageKey } from "../i18n/index.ts";
-import { loadSettings, saveSettings, type CaroSettings } from "../prefs.ts";
+import {
+  clampSettleGiveUpSearches,
+  effectiveGiveUpSearches,
+  loadSettings,
+  saveSettings,
+  type CaroSettings,
+} from "../prefs.ts";
 import { formatReportLine, formatThought } from "../thoughts.ts";
 import {
   DEFAULT_TOURNAMENT_BOARD_COUNT,
@@ -219,7 +225,7 @@ class GameSession {
   future = $state<GameState[]>([]);
   busy = $state(false);
   mode = $state<GameMode>("human-ai");
-  difficulty = $state<Difficulty>("hard");
+  difficulty = $state<Difficulty>(loadSettings().difficulty);
   autoplayPaused = $state(false);
   sessions = $state<BoardSession[]>([]);
   activeIndex = $state(0);
@@ -458,6 +464,7 @@ class GameSession {
 
     this.unsubPop = installPopstateListener();
     this.settings = loadSettings();
+    this.difficulty = this.settings.difficulty;
     this.applyLang(this.settings.lang);
     const url = hydrateFromUrl();
     this.mode = url.mode;
@@ -528,6 +535,8 @@ class GameSession {
 
   setDifficulty(value: Difficulty): void {
     this.difficulty = value;
+    this.settings = { ...this.settings, difficulty: value };
+    saveSettings(this.settings);
   }
 
   setBoardCount(count: number): void {
@@ -563,8 +572,13 @@ class GameSession {
   }
 
   setSettleGiveUpSearches(value: number): void {
-    const clamped = Math.min(9, Math.max(1, Math.round(value)));
+    const clamped = clampSettleGiveUpSearches(value);
     this.settings = { ...this.settings, settleGiveUpSearches: clamped };
+    saveSettings(this.settings);
+  }
+
+  setNeverGiveUp(value: boolean): void {
+    this.settings = { ...this.settings, neverGiveUp: value };
     saveSettings(this.settings);
   }
 
@@ -912,7 +926,7 @@ class GameSession {
         await this.pool.requestMove(this.state.board, player, this.difficulty, undefined, {
           experienceMode: this.experienceMode(),
           persistExperience: this.persistExperience(),
-          settleGiveUpSearches: this.settings.settleGiveUpSearches,
+          settleGiveUpSearches: effectiveGiveUpSearches(this.settings),
           parallelism: parallelismFor(this.difficulty),
           onProgress: event => {
             if (myGeneration !== this.generation) {
@@ -1043,7 +1057,7 @@ class GameSession {
           experienceMode: this.experienceMode(),
           persistExperience: this.persistExperience(),
           practiceImprovement: this.settings.practiceImprovement,
-          settleGiveUpSearches: this.settings.settleGiveUpSearches,
+          settleGiveUpSearches: effectiveGiveUpSearches(this.settings),
           parallelism: parallelismFor(difficulty),
           reportBoardId: boardSession.id,
         }

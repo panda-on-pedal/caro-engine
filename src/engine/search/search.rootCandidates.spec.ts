@@ -1,4 +1,4 @@
-import { search } from "./search.ts";
+import { search, prepareRootMoves } from "./search.ts";
 import { createEmptyBoard } from "../board.ts";
 import { resolveEngineSearchConfig } from "../engine.ts";
 
@@ -13,7 +13,7 @@ describe("search rootCandidates override", () => {
       { row: 6, col: 6 },
       { row: 9, col: 9 },
     ];
-    const result = search(board, 2, { ...base, rootCandidates: slice });
+    const result = search({ board, player: 2, ...base, rootCandidates: slice });
     expect(slice).toContainEqual(result.move);
   });
 
@@ -24,8 +24,34 @@ describe("search rootCandidates override", () => {
     board[7][9] = 1;
     const base = resolveEngineSearchConfig({ difficulty: "hard" });
     const slice = [{ row: 7, col: 6 }];
-    const result = search(board, 2, { ...base, rootCandidates: slice });
+    const result = search({ board, player: 2, ...base, rootCandidates: slice });
     expect(result.move).toEqual({ row: 7, col: 6 });
     expect(result.depth).toBeGreaterThan(0);
+  });
+});
+
+describe("search preparedRoot reuse", () => {
+  it("uses the supplied prepared root without re-narrowing to a wider set", () => {
+    const board = createEmptyBoard();
+    board[7][7] = 1;
+    board[7][8] = 2;
+    board[8][7] = 1;
+    const base = resolveEngineSearchConfig({ difficulty: "hard" });
+    const prepared = prepareRootMoves(board, 2, {
+      ...base,
+      rootCandidates: [{ row: 6, col: 6 }],
+    });
+    expect(prepared.rootMoves).toEqual([{ row: 6, col: 6 }]);
+
+    const result = search({
+      board,
+      player: 2,
+      ...base,
+      maxDepth: 2,
+      preparedRoot: prepared,
+      // Would widen the root if prepareRootMoves ran again without override.
+      rootCandidates: undefined,
+    });
+    expect(result.move).toEqual({ row: 6, col: 6 });
   });
 });

@@ -28,7 +28,7 @@ function playGame(hardPlayer: Player): Player | null {
 
   for (let moveCount = 0; moveCount < MAX_MOVES; moveCount += 1) {
     const config = toMove === hardPlayer ? HARD_CONFIG : EASY_CONFIG;
-    const result = search(board, toMove, config);
+    const result = search({ board: board, player: toMove, ...config });
     if (!isLegalMove(board, result.move.row, result.move.col)) {
       return otherPlayer(toMove);
     }
@@ -66,7 +66,7 @@ describe("difficulty smoke test", () => {
     board = placeMove(board, 6, 6, 2);
 
     const start = Date.now();
-    const result = search(board, 1, { maxDepth: 10, timeBudgetMs: 150 });
+    const result = search({ board: board, player: 1, maxDepth: 10, timeBudgetMs: 150 });
     const elapsedMs = Date.now() - start;
 
     expect(elapsedMs).toBeLessThan(1000);

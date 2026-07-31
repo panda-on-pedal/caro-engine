@@ -13,12 +13,24 @@ import {
   isStrongExperienceHit,
 } from "../engine/experience/experience.ts";
 import { experienceKeyFor, tryUseExperienceHit } from "../engine/experience/experienceLookup.ts";
-import { search, type SearchProgressEvent, type SearchResult } from "../engine/search/search.ts";
+import { PatternStore } from "../engine/patterns/patternStore.ts";
+import type { NarrowSource } from "../engine/search/narrow.ts";
+import {
+  search,
+  type PreparedRootMoves,
+  type SearchParams,
+  type SearchProgressEvent,
+  type SearchResult,
+} from "../engine/search/search.ts";
 import { TranspositionTable, type TTEntry } from "../engine/transposition/transposition.ts";
 import { PersistentExperienceStore } from "./experiencePersist.ts";
 import { loadSlice as realLoadSlice, flushSlice as realFlushSlice } from "./ttPersist.ts";
+import { logger } from "../utils/logger.ts";
 
 export type { SearchProgressEvent };
+
+/** `PreparedRootMoves` without the live PatternStore — safe to postMessage. */
+export type PreparedRootMovesWire = Omit<PreparedRootMoves, "store">;
 
 export interface EngineRequest {
   id: number;
@@ -32,13 +44,15 @@ export interface EngineRequest {
   experienceBaseline?: ExperienceEntry;
   /** Parallel root-partition: this worker searches only these root moves. */
   rootCandidates?: Move[];
+  /** Precomputed root from the main thread (narrow once). */
+  preparedRoot?: PreparedRootMovesWire;
   /** Debug log tag for parallel workers (e.g. "worker #1"). */
   workerLabel?: string;
   /** Synced-depth parallel: search only this ID depth (with maxDepth). */
   minDepth?: number;
   /** Override difficulty maxDepth for this request. */
   maxDepth?: number;
-  /** Background book-deepening job: search the canonical board, persist the TT. */
+  /** Background book-deepening job: deepen under full budget, persist the TT. */
   bookDeepening?: boolean;
   /** Experience canonical key naming the persisted TT slice. */
   canonicalKey?: string;
@@ -70,25 +84,48 @@ export function isLogMessage(message: EngineMessage): message is EngineLogMessag
   return "type" in message && message.type === "log";
 }
 
+/** Map a worker request onto `search` params (resolve difficulty profile once). */
+export function searchParamsFromRequest(
+  request: EngineRequest,
+  extras?: Pick<SearchParams, "preparedRoot" | "onProgress" | "tt" | "onDepthComplete">
+): SearchParams {
+  return {
+    board: request.board,
+    player: request.player,
+    ...resolveEngineSearchConfig({
+      difficulty: request.difficulty,
+      timeBudgetMs: request.timeBudgetMs,
+      stepTimeByOwnStones: request.stepTimeByOwnStones,
+      experienceMode: request.experienceMode,
+      experienceBaseline: request.experienceBaseline,
+      rootCandidates: request.rootCandidates,
+      minDepth: request.minDepth,
+      maxDepth: request.maxDepth,
+      bookDeepening: request.bookDeepening,
+    }),
+    preparedRoot: extras?.preparedRoot,
+    workerLabel: request.workerLabel,
+    onProgress: extras?.onProgress,
+    tt: extras?.tt,
+    onDepthComplete: extras?.onDepthComplete,
+  };
+}
+
 export function handleEngineRequest(
   request: EngineRequest,
   onProgress?: (event: SearchProgressEvent) => void
 ): EngineResponse {
   try {
-    const result = search(request.board, request.player, {
-      ...resolveEngineSearchConfig({
-        difficulty: request.difficulty,
-        timeBudgetMs: request.timeBudgetMs,
-        stepTimeByOwnStones: request.stepTimeByOwnStones,
-        experienceMode: request.experienceMode,
-        experienceBaseline: request.experienceBaseline,
-        rootCandidates: request.rootCandidates,
-        minDepth: request.minDepth,
-        maxDepth: request.maxDepth,
-      }),
-      workerLabel: request.workerLabel,
-      onProgress,
-    });
+    const preparedRoot =
+      request.preparedRoot !== undefined
+        ? {
+            ...request.preparedRoot,
+            store: PatternStore.fromBoard(request.board),
+          }
+        : undefined;
+    const result = search(
+      searchParamsFromRequest(request, { preparedRoot, onProgress })
+    );
     return { id: request.id, ok: true, result };
   } catch (error) {
     return {
@@ -104,8 +141,8 @@ export interface BookDeepenDeps {
   flushSlice: (key: string, dirty: Array<[bigint, TTEntry]>) => Promise<void>;
 }
 
-/** Background reinvest: seed the persisted TT slice, deepen the canonical
- *  position under the full budget, flushing after each completed depth. */
+/** Background reinvest: seed the persisted TT slice, deepen the position under
+ *  the full budget, flushing after each completed depth. */
 export async function runBookDeepening(
   request: EngineRequest,
   deps: BookDeepenDeps = {
@@ -124,22 +161,16 @@ export async function runBookDeepening(
   try {
     const tt = new TranspositionTable();
     tt.seed(await deps.loadSlice(key));
-    const result = search(request.board, request.player, {
-      ...resolveEngineSearchConfig({
-        difficulty: request.difficulty,
-        timeBudgetMs: request.timeBudgetMs,
-        stepTimeByOwnStones: false,
-        bookDeepening: true,
-        experienceMode: request.experienceMode,
-        experienceBaseline: request.experienceBaseline,
-      }),
-      tt,
-      onDepthComplete: (_depth, dirty) => {
-        // Fire-and-forget: never block the synchronous search. Dexie serializes
-        // bulkPuts; a terminate mid-flush loses only this depth. Do NOT await.
-        void deps.flushSlice(key, dirty);
-      },
-    });
+    const result = search(
+      searchParamsFromRequest(request, {
+        tt,
+        onDepthComplete: (_depth, dirty) => {
+          // Fire-and-forget: never block the synchronous search. Dexie serializes
+          // bulkPuts; a terminate mid-flush loses only this depth. Do NOT await.
+          void deps.flushSlice(key, dirty);
+        },
+      })
+    );
     return { id: request.id, ok: true, result };
   } catch (error) {
     return {
@@ -161,12 +192,19 @@ export function prepareExperienceForRequest(params: {
   practiceImprovement?: boolean;
   /** Give-up threshold; a hit whose stallCount >= this is permanent. */
   settleGiveUpSearches?: number;
+  /** When set with a non-quiet rootSource, book moves outside this set are
+   *  stale: no hit/baseline, difficulty-book key deleted. Quiet samples are
+   *  RNG-based and must not invalidate the book. */
+  rootMoves?: readonly Move[];
+  rootSource?: NarrowSource;
 }): {
   instant: SearchResult | null;
   baseline?: ExperienceEntry;
   permanent: boolean;
   key: string;
   transform: ExperienceTransform;
+  /** True when a difficulty-book entry was dropped for not being in rootMoves. */
+  staleDiscarded?: boolean;
 } {
   const giveUp = params.settleGiveUpSearches ?? DEFAULT_SETTLE_GIVE_UP_SEARCHES;
   const { key, transform } = experienceKeyFor(params.board, params.player);
@@ -174,17 +212,29 @@ export function prepareExperienceForRequest(params: {
   if (key === EMPTY_POSITION_KEY) {
     return { instant: null, permanent: false, key, transform };
   }
+
+  const gateRoot =
+    params.rootMoves !== undefined &&
+    params.rootSource !== undefined &&
+    params.rootSource !== "quiet";
+  const rootKeys = gateRoot ? new Set(params.rootMoves!.map(m => `${m.row},${m.col}`)) : null;
+  const inRoot = (move: Move) => rootKeys === null || rootKeys.has(`${move.row},${move.col}`);
+
   // Shared human book wins over the per-difficulty book: any non-off mode
   // replays a legal human-win move instantly (true mimic) with no background
   // improvement. `permanent: true` + no baseline makes EnginePool skip the
-  // reinvest path entirely.
+  // reinvest path entirely. Stale vs today's candidates → skip (keep human key).
   if (params.experienceMode !== "off") {
     const humanStored = params.store.getHuman(key);
     const humanEntry =
       humanStored !== undefined
         ? { ...humanStored, move: transform.fromCanonical(humanStored.move) }
         : undefined;
-    if (isStrongExperienceHit(humanEntry) && isUsableExperienceMove(params.board, humanEntry)) {
+    if (
+      isStrongExperienceHit(humanEntry) &&
+      isUsableExperienceMove(params.board, humanEntry) &&
+      inRoot(humanEntry.move)
+    ) {
       const instant: SearchResult = {
         move: humanEntry.move,
         score: humanEntry.score,
@@ -203,6 +253,17 @@ export function prepareExperienceForRequest(params: {
   // Stored moves live in the canonical frame; project back to this board.
   const entry =
     stored !== undefined ? { ...stored, move: transform.fromCanonical(stored.move) } : undefined;
+
+  if (entry !== undefined && rootKeys !== null && !inRoot(entry.move)) {
+    params.store.delete(params.difficulty, key);
+    logger.log("experience stale — discarded", {
+      key,
+      move: entry.move,
+      difficulty: params.difficulty,
+    });
+    return { instant: null, permanent: false, key, transform, staleDiscarded: true };
+  }
+
   const instant = tryUseExperienceHit({
     board: params.board,
     player: params.player,

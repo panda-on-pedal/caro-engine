@@ -638,3 +638,81 @@ describe("catalog #19 — O's 14,9 creates a four and open-two", () => {
     expect(snapshotNarrow(board, 2, 12)).toMatchSnapshot();
   });
 });
+
+describe("catalog #21 — X must answer O", () => {
+  // Row-8 OOO blocked by X at 8,10 → expansion cells 8,5 and 8,6. 8,6 is a
+  // mixed-tier fork point: playing it gives O a four (answered at 8,5) plus
+  // a second three, and the tempo from that forced answer carries O toward
+  // 9,4-8,5-6,7 + 6,7-7,7-8,7-9,7. Neither cell is an open-three gain, so
+  // the must-answer filter never sees the threat and top-K drops both
+  // blocks (they score 52/54) for X's own two-tier fork cells on row 13.
+  const board = parseBoard(`
+     3  4  5  6  7  8  9 10 11 12 13
+  5  .  .  .  .  .  .  .  .  .  .  .
+  6  .  .  .  .  .  .  .  O  .  .  .
+  7  .  .  .  .  O  X  X  X  .  O  .
+  8  .  .  .  .  O  O  O  X  X  .  .
+  9  .  O  X  O  O  X  O  X  .  .  .
+ 10  .  .  O  .  X  O  X  X  .  .  .
+ 11  .  .  .  X  O  X  X  .  .  .  .
+ 12  .  .  .  .  O  O  X  O  .  .  .
+ 13  .  .  X  .  .  .  X  X  .  .  .
+ 14  .  .  .  .  .  .  O  .  O  .  .
+ 15  .  .  .  .  .  .  .  .  .  .  .
+  `);
+
+  it("narrowCandidates ranked output", () => {
+    expect(snapshotNarrow(board, 1, 36)).toMatchSnapshot();
+  });
+});
+
+describe("catalog #22 — X to move", () => {
+  const board = parseBoard(`
+     5  6  7  8  9 10 11 12 13
+  5  .  .  .  .  .  .  .  .  .
+  6  .  .  .  .  .  O  .  .  .
+  7  .  .  .  .  .  X  .  O  .
+  8  .  .  .  .  .  X  X  .  .
+  9  .  .  O  .  O  X  .  .  .
+ 10  .  .  .  O  X  X  .  .  .
+ 11  .  .  O  X  X  .  .  .  .
+ 12  .  .  O  O  X  O  .  .  .
+ 13  .  .  .  .  X  .  .  .  .
+ 14  .  .  .  .  O  .  .  .  .
+ 15  .  .  .  .  .  .  .  .  .
+  `);
+
+  it("narrowCandidates ranked output", () => {
+    expect(snapshotNarrow(board, 1, 20)).toMatchSnapshot();
+  });
+});
+
+describe("catalog #23 — X to move", () => {
+  const board = parseBoard(`
+     2  3  4  5  6  7  8  9 10 11 12 13 14
+  2  .  .  .  .  .  .  .  .  .  .  .  .  .
+  3  .  .  .  .  X  .  .  .  .  .  .  .  .
+  4  .  O  .  .  .  .  .  .  .  .  .  .  .
+  5  .  .  X  .  O  O  O  .  X  .  .  .  .
+  6  .  .  .  X  .  X  .  O  .  .  .  .  .
+  7  .  .  O  X  X  X  X  .  O  .  O  .  .
+  8  .  .  .  .  .  X  O  X  X  X  .  O  .
+  9  .  .  .  X  X  .  O  O  X  O  .  .  .
+ 10  .  .  .  O  .  .  O  X  X  O  .  .  .
+ 11  .  X  .  O  O  O  O  X  X  .  .  .  .
+ 12  .  .  .  O  X  .  X  .  O  .  .  .  .
+ 13  .  .  O  X  .  X  .  .  .  .  .  .  .
+ 14  .  .  .  O  O  .  .  .  .  .  .  .  .
+ 15  .  .  .  .  .  .  .  .  .  .  .  .  .
+  `);
+
+  it("narrowCandidates ranked output", () => {
+    expect(snapshotNarrow(board, 1, 2000)).toMatchSnapshot();
+  });
+
+  it("narrowCandidates' forced tier returns both the gap fill (10,7) and the far-end box (14,3)", () => {
+    const result = narrowCandidates(board, 1, 2000, CFG);
+    expect(result.source).toBe("forced");
+    expect(result.moves.map(m => `${m.row},${m.col}`).sort()).toEqual(["10,7", "14,3"]);
+  });
+});

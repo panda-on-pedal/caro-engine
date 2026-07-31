@@ -24,14 +24,21 @@ const CATALOG_20 = parseBoard(`
 `);
 
 describe("discoverOpponentThreatBlocks", () => {
-  it("includes catalog #20's 13,6 even though narrowCandidates omits it", () => {
+  it("finds catalog #20's 13,6 — a gain that hands O a winning four next ply", () => {
+    const blocks = discoverOpponentThreatBlocks(CATALOG_20, 1);
+    expect(blocks.map(m => `${m.row},${m.col}`)).toContain("13,6");
+  });
+
+  it("skips cells narrowing already covers", () => {
+    // 13,6 is one of O's mixed-tier fork lines here, so narrowing now
+    // forces it directly; the probe stays for the forcing gains that are
+    // not fork cells and would otherwise be crowded out of top-K.
     const narrowed = narrowCandidates(CATALOG_20, 1, 36, CFG);
-    const narrowKeys = new Set(narrowed.moves.map(m => `${m.row},${m.col}`));
-    expect(narrowKeys.has("13,6")).toBe(false);
+    expect(narrowed.moves.map(m => `${m.row},${m.col}`)).toContain("13,6");
 
     const blocks = discoverOpponentThreatBlocks(CATALOG_20, 1, {
       excludeMoves: narrowed.moves,
     });
-    expect(blocks.map(m => `${m.row},${m.col}`)).toContain("13,6");
+    expect(blocks.map(m => `${m.row},${m.col}`)).not.toContain("13,6");
   });
 });

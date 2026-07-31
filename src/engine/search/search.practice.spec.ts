@@ -10,13 +10,11 @@ describe("search practice baseline", () => {
     board = placeMove(board, 6, 6, 2);
 
     const baseline = { move: { row: 4, col: 4 }, score: 1_000_000, depth: 6 };
-    const result = search(board, 1, {
-      maxDepth: 2,
+    const result = search({ board: board, player: 1, maxDepth: 2,
       timeBudgetMs: 50,
       experienceMode: "practice",
       experienceBaseline: baseline,
-      rootScoreJitter: 0,
-    });
+      rootScoreJitter: 0, });
 
     expect(result.move).toEqual(baseline.move);
     expect(result.score).toBe(baseline.score);
@@ -29,12 +27,10 @@ describe("search practice baseline", () => {
     board = placeMove(board, 5, 5, 1);
     board = placeMove(board, 5, 6, 2);
 
-    const result = search(board, 1, {
-      maxDepth: 2,
+    const result = search({ board: board, player: 1, maxDepth: 2,
       timeBudgetMs: 50,
       experienceMode: "practice",
-      rootScoreJitter: 0,
-    });
+      rootScoreJitter: 0, });
 
     expect(result.experienceCacheHit).toBe(false);
   });
@@ -43,12 +39,10 @@ describe("search practice baseline", () => {
     let board = createEmptyBoard(11);
     board = placeMove(board, 5, 5, 1);
 
-    const result = search(board, 2, {
-      maxDepth: 4,
+    const result = search({ board: board, player: 2, maxDepth: 4,
       timeBudgetMs: 50,
       experienceMode: "practice",
-      rootScoreJitter: 0,
-    });
+      rootScoreJitter: 0, });
 
     expect(result.experienceStreakEligible).toBe(false);
   });
@@ -60,12 +54,10 @@ describe("search practice baseline", () => {
     board = placeMove(board, 6, 5, 1);
     board = placeMove(board, 6, 6, 2);
 
-    const result = search(board, 1, {
-      maxDepth: 2,
+    const result = search({ board: board, player: 1, maxDepth: 2,
       timeBudgetMs: 50,
       experienceMode: "practice",
-      rootScoreJitter: 0,
-    });
+      rootScoreJitter: 0, });
 
     expect(result.experienceStreakEligible).toBe(true);
   });
@@ -79,13 +71,11 @@ describe("search practice baseline", () => {
 
     // Depth-1 baseline: a real maxDepth-2 search should out-depth it.
     const weakBaseline = { move: { row: 4, col: 4 }, score: 1, depth: 1 };
-    const result = search(board, 1, {
-      maxDepth: 2,
+    const result = search({ board: board, player: 1, maxDepth: 2,
       timeBudgetMs: 50,
       experienceMode: "practice",
       experienceBaseline: weakBaseline,
-      rootScoreJitter: 0,
-    });
+      rootScoreJitter: 0, });
 
     expect(result.experienceCacheHit).toBe(true);
   });
@@ -100,13 +90,11 @@ describe("search experience baseline in use mode", () => {
     board = placeMove(board, 6, 6, 2);
 
     const baseline = { move: { row: 4, col: 4 }, score: 1_000_000, depth: 6 };
-    const result = search(board, 1, {
-      maxDepth: 2,
+    const result = search({ board: board, player: 1, maxDepth: 2,
       timeBudgetMs: 50,
       experienceMode: "use",
       experienceBaseline: baseline,
-      rootScoreJitter: 0,
-    });
+      rootScoreJitter: 0, });
 
     expect(result.move).toEqual(baseline.move);
     expect(result.score).toBe(baseline.score);

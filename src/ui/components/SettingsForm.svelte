@@ -1,5 +1,6 @@
 <script lang="ts">
   import { session } from '../lib/gameSession.svelte.ts';
+  import { MAX_SETTLE_GIVE_UP_SEARCHES, MIN_SETTLE_GIVE_UP_SEARCHES } from '../prefs.ts';
   import { t } from '../i18n/index.ts';
 
   function onToggleHighlight(event: Event): void {
@@ -27,6 +28,11 @@
     if (!Number.isNaN(value)) {
       session.setSettleGiveUpSearches(value);
     }
+  }
+
+  function onToggleNeverGiveUp(event: Event): void {
+    const checked = (event.currentTarget as HTMLInputElement).checked;
+    session.setNeverGiveUp(checked);
   }
 
   function onLang(event: Event): void {
@@ -82,14 +88,27 @@
   </span>
 </label>
 
-<label class="settings-row settings-row-select">
+<label class="settings-row">
+  <input
+    id="pref-never-give-up"
+    type="checkbox"
+    checked={session.settings.neverGiveUp}
+    onchange={onToggleNeverGiveUp}
+  />
+  <span>
+    {session.localeTick >= 0 ? t('settings.neverGiveUp') : ''}
+  </span>
+</label>
+
+<label class="settings-row settings-row-select" class:settings-row-disabled={session.settings.neverGiveUp}>
   <span>{session.localeTick >= 0 ? t('settings.settleGiveUpSearches') : ''}</span>
   <input
     id="pref-settle-giveup"
     type="number"
-    min="1"
-    max="9"
+    min={MIN_SETTLE_GIVE_UP_SEARCHES}
+    max={MAX_SETTLE_GIVE_UP_SEARCHES}
     step="1"
+    disabled={session.settings.neverGiveUp}
     value={session.settings.settleGiveUpSearches}
     onchange={onGiveUp}
   />
@@ -122,6 +141,10 @@
 
   .settings-row-select select {
     min-width: 12rem;
+  }
+
+  .settings-row-disabled {
+    opacity: 0.45;
   }
 
   .settings-row input {

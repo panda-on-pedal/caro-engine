@@ -329,6 +329,67 @@ X's moves:
  15  .  .  .  .  .  .  .  .  .  .  .  .
 ```
 
+
+# 21
+X's moves:
+- 8,5; 8,6 - Block O three that unstoppable toward a fork pattern: 9,4-8,5-6,7 + 6,7-7,7-8,7-9,7
+- 12,5 and 13,4 - Creates fours
+
+```
+     3  4  5  6  7  8  9 10 11 12 13
+  5  .  .  .  .  .  .  .  .  .  .  .
+  6  .  .  .  .  .  .  .  O  .  .  .
+  7  .  .  .  .  O  X  X  X  .  O  .
+  8  .  .  .  .  O  O  O  X  X  .  .
+  9  .  O  X  O  O  X  O  X  .  .  .
+ 10  .  .  O  .  X  O  X  X  .  .  .
+ 11  .  .  .  X  O  X  X  .  .  .  .
+ 12  .  .  .  .  O  O  X  O  .  .  .
+ 13  .  .  X  .  .  .  X  X  .  .  .
+ 14  .  .  .  .  .  .  O  .  O  .  .
+ 15  .  .  .  .  .  .  .  .  .  .  .
+```
+
+# 22
+X's moves:
+
+```
+     5  6  7  8  9 10 11 12 13
+  5  .  .  .  .  .  .  .  .  .
+  6  .  .  .  .  .  O  .  .  .
+  7  .  .  .  .  .  X  .  O  .
+  8  .  .  .  .  .  X  X  .  .
+  9  .  .  O  .  O  X  .  .  .
+ 10  .  .  .  O  X  X  .  .  .
+ 11  .  .  O  X  X  .  .  .  .
+ 12  .  .  O  O  X  O  .  .  .
+ 13  .  .  .  .  X  .  .  .  .
+ 14  .  .  .  .  O  .  .  .  .
+ 15  .  .  .  .  .  .  .  .  .
+```
+
+# 23
+X's moves:
+- 14,3; 10,7 - Block O's four
+
+```
+     2  3  4  5  6  7  8  9 10 11 12 13 14
+  2  .  .  .  .  .  .  .  .  .  .  .  .  .
+  3  .  .  .  .  X  .  .  .  .  .  .  .  .
+  4  .  O  .  .  .  .  .  .  .  .  .  .  .
+  5  .  .  X  .  O  O  O  .  X  .  .  .  .
+  6  .  .  .  X  .  X  .  O  .  .  .  .  .
+  7  .  .  O  X  X  X  X  .  O  .  O  .  .
+  8  .  .  .  .  .  X  O  X  X  X  .  O  .
+  9  .  .  .  X  X  .  O  O  X  O  .  .  .
+ 10  .  .  .  O  .  .  O  X  X  O  .  .  .
+ 11  .  X  .  O  O  O  O  X  X  .  .  .  .
+ 12  .  .  .  O  X  .  X  .  O  .  .  .  .
+ 13  .  .  O  X  .  X  .  .  .  .  .  .  .
+ 14  .  .  .  O  O  .  .  .  .  .  .  .  .
+ 15  .  .  .  .  .  .  .  .  .  .  .  .  .
+```
+
 So, with above scenarios:
 
 - If cases with only one candidate: Just play it, no search needed.

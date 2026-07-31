@@ -1,6 +1,4 @@
-import type { Messages } from "./types.ts";
-
-export const en: Messages = {
+export const en = {
   title: "Caro",
   subtitle: "Five in a row",
   "mode.humanAi": "Human vs Computer",
@@ -45,7 +43,8 @@ export const en: Messages = {
   "settings.showThoughts": "Show computer thoughts",
   "settings.experienceImprovement": "Learn from Human vs Computer games (save new experience)",
   "settings.practiceImprovement": "Keep improving experience while practicing (slower)",
-  "settings.settleGiveUpSearches": "Give up after N searches (1–9)",
+  "settings.neverGiveUp": "Never give up (keep improving every position)",
+  "settings.settleGiveUpSearches": "Give up after N searches (1–50)",
   "instructions.title": "Instructions",
   "instructions.rulesTitle": "Rules",
   "instructions.rules.place": "Players take turns placing X and O on the board.",

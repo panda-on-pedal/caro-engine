@@ -13,9 +13,11 @@ describe("search onProgress", () => {
       ........
     `);
     const events: SearchProgressEvent[] = [];
-    const result = search(board, 1, {
+    const result = search({
+      board,
+      player: 1,
       maxDepth: 2,
-      onProgress: event => {
+      onProgress: (event: SearchProgressEvent) => {
         events.push(event);
       },
     });
@@ -37,9 +39,11 @@ describe("search onProgress", () => {
       .....
     `);
     const events: SearchProgressEvent[] = [];
-    search(board, 2, {
+    search({
+      board,
+      player: 2,
       maxDepth: 4,
-      onProgress: event => {
+      onProgress: (event: SearchProgressEvent) => {
         events.push(event);
       },
     });
@@ -57,15 +61,11 @@ describe("search onProgress", () => {
       ..OOO...
       ........
     `);
-    const withCb = search(board, 1, {
-      maxDepth: 2,
+    const withCb = search({ board: board, player: 1, maxDepth: 2,
       onProgress: () => undefined,
-      rng: () => 0.5,
-    });
-    const withoutCb = search(board, 1, {
-      maxDepth: 2,
-      rng: () => 0.5,
-    });
+      rng: () => 0.5, });
+    const withoutCb = search({ board: board, player: 1, maxDepth: 2,
+      rng: () => 0.5, });
     expect(withoutCb.move).toEqual(withCb.move);
     expect(withoutCb.score).toBe(withCb.score);
     expect(withoutCb.depth).toBe(withCb.depth);

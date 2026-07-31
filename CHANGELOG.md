@@ -1,5 +1,29 @@
 # Release notes
 
+## 1.2.4
+
+### Engine
+
+- New forced-move tier: a three whose own expansion sets up an unstoppable fork is answered by the lines shared by every fork route (catalog #21) — and no longer over-fires on positions that only look lost (catalog #22)
+- Gapped fours now surface every valid block: the gap fill plus far-end boxes one step beyond the run (catalog #23), not just the single contiguous box
+- **Book deepening**: background reinvest searches the real board frame (canonicalized only on persist), drops root jitter so a stored verdict is never decided by noise, and no longer floors back to the stale book move
+- **Prepare-once root**: the narrowed root is computed once on the main thread and reused by the parallel fan-out and the experience gate instead of being recomputed in each worker
+- Equal-depth move changes now supersede the stored book entry (downward score corrections are recorded); shallower results neither improve nor confirm, so they no longer burn a give-up life
+- New "never give up" mode: `NEVER_GIVE_UP_SEARCHES` keeps every position open to reinvest forever
+
+### Play & UI
+
+- New "Never give up" setting (keep improving every position); the give-up threshold now ranges 1–50 (default 50) and is disabled while never-give-up is on
+- Difficulty is persisted and restored on reload
+- Stale book moves (no longer inside today's candidate root) are discarded instead of instant-replayed
+- Vietnamese and English labels for the new setting
+
+### Dev
+
+- `search()` takes a single params object; `prepareRootMoves` result is passable via `preparedRoot`
+- `Messages` type is inferred from `en.ts` instead of maintained by hand
+- Catalog positions #21–#23 with narrowing snapshots
+
 ## 1.2.3
 
 ### Practice & experience

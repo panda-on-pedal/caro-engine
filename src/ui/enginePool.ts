@@ -5,16 +5,14 @@ import {
   type Difficulty,
 } from "../engine/engine.ts";
 import { WIN_SCORE } from "../engine/search/evaluate.ts";
-import { prepareRootMoves } from "../engine/search/search.ts";
+import { prepareRootMoves, type PreparedRootMoves } from "../engine/search/search.ts";
 import { partitionCandidates, aggregateParallelResults } from "./parallelSearch.ts";
 import type { Move } from "../engine/state.ts";
 import {
   computeSettleTransition,
   DEFAULT_SETTLE_GIVE_UP_SEARCHES,
   EMPTY_POSITION_KEY,
-  IDENTITY_TRANSFORM,
   MIN_EXPERIENCE_DEPTH,
-  toCanonicalBoard,
   type ExperienceEntry,
   type ExperienceMode,
   type ExperienceTransform,
@@ -29,6 +27,7 @@ import {
   type EngineMessage,
   type EngineRequest,
 } from "./engineProtocol.ts";
+import { experienceKeyFor } from "../engine/experience/experienceLookup.ts";
 import { PersistentExperienceStore } from "./experiencePersist.ts";
 import { tryArmPvFollow, tryConsumePvFollow, type PvFollowState } from "./pvFollow.ts";
 
@@ -40,6 +39,15 @@ export const PV_FOLLOW_DELAY_MS = 250;
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/** Prepend `baseline` for root move-ordering (mirrors search.seedBaselineMove). */
+function seedBaselineFront(moves: Move[], baseline: Move | undefined): Move[] {
+  if (baseline === undefined) {
+    return moves;
+  }
+  const key = `${baseline.row},${baseline.col}`;
+  return [baseline, ...moves.filter(m => `${m.row},${m.col}` !== key)];
 }
 
 /**
@@ -136,6 +144,19 @@ interface Slot {
   currentId: number | null;
 }
 
+interface ParallelSearchParams {
+  /** Plain (already copied) request board. */
+  board: Board;
+  player: Player;
+  difficulty: Difficulty;
+  timeBudgetMs: number | undefined;
+  parallelism: number;
+  prepared: { baseline?: ExperienceEntry; key: string; transform: ExperienceTransform };
+  /** The caller's root prep — partitioned here rather than recomputed. */
+  preparedRoot: PreparedRootMoves;
+  options?: RequestMoveOptions;
+}
+
 /** Fixed-size pool of Web Workers running the (synchronous, blocking) engine
  * search off the main thread. `cancelAll()` terminates + lazily respawns any
  * worker mid-search so a stale expert-difficulty search (up to 10s) can't
@@ -168,6 +189,36 @@ export class EnginePool {
     return this.slots.length;
   }
 
+  /** True when either book holds a move for this position — the only reason
+   *  the main thread needs today's root (to gate that move as stale or not). */
+  private hasBookEntry(
+    board: Board,
+    player: Player,
+    difficulty: Difficulty,
+    experienceMode: ExperienceMode
+  ): boolean {
+    if (experienceMode === "off") {
+      return false;
+    }
+    const { key } = experienceKeyFor(board, player);
+    if (key === EMPTY_POSITION_KEY) {
+      return false;
+    }
+    return (
+      this.experience.getHuman(key) !== undefined ||
+      this.experience.get(difficulty, key) !== undefined
+    );
+  }
+
+  /** True when `runParallelSearch` will want a root to partition. Mirrors its
+   *  own bail-outs so we do not narrow for a fan-out that never happens. */
+  private willFanOut(parallelism: number, experienceMode: ExperienceMode): boolean {
+    if (parallelism < 2 || experienceMode !== "use") {
+      return false;
+    }
+    return this.slots.filter(slot => !slot.busy).length >= 2;
+  }
+
   requestMove(
     board: Board,
     player: Player,
@@ -179,6 +230,31 @@ export class EnginePool {
     const persistExperience = options?.persistExperience !== false;
     const practiceImprovement = options?.practiceImprovement !== false;
     const settleGiveUpSearches = options?.settleGiveUpSearches ?? DEFAULT_SETTLE_GIVE_UP_SEARCHES;
+    const plainBoard = toPlainBoard(board);
+    // Narrow before experience so stale book moves (outside today's root) are
+    // discarded instead of instant-replayed. This is a full pattern scan on
+    // the UI thread, so it runs only for the two things that consume a root:
+    // gating a stored book move, and partitioning for the parallel fan-out.
+    // Requests that bring their own root (parallel slices) never read it back,
+    // and a position with no book entry has nothing to gate.
+    const preparedRoot =
+      options?.rootCandidates === undefined &&
+      (this.hasBookEntry(plainBoard, player, difficulty, experienceMode) ||
+        this.willFanOut(options?.parallelism ?? 1, experienceMode))
+        ? prepareRootMoves(
+            plainBoard,
+            player,
+            resolveEngineSearchConfig({
+              difficulty,
+              timeBudgetMs,
+              stepTimeByOwnStones: options?.stepTimeByOwnStones,
+              experienceMode,
+              rootCandidates: options?.rootCandidates,
+              minDepth: options?.minDepth,
+              maxDepth: options?.maxDepth,
+            })
+          )
+        : null;
     const prepared = prepareExperienceForRequest({
       board,
       player,
@@ -187,7 +263,24 @@ export class EnginePool {
       store: this.experience,
       practiceImprovement,
       settleGiveUpSearches,
+      rootMoves: preparedRoot?.rootMoves,
+      rootSource: preparedRoot?.narrowed.source,
     });
+    // Re-seed baseline into the wire for search ordering when the book move
+    // survived the candidate gate (forced roots never seed — see prepareRootMoves).
+    const baselineForRoot =
+      preparedRoot !== null && preparedRoot.narrowed.source !== "forced"
+        ? prepared.baseline?.move
+        : undefined;
+    const preparedRootWire =
+      preparedRoot === null
+        ? undefined
+        : {
+            narrowed: preparedRoot.narrowed,
+            rootMoves: seedBaselineFront(preparedRoot.rootMoves, baselineForRoot),
+            moveCount: preparedRoot.moveCount,
+            isOverride: preparedRoot.isOverride,
+          };
 
     if (prepared.instant !== null) {
       this.pvFollow = null;
@@ -222,7 +315,6 @@ export class EnginePool {
       return Promise.resolve(prepared.instant);
     }
 
-    const plainBoard = toPlainBoard(board);
     const consumed = tryConsumePvFollow({
       state: this.pvFollow,
       experienceMode,
@@ -270,20 +362,21 @@ export class EnginePool {
 
     const parallelism = options?.parallelism ?? 1;
     if (
-      options?.rootCandidates === undefined &&
+      preparedRoot !== null &&
       parallelism > 1 &&
       experienceMode === "use" &&
       prepared.baseline === undefined
     ) {
-      const parallel = this.runParallelSearch(
-        board,
+      const parallel = this.runParallelSearch({
+        board: plainBoard,
         player,
         difficulty,
         timeBudgetMs,
         parallelism,
         prepared,
-        options
-      );
+        preparedRoot,
+        options,
+      });
       if (parallel !== null) {
         return parallel;
       }
@@ -302,7 +395,7 @@ export class EnginePool {
     return new Promise((resolve, reject) => {
       const request: EngineRequest = {
         id: this.nextId,
-        board: toPlainBoard(board),
+        board: plainBoard,
         player,
         difficulty,
         timeBudgetMs,
@@ -310,6 +403,8 @@ export class EnginePool {
         experienceMode,
         experienceBaseline: prepared.baseline,
         rootCandidates: options?.rootCandidates,
+        // Slice overrides own the root; otherwise reuse main-thread prep.
+        preparedRoot: preparedRootWire,
         workerLabel: options?.workerLabel,
         minDepth: options?.minDepth,
         maxDepth: options?.maxDepth,
@@ -371,23 +466,18 @@ export class EnginePool {
     if (!idleSlot) {
       return;
     }
-    // Search the canonical frame so the persisted TT slice is orientation-
-    // independent. The baseline move must be canonical too (it floors the result).
-    const canonicalBoard = toCanonicalBoard(toPlainBoard(board), prepared.transform);
-    const canonicalBaseline: ExperienceEntry = {
-      move: prepared.transform.toCanonical(baseline.move),
-      score: baseline.score,
-      depth: baseline.depth,
-    };
+    // Search the real board (same frame as foreground). Canonicalize only when
+    // persisting the experience move / keying the TT slice.
+    const plainBoard = toPlainBoard(board);
     const request: EngineRequest = {
       id: this.nextId,
-      board: canonicalBoard,
+      board: plainBoard,
       player,
       difficulty,
       // Background reinvest is not user-facing — use the full difficulty budget.
       stepTimeByOwnStones: false,
       experienceMode,
-      experienceBaseline: canonicalBaseline,
+      experienceBaseline: baseline,
       bookDeepening: true,
       canonicalKey: prepared.key,
     };
@@ -402,15 +492,14 @@ export class EnginePool {
         resolve,
         reject,
         difficulty,
-        board: canonicalBoard,
+        board: plainBoard,
         player,
         experienceKey: prepared.key,
-        // Result move is already canonical → store unchanged.
-        experienceTransform: IDENTITY_TRANSFORM,
+        experienceTransform: prepared.transform,
         experienceMode,
         persistExperience: true,
         background: true,
-        experienceBaseline: canonicalBaseline,
+        experienceBaseline: baseline,
         settleGiveUpSearches,
         reportBoardId,
       });
@@ -528,28 +617,24 @@ export class EnginePool {
   }
 
   /** Root-partition parallel search with synced iterative deepening.
-   *  Prepares the full tactical root (narrow + threat merge) once, partitions
-   *  it, then advances depth-by-depth across workers and aggregates only at
-   *  matching completed depths. Returns null when fan-out is not worthwhile. */
-  private runParallelSearch(
-    board: Board,
-    player: Player,
-    difficulty: Difficulty,
-    timeBudgetMs: number | undefined,
-    parallelism: number,
-    prepared: { baseline?: ExperienceEntry; key: string; transform: ExperienceTransform },
-    options?: RequestMoveOptions
-  ): Promise<SearchResult> | null {
+   *  Partitions the caller's already-prepared tactical root, then advances
+   *  depth-by-depth across workers and aggregates only at matching completed
+   *  depths. Returns null when fan-out is not worthwhile. */
+  private runParallelSearch({
+    board: plain,
+    player,
+    difficulty,
+    timeBudgetMs,
+    parallelism,
+    prepared,
+    preparedRoot,
+    options,
+  }: ParallelSearchParams): Promise<SearchResult> | null {
     const idle = this.slots.filter(slot => !slot.busy).length;
     if (idle < 2 || parallelism < 2) {
       return null;
     }
-    const plain = toPlainBoard(board);
-    const { narrowed, rootMoves } = prepareRootMoves(
-      plain,
-      player,
-      resolveEngineSearchConfig({ difficulty })
-    );
+    const { narrowed, rootMoves } = preparedRoot;
     if (narrowed.source !== "tactical" || rootMoves.length < 2) {
       return null;
     }

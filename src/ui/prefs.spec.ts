@@ -1,4 +1,10 @@
-import { loadSettings, saveSettings, DEFAULT_SETTINGS } from "./prefs.ts";
+import { NEVER_GIVE_UP_SEARCHES } from "../engine/experience/experience.ts";
+import {
+  DEFAULT_SETTINGS,
+  effectiveGiveUpSearches,
+  loadSettings,
+  saveSettings,
+} from "./prefs.ts";
 
 describe("prefs", () => {
   const original = globalThis.localStorage;
@@ -34,41 +40,50 @@ describe("prefs", () => {
     expect(DEFAULT_SETTINGS.showThoughts).toBe(true);
     expect(DEFAULT_SETTINGS.experienceImprovement).toBe(true);
     expect(DEFAULT_SETTINGS.practiceImprovement).toBe(true);
-    expect(DEFAULT_SETTINGS.settleGiveUpSearches).toBe(3);
+    expect(DEFAULT_SETTINGS.settleGiveUpSearches).toBe(50);
+    expect(DEFAULT_SETTINGS.neverGiveUp).toBe(false);
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
   });
 
   it("round-trips highlightWhileThinking, showThoughts, improvements, and lang", () => {
     saveSettings({
       highlightWhileThinking: false,
+      difficulty: "hard",
       showThoughts: true,
       experienceImprovement: true,
       practiceImprovement: true,
       settleGiveUpSearches: 3,
+      neverGiveUp: false,
       lang: "en",
     });
     expect(loadSettings()).toEqual({
       highlightWhileThinking: false,
+      difficulty: "hard",
       showThoughts: true,
       experienceImprovement: true,
       practiceImprovement: true,
       settleGiveUpSearches: 3,
+      neverGiveUp: false,
       lang: "en",
     });
     saveSettings({
       highlightWhileThinking: true,
+      difficulty: "easy",
       showThoughts: false,
       experienceImprovement: false,
       practiceImprovement: false,
       settleGiveUpSearches: 5,
+      neverGiveUp: true,
       lang: "vi",
     });
     expect(loadSettings()).toEqual({
       highlightWhileThinking: true,
+      difficulty: "easy",
       showThoughts: false,
       experienceImprovement: false,
       practiceImprovement: false,
       settleGiveUpSearches: 5,
+      neverGiveUp: true,
       lang: "vi",
     });
   });
@@ -85,23 +100,50 @@ describe("prefs", () => {
     store["caro.settings"] = JSON.stringify({ highlightWhileThinking: false });
     expect(loadSettings()).toEqual({
       highlightWhileThinking: false,
+      difficulty: "hard",
       showThoughts: true,
       experienceImprovement: true,
       practiceImprovement: true,
-      settleGiveUpSearches: 3,
+      settleGiveUpSearches: 50,
+      neverGiveUp: false,
       lang: "vi",
     });
   });
 
-  it("defaults settleGiveUpSearches to 3", () => {
-    store = {};
-    expect(loadSettings().settleGiveUpSearches).toBe(3);
+  it("persists a chosen difficulty and rejects an unknown one", () => {
+    expect(DEFAULT_SETTINGS.difficulty).toBe("hard");
+    store["caro.settings"] = JSON.stringify({ difficulty: "expert" });
+    expect(loadSettings().difficulty).toBe("expert");
+    store["caro.settings"] = JSON.stringify({ difficulty: "godlike" });
+    expect(loadSettings().difficulty).toBe("hard");
   });
 
-  it("clamps a persisted settleGiveUpSearches into 1..9", () => {
-    store["caro.settings"] = JSON.stringify({ settleGiveUpSearches: 42 });
-    expect(loadSettings().settleGiveUpSearches).toBe(9);
+  it("defaults settleGiveUpSearches to 50", () => {
+    store = {};
+    expect(loadSettings().settleGiveUpSearches).toBe(50);
+  });
+
+  it("clamps a persisted settleGiveUpSearches into 1..50", () => {
+    store["caro.settings"] = JSON.stringify({ settleGiveUpSearches: 420 });
+    expect(loadSettings().settleGiveUpSearches).toBe(50);
     store["caro.settings"] = JSON.stringify({ settleGiveUpSearches: 0 });
     expect(loadSettings().settleGiveUpSearches).toBe(1);
+    store["caro.settings"] = JSON.stringify({ settleGiveUpSearches: 42 });
+    expect(loadSettings().settleGiveUpSearches).toBe(42);
+  });
+
+  it("keeps the chosen number while 'never give up' overrides the threshold", () => {
+    const settings = { ...DEFAULT_SETTINGS, settleGiveUpSearches: 7, neverGiveUp: true };
+    expect(effectiveGiveUpSearches(settings)).toBe(NEVER_GIVE_UP_SEARCHES);
+    // Turning it back off restores the number the user picked.
+    expect(effectiveGiveUpSearches({ ...settings, neverGiveUp: false })).toBe(7);
+  });
+
+  it("survives a JSON round-trip with 'never give up' on", () => {
+    saveSettings({ ...DEFAULT_SETTINGS, settleGiveUpSearches: 7, neverGiveUp: true });
+    const loaded = loadSettings();
+    expect(loaded.neverGiveUp).toBe(true);
+    expect(loaded.settleGiveUpSearches).toBe(7);
+    expect(effectiveGiveUpSearches(loaded)).toBe(NEVER_GIVE_UP_SEARCHES);
   });
 });

@@ -23,6 +23,12 @@ export const MIN_EXPERIENCE_DEPTH = 1;
  *  `stallCount` reaches this is permanent (frozen — no further reinvest). */
 export const DEFAULT_SETTLE_GIVE_UP_SEARCHES = 3;
 
+/** "Never give up": a threshold `stallCount` can never reach, so every entry
+ *  stays open to further reinvest. Passed as an ordinary number so every
+ *  `stallCount >= giveUp` site keeps working unchanged, and it survives the
+ *  JSON round-trip that `Infinity` would not. */
+export const NEVER_GIVE_UP_SEARCHES = Number.MAX_SAFE_INTEGER;
+
 export type SettleAction = "put" | "setStall" | "none";
 export type SettleKind = "new" | "improved" | "stalled" | "settled";
 
@@ -47,8 +53,15 @@ export interface SettleTransition {
  *                          the move changed — a deeper/better result is always
  *                          an upgrade, so settleLevel is monotonic with depth
  *                          and never resets at a given position)
- * - no improvement       → setStall: stall = prev+1 (permanent once >= giveUp),
- *                          keep the stored move/score/depth and settleLevel
+ * - same depth, new move → put at the SAME settleLevel, stall 0 (a correction,
+ *                          not deeper knowledge — see `supersedesAtSameDepth`)
+ * - shallower            → none: the search got less far than the stored entry,
+ *                          so it neither improves nor confirms it. Burning a
+ *                          give-up life here would freeze entries on runs that
+ *                          simply ran out of time early.
+ * - same depth, same move → setStall: stall = prev+1 (permanent once >= giveUp),
+ *                          keep the stored move/score/depth and settleLevel.
+ *                          This is the real "converged" signal.
  * - already permanent    → none (frozen for the session)
  * Any improvement resets the stall counter to 0.
  */
@@ -79,8 +92,7 @@ export function computeSettleTransition(
       kind: "settled",
     };
   }
-  const beats = experienceBeatsBaseline(cand, prev);
-  if (beats) {
+  if (experienceBeatsBaseline(cand, prev)) {
     // Monotonic: any improvement (deeper, or equal-depth higher score) climbs
     // one level and resets the stall counter — a changed move on a deeper search
     // is an upgrade, not a confidence reset. `moveChanged` is still surfaced for
@@ -92,6 +104,29 @@ export function computeSettleTransition(
       permanent: false,
       emit: true,
       kind: "improved",
+    };
+  }
+  if (supersedesAtSameDepth(cand, prev)) {
+    // Confidence does NOT climb: no deeper evidence arrived, the same depth
+    // just named a different cell. The stall counter still resets — the
+    // position has not converged while the answer keeps moving.
+    return {
+      action: "put",
+      settleLevel: prevLevel,
+      stallCount: 0,
+      permanent: false,
+      emit: true,
+      kind: "improved",
+    };
+  }
+  if (cand.depth < prev.depth) {
+    return {
+      action: "none",
+      settleLevel: prevLevel,
+      stallCount: prevStall,
+      permanent: false,
+      emit: false,
+      kind: "stalled",
     };
   }
   const stallCount = prevStall + 1;
@@ -259,9 +294,7 @@ export function canonicalExperienceKey(board: Board, sideToMove: Player): Canoni
 
 /**
  * Project every stone of `board` through `transform.toCanonical`, returning a
- * fresh board of the same size in the canonical frame. The background reinvest
- * searches this so its Zobrist hashes (and persisted TT slice) are identical
- * regardless of which symmetric orientation the position was encountered in.
+ * fresh board of the same size in the canonical frame.
  */
 export function toCanonicalBoard(board: Board, transform: ExperienceTransform): Board {
   const n = board.length;
@@ -303,7 +336,29 @@ export function experienceBeatsBaseline(
   return false;
 }
 
-/** Prefer deeper entries; at equal depth prefer higher score. */
+/**
+ * True when a fresh result at the SAME depth names a different cell than the
+ * stored one, which supersedes it even at a lower score.
+ *
+ * The stored move is always seeded as a root candidate (see
+ * `seedBaselineMove`), so a search that returns something else has weighed
+ * both under identical conditions and preferred the newcomer. Comparing the
+ * two scores instead would compare across searches — different jitter draws,
+ * different transposition contents, different move ordering — and would let
+ * the book only ever ratchet its score upward at a given depth, with no way to
+ * record "the move I stored is worth less than I thought".
+ */
+export function supersedesAtSameDepth(
+  candidate: ExperienceEntry,
+  baseline: ExperienceEntry
+): boolean {
+  if (candidate.depth !== baseline.depth) {
+    return false;
+  }
+  return candidate.move.row !== baseline.move.row || candidate.move.col !== baseline.move.col;
+}
+
+/** Prefer deeper entries; at equal depth prefer a new move, then higher score. */
 export function shouldReplaceExperience(
   existing: ExperienceEntry | undefined,
   next: ExperienceEntry
@@ -313,6 +368,7 @@ export function shouldReplaceExperience(
   }
   return (
     experienceBeatsBaseline(next, existing) ||
+    supersedesAtSameDepth(next, existing) ||
     (next.depth === existing.depth && next.score === existing.score)
   );
 }
@@ -360,6 +416,16 @@ export class ExperienceStore {
       stallCount: entry.stallCount ?? 0,
       nodes: entry.nodes,
     };
+  }
+
+  /** Drop a key (and fire onEvict). Returns false when missing. */
+  delete(key: string): boolean {
+    if (!this.map.has(key)) {
+      return false;
+    }
+    this.map.delete(key);
+    this.onEvict?.(key);
+    return true;
   }
 
   put(key: string, entry: ExperienceEntry, updatedAt = Date.now()): boolean {

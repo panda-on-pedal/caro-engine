@@ -266,6 +266,76 @@ describe("prepareExperienceForRequest", () => {
     expect(instant.instant?.experienceCacheHit).toBe(true);
     expect(instant.permanent).toBe(false);
   });
+
+  it("discards a difficulty-book key whose move is outside today's rootMoves", () => {
+    const store = new PersistentExperienceStore();
+    let state = newGame();
+    state = applyMove(state, { row: 5, col: 5 }, 1);
+    state = applyMove(state, { row: 5, col: 6 }, 2);
+    const params = {
+      board: state.board,
+      player: state.nextPlayer,
+      difficulty: "easy" as const,
+      experienceMode: "use" as const,
+      store,
+    };
+
+    const miss = prepareExperienceForRequest(params);
+    store.put("easy", miss.key, {
+      move: miss.transform.toCanonical({ row: 4, col: 4 }),
+      score: 10,
+      depth: 4,
+      stallCount: 3,
+    });
+    expect(store.get("easy", miss.key)).toBeDefined();
+
+    const stale = prepareExperienceForRequest({
+      ...params,
+      // Candidates that do not include the booked 4,4.
+      rootMoves: [
+        { row: 6, col: 6 },
+        { row: 6, col: 5 },
+      ],
+      rootSource: "tactical",
+    });
+    expect(stale.instant).toBeNull();
+    expect(stale.baseline).toBeUndefined();
+    expect(stale.staleDiscarded).toBe(true);
+    expect(store.get("easy", miss.key)).toBeUndefined();
+  });
+
+  it("keeps a book hit when the move is in rootMoves", () => {
+    const store = new PersistentExperienceStore();
+    let state = newGame();
+    state = applyMove(state, { row: 5, col: 5 }, 1);
+    state = applyMove(state, { row: 5, col: 6 }, 2);
+    const params = {
+      board: state.board,
+      player: state.nextPlayer,
+      difficulty: "easy" as const,
+      experienceMode: "use" as const,
+      store,
+    };
+
+    const miss = prepareExperienceForRequest(params);
+    store.put("easy", miss.key, {
+      move: miss.transform.toCanonical({ row: 4, col: 4 }),
+      score: 10,
+      depth: 4,
+    });
+
+    const hit = prepareExperienceForRequest({
+      ...params,
+      rootMoves: [
+        { row: 4, col: 4 },
+        { row: 6, col: 6 },
+      ],
+      rootSource: "tactical",
+    });
+    expect(hit.instant?.move).toEqual({ row: 4, col: 4 });
+    expect(hit.staleDiscarded).toBeUndefined();
+    expect(store.get("easy", miss.key)).toBeDefined();
+  });
 });
 
 describe("runBookDeepening", () => {

@@ -144,36 +144,51 @@ function otherPlayer(player: Player): Player {
 }
 
 /**
- * For a "four" pattern blocked on one end (a single gain completes it),
- * the cell one step *beyond* that gain — continuing the same run
- * direction — is an equally valid block: Caro voids a five blocked on
- * both ends, so occupying this "box" cell now means the eventual five
- * (if the attacker still plays the gain later) never counts as a win.
- * patterns.ts's own gain-scanning never surfaces this cell (it only
- * looks at gaps *inside* viable windows, and this cell sits just
- * outside the pattern's stones), so it has to be computed here.
- * Returns null for "open-four" (both ends already open — boxing one
- * side leaves the other fully live, so it doesn't help) or when the
- * box cell is off-board/already occupied.
+ * For a "four" pattern with a single completing cell, any equally valid
+ * block beyond the run that patterns.ts never surfaces (it only looks at
+ * gaps *inside* viable windows). Caro voids a five blocked on both ends,
+ * so occupying a far-end "box" now means the eventual five (if the
+ * attacker still plays the gain later) never counts as a win.
+ *
+ * Contiguous four blocked on one end: one box one step beyond the gain.
+ * Gapped four (gain fills a hole between stones): far-end boxes beyond
+ * the first/last stone — catalog #23's (14,3) beyond (13,4) when the
+ * gain sits at (10,7).
+ *
+ * Returns [] for "open-four" (both ends already open — boxing one side
+ * leaves the other fully live, so it doesn't help).
  */
-export function boxCell(pattern: PatternInstance, board: Board): Move | null {
+function boxCells(pattern: PatternInstance, board: Board): Move[] {
   if (pattern.type !== "four" || pattern.gains.length !== 1) {
-    return null;
+    return [];
   }
   const [dRow, dCol] = pattern.direction;
   const gain = pattern.gains[0];
   const first = pattern.cells[0];
   const last = pattern.cells[pattern.cells.length - 1];
 
-  let box: Move;
+  const legalBox = (row: number, col: number): Move | null =>
+    isLegalMove(board, row, col) ? { row, col } : null;
+
   if (gain.row === first.row - dRow && gain.col === first.col - dCol) {
-    box = { row: gain.row - dRow, col: gain.col - dCol };
-  } else if (gain.row === last.row + dRow && gain.col === last.col + dCol) {
-    box = { row: gain.row + dRow, col: gain.col + dCol };
-  } else {
-    return null;
+    const box = legalBox(gain.row - dRow, gain.col - dCol);
+    return box ? [box] : [];
   }
-  return isLegalMove(board, box.row, box.col) ? box : null;
+  if (gain.row === last.row + dRow && gain.col === last.col + dCol) {
+    const box = legalBox(gain.row + dRow, gain.col + dCol);
+    return box ? [box] : [];
+  }
+
+  const boxes: Move[] = [];
+  const beforeFirst = legalBox(first.row - dRow, first.col - dCol);
+  const afterLast = legalBox(last.row + dRow, last.col + dCol);
+  if (beforeFirst) {
+    boxes.push(beforeFirst);
+  }
+  if (afterLast) {
+    boxes.push(afterLast);
+  }
+  return boxes;
 }
 
 /**
@@ -257,16 +272,31 @@ function ownAlreadyRacing(ownPatterns: readonly PatternInstance[]): boolean {
 }
 
 /**
- * True when playing `move` creates a four / open-four — the only tempo that
- * forces the opponent to answer instead of converting their open-three.
- * Merely creating an open-three does not race (catalog #11's 8,6).
+ * True when the opponent holds an open-three — a threat that converts to an
+ * open four, and so to a win, in a single move. (A four would already have
+ * returned at step 2 or switched on desperado.) The urgent tier plus the
+ * must-answer filter are what handle these; a slower shape must not
+ * short-circuit ahead of them.
  */
-function createsRacingFour(
+function opponentThreatensSooner(oppPatterns: readonly PatternInstance[]): boolean {
+  return threatRank(oppPatterns) >= 2;
+}
+
+/**
+ * True when playing `move` as `player` promotes a line into a four /
+ * open-four. That is the only tempo that forces the opponent to answer
+ * instead of converting their own threat — merely creating an open-three
+ * does not race (catalog #11's 8,6).
+ */
+function createsFour(
   board: Board,
   player: Player,
   move: Move,
   store: PatternStore | undefined
 ): boolean {
+  if (!isLegalMove(board, move.row, move.col)) {
+    return false;
+  }
   if (store !== undefined) {
     store.place(move, player);
     const rank = threatRank(store.patterns(player));
@@ -275,6 +305,191 @@ function createsRacingFour(
   }
   const next = placeMove(board, move.row, move.col, player);
   return threatRank(findPatterns(next, player)) >= 3;
+}
+
+/**
+ * Opponent patterns as they would stand after `opponent` plays `move`,
+ * via the pattern store's place/undo when one is available (this runs per
+ * three gain at every node; a full-board rescan here is not affordable).
+ */
+function opponentPatternsAfter(
+  board: Board,
+  opponent: Player,
+  move: Move,
+  store: PatternStore | undefined
+): readonly PatternInstance[] {
+  if (store === undefined) {
+    return findPatterns(placeMove(board, move.row, move.col, opponent), opponent);
+  }
+  store.place(move, opponent);
+  // Safe past the undo: the store swaps its pattern arrays by reference
+  // rather than mutating them.
+  const patterns = store.patterns(opponent);
+  store.undo();
+  return patterns;
+}
+
+function promotesToOpenThree(pattern: PatternInstance, move: Move): boolean {
+  if (pattern.type !== "open-two") {
+    return false;
+  }
+  return pattern.criticalGains.some(gain => gain.row === move.row && gain.col === move.col);
+}
+
+interface ThreeLine {
+  /** Identifies the line across boards that differ only outside it, so the
+   * same three found before and after an expansion compares equal. */
+  key: string;
+  gains: readonly Move[];
+}
+
+function toThreeLine(pattern: PatternInstance): ThreeLine {
+  return {
+    key: pattern.cells.map(cell => `${cell.row},${cell.col}`).join("|"),
+    gains: pattern.gains,
+  };
+}
+
+/**
+ * One way for the opponent to reach an unstoppable double threat: expand a
+ * three into a four (forcing us to answer), then play a fork cell that
+ * makes an open-three and another four at once. A route always runs over
+ * two lines — the expanded three and the fork's four half — and dies if
+ * either of them does, so those are what it lists.
+ */
+type ForkRoute = readonly ThreeLine[];
+
+/**
+ * The routes that open up when `three` expands into a four.
+ *
+ * A fork qualifies only if playing it would create an OPEN-three alongside
+ * the four, since playing a gain promotes each of the fork's lines one
+ * tier: a three-tier line becomes the four, an open-two becomes the
+ * open-three — the latter only on a critical gain, so a two whose promotion
+ * arrives boxed does not count. The three such a two yields is answerable,
+ * and the shape is then not worth forcing the candidate pool over.
+ */
+function forkRoutesFromExpanding(
+  board: Board,
+  opponent: Player,
+  three: PatternInstance,
+  config: NarrowConfig
+): ForkRoute[] {
+  const routes: ForkRoute[] = [];
+
+  for (const gain of three.gains) {
+    if (!isLegalMove(board, gain.row, gain.col)) {
+      continue;
+    }
+    const expanded = opponentPatternsAfter(board, opponent, gain, config.store);
+    if (threatRank(expanded) < 3) {
+      continue;
+    }
+    for (const forkPoint of recognizedForkPoints(expanded, config.recognizedForkPatterns)) {
+      if (!forkPoint.patterns.some(pattern => promotesToOpenThree(pattern, forkPoint.move))) {
+        continue;
+      }
+      const fourHalves = forkPoint.patterns.filter(pattern => isThreeTier(pattern.type));
+      if (fourHalves.length === 0) {
+        continue;
+      }
+      routes.push([toThreeLine(three), ...fourHalves.map(toThreeLine)]);
+    }
+  }
+
+  return routes;
+}
+
+/**
+ * Lines carrying every route — the only ones a single move can kill to
+ * defuse all of them at once. Empty when the routes have no line in common,
+ * which means no block answers them all.
+ */
+function linesCarryingEveryRoute(routes: readonly ForkRoute[]): ThreeLine[] {
+  const [first, ...rest] = routes;
+  return first.filter(line => rest.every(route => route.some(other => other.key === line.key)));
+}
+
+interface ForcedExpansionParams {
+  board: Board;
+  player: Player;
+  opponent: Player;
+  ownPatterns: readonly PatternInstance[];
+  oppPatterns: readonly PatternInstance[];
+  config: NarrowConfig;
+}
+
+/**
+ * Answers to an opponent three whose own expansion sets up a win: playing
+ * one of its gains makes a four (which we are then obliged to answer) and
+ * the position it leaves behind holds a fork cell worth an open-three plus
+ * a four, so our forced reply just buys the tempo that lands it. Catalog
+ * #21 is the shape — O's row-8 three expands toward 9,4-8,5-6,7 +
+ * 6,7-7,7-8,7-9,7 and every X move except the ones below loses.
+ *
+ * The threat is verified by simulation rather than inferred from today's
+ * pattern tiers: the gain is actually played and the resulting fork is
+ * looked for on that board. Tier inspection alone over-fires — most
+ * three-tier fork cells trivially "make a four", which made this tier
+ * return `forced` for positions that were nowhere near lost (catalog #22).
+ *
+ * A three is only worth blocking if it carries EVERY route found, since a
+ * block on a line the opponent can simply route around is not an answer at
+ * all. Catalog #21 has four routes over three threes — row 8, column 7 and
+ * the 7,7-9,9 diagonal, pairwise — and row 8 is in all four, so 8,5 / 8,6
+ * answer while the diagonal's 5,5 / 6,6 (which leave the row 8 + column 7
+ * route untouched) do not. Our own three gains that make a four join them
+ * so offense can still out-tempo the threat instead of only defending
+ * (catalog #21: 12,5 and 13,4).
+ *
+ * PRECONDITION: the opponent holds nothing faster. This pool is returned
+ * exclusively, and the threat it defends is still two moves from landing,
+ * so calling it while the opponent has a one-move threat prunes the answer
+ * to that threat out of the search (catalog #22).
+ *
+ * Returns an empty list when no three expands this way, and also when no
+ * single line carries every route — both leave the caller on the normal
+ * tactical tiers, which is where a position with no one answer belongs.
+ */
+function forcedMovesAfterOpExpandTheirThree({
+  board,
+  player,
+  opponent,
+  ownPatterns,
+  oppPatterns,
+  config,
+}: ForcedExpansionParams): Move[] {
+  const routes = oppPatterns
+    .filter(pattern => isThreeTier(pattern.type))
+    .flatMap(three => forkRoutesFromExpanding(board, opponent, three, config));
+  if (routes.length === 0) {
+    return [];
+  }
+
+  const shared = linesCarryingEveryRoute(routes);
+  if (shared.length === 0) {
+    return [];
+  }
+
+  const answers = new Map<string, Move>();
+  for (const line of shared) {
+    for (const gain of line.gains) {
+      answers.set(`${gain.row},${gain.col}`, gain);
+    }
+  }
+
+  for (const pattern of ownPatterns) {
+    if (!isThreeTier(pattern.type)) {
+      continue;
+    }
+    for (const gain of pattern.gains) {
+      if (createsFour(board, player, gain, config.store)) {
+        answers.set(`${gain.row},${gain.col}`, gain);
+      }
+    }
+  }
+
+  return [...answers.values()];
 }
 
 export interface NarrowConfig {
@@ -407,8 +622,11 @@ export function narrowCandidates(
   let desperadoBlocks: Move[] | null = null;
   const oppFour = oppPatterns.find(p => p.type === "four" || p.type === "open-four");
   if (oppFour) {
-    const box = boxCell(oppFour, board);
-    const candidates = box ? [...oppFour.gains, box] : oppFour.gains;
+    const candidateMap = new Map<string, Move>();
+    for (const move of [...oppFour.gains, ...boxCells(oppFour, board)]) {
+      candidateMap.set(`${move.row},${move.col}`, move);
+    }
+    const candidates = [...candidateMap.values()];
     if (!desperadoEnabled) {
       return { moves: candidates, source: "forced" };
     }
@@ -417,6 +635,33 @@ export function narrowCandidates(
       return { moves: working, source: "forced" };
     }
     desperadoBlocks = candidates;
+  }
+
+  // Step 2b: I must answer a three whose expansion into a four sets up an
+  // unstoppable fork. Skipped in desperado (defense is pointless once the
+  // opponent's four is unstoppable), when we already hold an open-three /
+  // four, since then the full urgent pool can race instead of being pinned
+  // to the answers, and when the opponent has an open-three — that lands a
+  // move sooner, so answering it comes first. The last one is what keeps
+  // this tier sound: the pool below is returned exclusively and holds only
+  // the lines shared by every fork route, so an open-three sitting outside
+  // those lines would have its block pruned away (catalog #22).
+  if (
+    desperadoBlocks === null &&
+    !ownAlreadyRacing(ownPatterns) &&
+    !opponentThreatensSooner(oppPatterns)
+  ) {
+    const expansionAnswers = forcedMovesAfterOpExpandTheirThree({
+      board,
+      player,
+      opponent,
+      ownPatterns,
+      oppPatterns,
+      config,
+    });
+    if (expansionAnswers.length > 0) {
+      return { moves: expansionAnswers, source: "forced" };
+    }
   }
 
   const urgentMoves = new Map<string, Move>();
@@ -537,7 +782,7 @@ export function narrowCandidates(
         if (answerKeys.has(key)) {
           return true;
         }
-        return createsRacingFour(board, player, move, config.store);
+        return createsFour(board, player, move, config.store);
       };
       urgentSurvivors = urgentCandidates.filter(survives);
       softSurvivors = softCandidates.filter(survives);

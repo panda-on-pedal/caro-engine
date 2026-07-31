@@ -7,6 +7,7 @@ import {
   experienceBeatsBaseline,
   isStrongExperienceHit,
   shouldReplaceExperience,
+  supersedesAtSameDepth,
   toCanonicalBoard,
   type ExperienceEntry,
 } from "./experience.ts";
@@ -161,10 +162,37 @@ describe("experience comparison helpers", () => {
         { move: { row: 1, col: 1 }, score: 10, depth: 4 }
       )
     ).toBe(true);
+  });
+
+  it("replaces on an equal-depth move change even at a lower score", () => {
+    // The stored move is seeded as a root candidate, so a same-depth search
+    // that returns a different cell preferred it head-to-head. Rejecting this
+    // would leave the book unable to record a downward score correction.
     expect(
       shouldReplaceExperience(
         { move: { row: 0, col: 0 }, score: 10, depth: 4 },
         { move: { row: 1, col: 1 }, score: 9, depth: 4 }
+      )
+    ).toBe(true);
+    expect(
+      supersedesAtSameDepth(
+        { move: { row: 1, col: 1 }, score: 9, depth: 4 },
+        { move: { row: 0, col: 0 }, score: 10, depth: 4 }
+      )
+    ).toBe(true);
+  });
+
+  it("keeps the stored entry when the same move comes back weaker or shallower", () => {
+    expect(
+      shouldReplaceExperience(
+        { move: { row: 0, col: 0 }, score: 10, depth: 4 },
+        { move: { row: 0, col: 0 }, score: 9, depth: 4 }
+      )
+    ).toBe(false);
+    expect(
+      shouldReplaceExperience(
+        { move: { row: 0, col: 0 }, score: 10, depth: 4 },
+        { move: { row: 1, col: 1 }, score: 99, depth: 3 }
       )
     ).toBe(false);
   });
@@ -306,6 +334,45 @@ describe("computeSettleTransition", () => {
       permanent: false,
       emit: true,
       kind: "improved",
+    });
+  });
+
+  it("adopts an equal-depth move change without climbing the settle level", () => {
+    // The observed background-improvement case: same depth, different cell,
+    // lower score. Confidence does not grow (no deeper evidence), but the
+    // stall counter resets — the position has not converged.
+    const prev: ExperienceEntry = {
+      move: m(2, 2),
+      score: 120,
+      depth: 4,
+      settleLevel: 2,
+      stallCount: 1,
+    };
+    expect(computeSettleTransition(prev, cand, 3)).toEqual({
+      action: "put",
+      settleLevel: 2,
+      stallCount: 0,
+      permanent: false,
+      emit: true,
+      kind: "improved",
+    });
+  });
+
+  it("records nothing for a shallower result — it neither improves nor confirms", () => {
+    const prev: ExperienceEntry = {
+      move: m(2, 2),
+      score: 120,
+      depth: 6,
+      settleLevel: 2,
+      stallCount: 1,
+    };
+    expect(computeSettleTransition(prev, cand, 3)).toEqual({
+      action: "none",
+      settleLevel: 2,
+      stallCount: 1,
+      permanent: false,
+      emit: false,
+      kind: "stalled",
     });
   });
 

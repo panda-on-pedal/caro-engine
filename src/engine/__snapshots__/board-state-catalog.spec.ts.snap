@@ -526,3 +526,72 @@ exports[`catalog #19 — O's 14,9 creates a four and open-two narrowCandidates r
   "source": "tactical",
 }
 `;
+
+exports[`catalog #21 — X must answer O narrowCandidates ranked output 1`] = `
+{
+  "moves": [
+    {
+      "col": 5,
+      "row": 8,
+      "score": 52,
+    },
+    {
+      "col": 6,
+      "row": 8,
+      "score": 54,
+    },
+    {
+      "col": 5,
+      "row": 12,
+      "score": 462,
+    },
+    {
+      "col": 4,
+      "row": 13,
+      "score": 460,
+    },
+  ],
+  "source": "forced",
+}
+`;
+
+exports[`catalog #22 — X to move narrowCandidates ranked output 1`] = `
+{
+  "moves": [
+    {
+      "col": 7,
+      "row": 10,
+      "score": 498,
+    },
+    {
+      "col": 7,
+      "row": 8,
+      "score": 250,
+    },
+    {
+      "col": 7,
+      "row": 13,
+      "score": 210,
+    },
+  ],
+  "source": "tactical",
+}
+`;
+
+exports[`catalog #23 — X to move narrowCandidates ranked output 1`] = `
+{
+  "moves": [
+    {
+      "col": 7,
+      "row": 10,
+      "score": 452,
+    },
+    {
+      "col": 3,
+      "row": 14,
+      "score": 510,
+    },
+  ],
+  "source": "forced",
+}
+`;

@@ -19,16 +19,16 @@ describe("negamax with a transposition table", () => {
   `);
 
   it("returns the identical move and score as a cold search", () => {
-    const cold = search(board, 1, baseConfig());
-    const warm = search(board, 1, baseConfig(new TranspositionTable()));
+    const cold = search({ board, player: 1, ...baseConfig() });
+    const warm = search({ board, player: 1, ...baseConfig(new TranspositionTable()) });
     expect(warm.move).toEqual(cold.move);
     expect(warm.score).toBe(cold.score);
   });
 
   it("visits fewer nodes when the TT is pre-warmed by a first search", () => {
     const tt = new TranspositionTable();
-    const first = search(board, 1, baseConfig(tt));
-    const second = search(board, 1, baseConfig(tt));
+    const first = search({ board, player: 1, ...baseConfig(tt) });
+    const second = search({ board, player: 1, ...baseConfig(tt) });
     expect(second.move).toEqual(first.move);
     expect(second.score).toBe(first.score);
     expect(second.nodesVisited).toBeLessThan(first.nodesVisited);
@@ -44,7 +44,9 @@ describe("negamax with a transposition table", () => {
     const tt = new TranspositionTable();
     const depths: number[] = [];
     let totalEntries = 0;
-    search(board, 1, {
+    search({
+      board,
+      player: 1,
       maxDepth: 3,
       recognizedForkPatterns: ALL_FORK_PATTERN_NAMES,
       rootScoreJitter: 0,

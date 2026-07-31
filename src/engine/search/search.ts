@@ -25,6 +25,7 @@ import {
 import { resolveEffectiveTimeBudget } from "../timeBudget.ts";
 import { TranspositionTable, TTFlag, type TTEntry } from "../transposition/transposition.ts";
 import { SIDE_TO_MOVE_KEY } from "../transposition/zobrist.ts";
+import { logMoveKey } from "./logMove.ts";
 import {
   discoverOpponentThreatBlocks,
   mergeThreatBlocksIntoRoot,
@@ -208,7 +209,7 @@ function negamax(
     logger.log("[search] root: examining candidates", {
       depth,
       count: moves.length,
-      moves: moves.map(m => `${m.row},${m.col}`),
+      moves: moves.map(logMoveKey),
     });
   }
 
@@ -232,7 +233,7 @@ function negamax(
           depth,
           examined: examinedCount,
           total: moves.length,
-          unexamined: moves.slice(examinedCount).map(m => `${m.row},${m.col}`),
+          unexamined: moves.slice(examinedCount).map(logMoveKey),
         });
       }
       break;
@@ -418,6 +419,16 @@ export interface SearchResult {
   experienceStreakEligible?: boolean;
 }
 
+/** Result of `prepareRootMoves` — pass back via `preparedRoot` so callers
+ *  (pool experience gate, parallel coordinator) narrow once. */
+export interface PreparedRootMoves {
+  narrowed: NarrowResult;
+  rootMoves: Move[];
+  store: PatternStore;
+  moveCount: number;
+  isOverride: boolean;
+}
+
 export interface SearchConfig {
   maxDepth: number;
   /** First iterative-deepening depth (inclusive). Default 1. Parallel
@@ -455,12 +466,19 @@ export interface SearchConfig {
    *  (filtered to legal) and skip narrowing. Used by parallel root-partition
    *  search — each worker owns one slice of the narrowed candidate set. */
   rootCandidates?: Move[];
+  /** Precomputed root from `prepareRootMoves`. When set, `search` skips
+   *  calling `prepareRootMoves` again (pool/experience gate can reuse it). */
+  preparedRoot?: PreparedRootMoves;
   /** Debug log tag for parallel workers (e.g. "worker #1", "worker #threat"). */
   workerLabel?: string;
   /** Root experience policy for this call. Default: off inside search. */
   experienceMode?: ExperienceMode;
   /** Practice baseline (and optional move-ordering seed). */
   experienceBaseline?: ExperienceEntry;
+  /** Background book deepening: the result is folded into the book instead of
+   *  being played, so it is reported as found rather than floored back to the
+   *  baseline (see the `floored` note in `search`). */
+  bookDeepening?: boolean;
   /** Optional transposition table shared across this search's iterations.
    *  Changes node count only — never the chosen move or score. */
   tt?: TranspositionTable;
@@ -502,16 +520,16 @@ function logRootChoice(depth: number, result: SearchNode, config: SearchConfig):
   const chosenKey = moveKey(chosen);
   logger.log(`[search] root choice @ depth ${depth}${workerLogSuffix(config)}`, {
     complete: result.complete !== false,
-    chosen: `${chosen.row},${chosen.col}`,
+    chosen: logMoveKey(chosen),
     score: result.score,
     candidates: ranked.map(c => {
-      const key = moveKey(c.move);
-      const star = key === chosenKey ? " ★" : "";
+      const key = logMoveKey(c.move);
+      const star = moveKey(c.move) === chosenKey ? " ★" : "";
       const bound = c.bound ? " (bound)" : "";
       return `${key}  score=${c.score}  compare=${c.compareScore}${star}${bound}`;
     }),
     ...(result.rootUnexamined && result.rootUnexamined.length > 0
-      ? { unexamined: result.rootUnexamined.map(m => `${m.row},${m.col}`) }
+      ? { unexamined: result.rootUnexamined.map(logMoveKey) }
       : {}),
   });
 }
@@ -713,13 +731,7 @@ export function prepareRootMoves(
   board: Board,
   player: Player,
   config: SearchConfig
-): {
-  narrowed: NarrowResult;
-  rootMoves: Move[];
-  store: PatternStore;
-  moveCount: number;
-  isOverride: boolean;
-} {
+): PreparedRootMoves {
   const { narrowed, store, moveCount } = narrowRootCandidates(board, player, config);
   const overrideMoves =
     config.rootCandidates && config.rootCandidates.length > 0
@@ -731,6 +743,7 @@ export function prepareRootMoves(
     : narrowed;
 
   const baselineMove =
+    effectiveNarrowed.source !== "forced" &&
     config.experienceMode !== undefined &&
     config.experienceMode !== "off" &&
     isUsableExperienceMove(store.board, config.experienceBaseline)
@@ -747,7 +760,7 @@ export function prepareRootMoves(
     if (threatBlocks.length > 0) {
       rootMoves = mergeThreatBlocksIntoRoot(rootMoves, threatBlocks);
       logger.log(`[search] threat blocks merged${workerLogSuffix(config)}`, {
-        blocks: threatBlocks.map(m => `${m.row},${m.col}`),
+        blocks: threatBlocks.map(logMoveKey),
       });
     }
   }
@@ -755,20 +768,21 @@ export function prepareRootMoves(
   return { narrowed: effectiveNarrowed, rootMoves, store, moveCount, isOverride };
 }
 
-export function search(
-  board: Board,
-  player: Player,
-  config: SearchConfig,
-  strategy?: MoveSelectionStrategy
-): SearchResult {
+export function search({
+  board,
+  player,
+  strategy,
+  ...config
+}: {
+  board: Board;
+  player: Player;
+  strategy?: MoveSelectionStrategy;
+} & SearchConfig): SearchResult {
   const report = new ProgressReporter(config.onProgress);
   report.emit({ type: "phase", phase: "scanning" });
 
-  const { narrowed, rootMoves, store, moveCount, isOverride } = prepareRootMoves(
-    board,
-    player,
-    config
-  );
+  const { narrowed, rootMoves, store, moveCount, isOverride } =
+    config.preparedRoot ?? prepareRootMoves(board, player, config);
   const effectiveTimeBudgetMs =
     config.timeBudgetMs !== undefined
       ? resolveEffectiveTimeBudget({
@@ -833,7 +847,7 @@ export function search(
           ? "negamax"
           : "custom",
     count: rootMoves.length,
-    moves: rootMoves.map(m => `${m.row},${m.col}`),
+    moves: rootMoves.map(logMoveKey),
   });
 
   const result = resolvedStrategy(store.board, player, rootMoves, searchConfig);
@@ -841,10 +855,19 @@ export function search(
   // (they dominate the opening and would loop at 2–3 stones). Forced is
   // not special-cased — if a forced ply took the quiet/single-move path it
   // is already excluded; multi-move forced searches may count.
+  // Forced roots must not be floored back to a stale book move (catalog #21:
+  // book played 13,8 while narrow correctly forces 8,5/8,6). Book deepening
+  // is exempt too: flooring exists so a foreground ply PLAYS the book move
+  // rather than a weaker fresh one, but a background deepening result is
+  // never played — it is folded into the book, and flooring would overwrite
+  // the very finding it was dispatched to produce.
   const streakEligible = !isQuietPath && resolvedStrategy !== patternOnlyStrategy;
-  return withPracticeStreakEligible(
-    applyExperienceBaseline(result, config, store.board),
-    config,
-    streakEligible
-  );
+  const floored =
+    narrowed.source === "forced" || config.bookDeepening === true
+      ? result
+      : applyExperienceBaseline(result, config, store.board);
+  return withPracticeStreakEligible(floored, config, streakEligible);
 }
+
+/** Inferred from `search`'s single params object (board/player flattened). */
+export type SearchParams = Parameters<typeof search>[0];
