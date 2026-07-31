@@ -150,6 +150,91 @@ describe("PatternStore", () => {
   });
 });
 
+describe("PatternStore.syncToBoard", () => {
+  const start = parseBoard(`
+    ............
+    ............
+    ....O.X.....
+    .....O.X....
+    ......O.....
+    ............
+  `);
+
+  it("advances over added stones and matches a from-scratch store", () => {
+    const store = PatternStore.fromBoard(start);
+    const next = placeMove(placeMove(placeMove(start, 1, 4, 1), 5, 5, 2), 2, 8, 1);
+
+    expect(store.syncToBoard(next)).toBe(true);
+    expectStoreMatchesBoard(store);
+    expect(store.hash).toBe(PatternStore.fromBoard(next).hash);
+  });
+
+  it("rebuilds when a stone was removed", () => {
+    const store = PatternStore.fromBoard(start);
+    const undone = start.map(row => row.slice());
+    undone[4][6] = 0;
+
+    expect(store.syncToBoard(undone)).toBe(false);
+    expect(store.board[4][6]).toBe(0);
+    expect(store.depth).toBe(0);
+    expectStoreMatchesBoard(store);
+  });
+
+  it("rebuilds when a stone changed owner", () => {
+    const store = PatternStore.fromBoard(start);
+    const flipped = start.map(row => row.slice());
+    flipped[2][4] = 1; // was O
+
+    expect(store.syncToBoard(flipped)).toBe(false);
+    expectStoreMatchesBoard(store);
+  });
+
+  it("does not alias the board it synced to", () => {
+    const store = PatternStore.fromBoard(start);
+    const next = placeMove(start, 1, 4, 1);
+    store.syncToBoard(next);
+    next[1][5] = 2;
+
+    expect(store.board[1][5]).toBe(0);
+  });
+});
+
+describe("PatternStore borrow helpers", () => {
+  const board = parseBoard(`
+    .....
+    .XX..
+    ..O..
+    .....
+  `);
+
+  it("unwindTo returns the store to a lent depth", () => {
+    const store = PatternStore.fromBoard(board);
+    store.place({ row: 0, col: 0 }, 1);
+    const lent = store.depth;
+    const lentPatterns = canonicalize(store.patterns(1));
+
+    store.place({ row: 1, col: 3 }, 1);
+    store.place({ row: 3, col: 3 }, 2);
+    store.unwindTo(lent);
+
+    expect(store.depth).toBe(lent);
+    expect(store.board[1][3]).toBe(0);
+    expect(store.board[3][3]).toBe(0);
+    expect(canonicalize(store.patterns(1))).toEqual(lentPatterns);
+    expectStoreMatchesBoard(store);
+  });
+
+  it("clearHistory keeps the position and drops the stack", () => {
+    const store = PatternStore.fromBoard(board);
+    store.place({ row: 1, col: 3 }, 1);
+    store.clearHistory();
+
+    expect(store.depth).toBe(0);
+    expect(store.board[1][3]).toBe(1);
+    expectStoreMatchesBoard(store);
+  });
+});
+
 describe("PatternStore hash", () => {
   it("is transposition-invariant and undo-reversible", () => {
     const store = PatternStore.fromBoard(createEmptyBoard());

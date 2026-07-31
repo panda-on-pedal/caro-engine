@@ -5,6 +5,7 @@ import {
   type Difficulty,
 } from "../engine/engine.ts";
 import { WIN_SCORE } from "../engine/search/evaluate.ts";
+import type { PatternStore } from "../engine/patterns/patternStore.ts";
 import { prepareRootMoves, type PreparedRootMoves } from "../engine/search/search.ts";
 import { partitionCandidates, aggregateParallelResults } from "./parallelSearch.ts";
 import type { Move } from "../engine/state.ts";
@@ -58,6 +59,24 @@ export function toPlainBoard(board: Board): Board {
   return board.map(row => Array.from(row));
 }
 
+/** Cell-by-cell equality — cheap next to the pattern rebuild it guards. */
+function boardsMatch(a: Board, b: Board): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let row = 0; row < a.length; row += 1) {
+    if (a[row].length !== b[row].length) {
+      return false;
+    }
+    for (let col = 0; col < a[row].length; col += 1) {
+      if (a[row][col] !== b[row][col]) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 export class CancelledError extends Error {
   constructor() {
     super("Engine request cancelled");
@@ -95,6 +114,10 @@ export interface RequestMoveOptions {
   maxDepth?: number;
   /** When false, skip own-stone time stepping (remaining wall budget already set). */
   stepTimeByOwnStones?: boolean;
+  /** Caller's long-lived pattern cache for this position (the session keeps
+   *  one synced by place/undo). Reused for main-thread root narrowing instead
+   *  of a full rebuild; ignored unless it matches the requested board. */
+  patternStore?: PatternStore;
 }
 
 interface PendingEntry {
@@ -189,6 +212,19 @@ export class EnginePool {
     return this.slots.length;
   }
 
+  /** Accept a caller's store only when it is this exact position. `search`
+   *  returns it balanced, so the caller's incremental sync stays valid. */
+  private reusableStore(store: PatternStore | undefined, board: Board): PatternStore | undefined {
+    if (store === undefined) {
+      return undefined;
+    }
+    if (!boardsMatch(store.board, board)) {
+      logger.warn("[pool] supplied pattern store does not match the request board — rebuilding");
+      return undefined;
+    }
+    return store;
+  }
+
   /** True when either book holds a move for this position — the only reason
    *  the main thread needs today's root (to gate that move as stale or not). */
   private hasBookEntry(
@@ -231,6 +267,10 @@ export class EnginePool {
     const practiceImprovement = options?.practiceImprovement !== false;
     const settleGiveUpSearches = options?.settleGiveUpSearches ?? DEFAULT_SETTLE_GIVE_UP_SEARCHES;
     const plainBoard = toPlainBoard(board);
+    // A caller-supplied store spares this thread the full rebuild below, but
+    // only if it really is this position — a stale one would narrow the wrong
+    // board. Mismatch is a caller bug, so say so and fall back.
+    const lentStore = this.reusableStore(options?.patternStore, plainBoard);
     // Narrow before experience so stale book moves (outside today's root) are
     // discarded instead of instant-replayed. This is a full pattern scan on
     // the UI thread, so it runs only for the two things that consume a root:
@@ -241,10 +281,8 @@ export class EnginePool {
       options?.rootCandidates === undefined &&
       (this.hasBookEntry(plainBoard, player, difficulty, experienceMode) ||
         this.willFanOut(options?.parallelism ?? 1, experienceMode))
-        ? prepareRootMoves(
-            plainBoard,
-            player,
-            resolveEngineSearchConfig({
+        ? prepareRootMoves(plainBoard, player, {
+            ...resolveEngineSearchConfig({
               difficulty,
               timeBudgetMs,
               stepTimeByOwnStones: options?.stepTimeByOwnStones,
@@ -252,8 +290,9 @@ export class EnginePool {
               rootCandidates: options?.rootCandidates,
               minDepth: options?.minDepth,
               maxDepth: options?.maxDepth,
-            })
-          )
+            }),
+            patternStore: lentStore,
+          })
         : null;
     const prepared = prepareExperienceForRequest({
       board,

@@ -705,6 +705,34 @@ function withPracticeStreakEligible(
   return { ...result, experienceStreakEligible: streakEligible };
 }
 
+/**
+ * Return a borrowed store to the exact state it was lent in.
+ *
+ * Search's own place/undo pairs are balanced, so this is a no-op on every
+ * normal path. It exists because a borrowed store outlives the call: the UI
+ * session and each worker keep one alive across moves, so an early escape
+ * that left phantom stones behind would silently corrupt every later search.
+ * Under-unwinding cannot be repaired by undo, so it rebuilds from `board`.
+ */
+function restoreBorrowedStore(
+  store: PatternStore | undefined,
+  lentDepth: number,
+  board: Board
+): void {
+  if (store === undefined || store.depth === lentDepth) {
+    return;
+  }
+  logger.warn("[search] borrowed pattern store returned unbalanced", {
+    lentDepth,
+    depth: store.depth,
+  });
+  if (store.depth < lentDepth) {
+    store.resetFromBoard(board);
+    return;
+  }
+  store.unwindTo(lentDepth);
+}
+
 /** The root-narrowing prelude shared by `search()` and the parallel
  *  coordinator: builds the pattern store and returns the narrowed candidate
  *  set exactly as `search()` computes it internally, so a coordinator can
@@ -728,6 +756,20 @@ export function narrowRootCandidates(
  * blocks when this is a full tactical root (not a partition slice).
  */
 export function prepareRootMoves(
+  board: Board,
+  player: Player,
+  config: SearchConfig
+): PreparedRootMoves {
+  const borrowed = config.patternStore;
+  const lentDepth = borrowed?.depth ?? 0;
+  try {
+    return prepareRootMovesInner(board, player, config);
+  } finally {
+    restoreBorrowedStore(borrowed, lentDepth, board);
+  }
+}
+
+function prepareRootMovesInner(
   board: Board,
   player: Player,
   config: SearchConfig
@@ -768,16 +810,25 @@ export function prepareRootMoves(
   return { narrowed: effectiveNarrowed, rootMoves, store, moveCount, isOverride };
 }
 
-export function search({
-  board,
-  player,
-  strategy,
-  ...config
-}: {
+export type SearchParams = {
   board: Board;
   player: Player;
   strategy?: MoveSelectionStrategy;
-} & SearchConfig): SearchResult {
+} & SearchConfig;
+
+export function search(params: SearchParams): SearchResult {
+  // A store handed in by the caller (UI session / worker cache) outlives this
+  // call, so it must come back exactly as lent — see `restoreBorrowedStore`.
+  const borrowed = params.patternStore ?? params.preparedRoot?.store;
+  const lentDepth = borrowed?.depth ?? 0;
+  try {
+    return searchInner(params);
+  } finally {
+    restoreBorrowedStore(borrowed, lentDepth, params.board);
+  }
+}
+
+function searchInner({ board, player, strategy, ...config }: SearchParams): SearchResult {
   const report = new ProgressReporter(config.onProgress);
   report.emit({ type: "phase", phase: "scanning" });
 
@@ -868,6 +919,3 @@ export function search({
       : applyExperienceBaseline(result, config, store.board);
   return withPracticeStreakEligible(floored, config, streakEligible);
 }
-
-/** Inferred from `search`'s single params object (board/player flattened). */
-export type SearchParams = Parameters<typeof search>[0];

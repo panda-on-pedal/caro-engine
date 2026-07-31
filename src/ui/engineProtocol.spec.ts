@@ -4,6 +4,7 @@ import { applyMove, newGame } from "../engine/state.ts";
 import {
   handleEngineRequest,
   prepareExperienceForRequest,
+  resetStoreCache,
   runBookDeepening,
   type EngineRequest,
 } from "./engineProtocol.ts";
@@ -48,6 +49,66 @@ describe("handleEngineRequest", () => {
       expect(isLegalMove(state.board, response.result.move.row, response.result.move.col)).toBe(
         true
       );
+    }
+  });
+});
+
+describe("handleEngineRequest pattern store cache", () => {
+  // The worker keeps one store across requests, so a request must never be
+  // searched against the previous request's position — the returned move
+  // would be illegal (or land on an occupied cell) on the board it was asked
+  // about. Covers forward sync, an unrelated board, and a backwards jump.
+  it("stays consistent with the requested board across sequential requests", () => {
+    resetStoreCache();
+    let state = newGame();
+    state = applyMove(state, { row: 10, col: 10 }, 1);
+    state = applyMove(state, { row: 9, col: 10 }, 2);
+    const opening = state.board;
+
+    state = applyMove(state, { row: 10, col: 11 }, 1);
+    state = applyMove(state, { row: 9, col: 11 }, 2);
+    const advanced = state.board;
+
+    const elsewhere = createEmptyBoard(20);
+    elsewhere[3][3] = 1;
+    elsewhere[4][4] = 2;
+    elsewhere[3][4] = 1;
+
+    for (const board of [opening, advanced, elsewhere, opening, advanced]) {
+      const response = handleEngineRequest({
+        id: 7,
+        board,
+        player: 1,
+        difficulty: "easy",
+      });
+      expect(response.ok).toBe(true);
+      if (response.ok) {
+        const { row, col } = response.result.move;
+        expect(isLegalMove(board, row, col)).toBe(true);
+      }
+    }
+  });
+
+  it("matches a cold worker on a forced block", () => {
+    // A single-candidate (forced) root is jitter-proof, so the warm-cache
+    // answer must equal the cold one exactly.
+    const board = createEmptyBoard(20);
+    for (const col of [6, 7, 8, 9]) {
+      board[10][col] = 2;
+    }
+    const warmup = createEmptyBoard(20);
+    warmup[10][6] = 2;
+
+    resetStoreCache();
+    const cold = handleEngineRequest({ id: 1, board, player: 1, difficulty: "medium" });
+
+    resetStoreCache();
+    handleEngineRequest({ id: 2, board: warmup, player: 1, difficulty: "medium" });
+    const warm = handleEngineRequest({ id: 3, board, player: 1, difficulty: "medium" });
+
+    expect(cold.ok && warm.ok).toBe(true);
+    if (cold.ok && warm.ok) {
+      expect(warm.result.move).toEqual(cold.result.move);
     }
   });
 });

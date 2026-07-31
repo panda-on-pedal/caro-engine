@@ -928,6 +928,9 @@ class GameSession {
           persistExperience: this.persistExperience(),
           settleGiveUpSearches: effectiveGiveUpSearches(this.settings),
           parallelism: parallelismFor(this.difficulty),
+          // Kept in sync move-by-move (see syncPatternStore) so root narrowing
+          // does not rescan the whole board on the UI thread.
+          patternStore: this.patternStore,
           onProgress: event => {
             if (myGeneration !== this.generation) {
               return;

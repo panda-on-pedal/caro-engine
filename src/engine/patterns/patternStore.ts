@@ -116,6 +116,65 @@ export class PatternStore {
   }
 
   /**
+   * Undo back down to `depth` (a value previously read from `depth`).
+   * Lets a borrowed store be returned exactly as lent even when a caller
+   * escapes between place and undo. No-op when already at or below `depth`.
+   */
+  unwindTo(depth: number): void {
+    while (this.stack.length > depth) {
+      this.undo();
+    }
+  }
+
+  /**
+   * Drop the undo history, keeping the current position and caches. Callers
+   * that hold one store across many positions (the worker cache) use this so
+   * the stack — and the pattern arrays its frames pin — cannot grow unbounded.
+   */
+  clearHistory(): void {
+    this.stack = [];
+  }
+
+  /**
+   * Bring this store to `board` cheaply: when `board` only *adds* stones to
+   * the current position, place them (4-line rebuild each); anything else
+   * (a removed or recoloured stone, a different size) falls back to a full
+   * `resetFromBoard`. Returns true when the incremental path was taken.
+   *
+   * Placement order does not matter: every line whose contents changed passes
+   * through at least one added stone, and such a line is rebuilt again when
+   * the last stone on it is placed — by which point the board already holds
+   * every addition.
+   */
+  syncToBoard(board: Board): boolean {
+    if (board.length !== this.board.length) {
+      this.resetFromBoard(board);
+      return false;
+    }
+    const added: Array<{ move: Move; player: Player }> = [];
+    for (let row = 0; row < board.length; row += 1) {
+      for (let col = 0; col < board.length; col += 1) {
+        const want = board[row][col];
+        const have = this.board[row][col];
+        if (want === have) {
+          continue;
+        }
+        // `have !== 0` is a removed or recoloured stone; `want === 0` cannot
+        // co-occur with `have === 0` here, but keeps `want` narrowed to Player.
+        if (have !== 0 || want === 0) {
+          this.resetFromBoard(board);
+          return false;
+        }
+        added.push({ move: { row, col }, player: want });
+      }
+    }
+    for (const { move, player } of added) {
+      this.place(move, player);
+    }
+    return true;
+  }
+
+  /**
    * Drop the undo stack and rebuild caches from `board` (deep copy).
    * Used for UI load / new-game / history jumps that are not place/undo.
    */

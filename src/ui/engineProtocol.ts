@@ -84,10 +84,43 @@ export function isLogMessage(message: EngineMessage): message is EngineLogMessag
   return "type" in message && message.type === "log";
 }
 
+/**
+ * Worker-local pattern cache. Workers are long-lived, so one store is kept
+ * across requests and advanced by the stones the new board adds instead of
+ * being rebuilt from scratch (a full `findPatterns` pair costs ~0.4s at
+ * mid-game density). This is what a parallel fan-out needs most: the same
+ * position is redispatched once per iterative-deepening depth, and the next
+ * turn differs by one or two stones. A cold worker or a backwards jump
+ * (undo, new game, a different board session) still pays a full rebuild.
+ */
+let cachedStore: PatternStore | null = null;
+
+/** The worker's store, synced to `board`. Never aliases `board` itself —
+ *  `fromBoard` / `resetFromBoard` / `place` all work on an internal copy. */
+function storeForBoard(board: Board): PatternStore {
+  if (cachedStore === null) {
+    cachedStore = PatternStore.fromBoard(board);
+  } else {
+    cachedStore.syncToBoard(board);
+  }
+  // Nothing will ever undo past this position, and the frames pin pattern
+  // arrays; drop them so a long game does not accumulate history.
+  cachedStore.clearHistory();
+  return cachedStore;
+}
+
+/** Drop the cached store (error recovery, and test isolation). */
+export function resetStoreCache(): void {
+  cachedStore = null;
+}
+
 /** Map a worker request onto `search` params (resolve difficulty profile once). */
 export function searchParamsFromRequest(
   request: EngineRequest,
-  extras?: Pick<SearchParams, "preparedRoot" | "onProgress" | "tt" | "onDepthComplete">
+  extras?: Pick<
+    SearchParams,
+    "preparedRoot" | "onProgress" | "tt" | "onDepthComplete" | "patternStore"
+  >
 ): SearchParams {
   return {
     board: request.board,
@@ -104,6 +137,7 @@ export function searchParamsFromRequest(
       bookDeepening: request.bookDeepening,
     }),
     preparedRoot: extras?.preparedRoot,
+    patternStore: extras?.patternStore,
     workerLabel: request.workerLabel,
     onProgress: extras?.onProgress,
     tt: extras?.tt,
@@ -116,18 +150,20 @@ export function handleEngineRequest(
   onProgress?: (event: SearchProgressEvent) => void
 ): EngineResponse {
   try {
+    // Slices carry `rootCandidates` rather than a prepared root, so the store
+    // has to be handed in directly too — that is the path a fan-out repeats
+    // once per depth.
+    const store = storeForBoard(request.board);
     const preparedRoot =
-      request.preparedRoot !== undefined
-        ? {
-            ...request.preparedRoot,
-            store: PatternStore.fromBoard(request.board),
-          }
-        : undefined;
+      request.preparedRoot !== undefined ? { ...request.preparedRoot, store } : undefined;
     const result = search(
-      searchParamsFromRequest(request, { preparedRoot, onProgress })
+      searchParamsFromRequest(request, { preparedRoot, patternStore: store, onProgress })
     );
     return { id: request.id, ok: true, result };
   } catch (error) {
+    // The cache is shared by every later request on this worker; never keep a
+    // store whose state we cannot account for.
+    resetStoreCache();
     return {
       id: request.id,
       ok: false,
@@ -142,7 +178,11 @@ export interface BookDeepenDeps {
 }
 
 /** Background reinvest: seed the persisted TT slice, deepen the position under
- *  the full budget, flushing after each completed depth. */
+ *  the full budget, flushing after each completed depth.
+ *
+ *  Deliberately does NOT use the worker's cached store: this function awaits
+ *  before searching, so the worker can accept another request in between and
+ *  two searches would end up mutating the same store. */
 export async function runBookDeepening(
   request: EngineRequest,
   deps: BookDeepenDeps = {
