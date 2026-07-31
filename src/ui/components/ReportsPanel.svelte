@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { NEVER_GIVE_UP_SEARCHES } from '../../engine/experience/experience.ts';
   import { session } from '../lib/gameSession.svelte.ts';
   import { t } from '../i18n/index.ts';
 
@@ -15,9 +16,18 @@
   function shortKey(key: string): string {
     return key.length > 14 ? `${key.slice(0, 14)}…` : key;
   }
-  function dots(stall: number, giveUp: number): string {
-    const filled = Math.min(stall, giveUp);
-    return '●'.repeat(filled) + '○'.repeat(Math.max(0, giveUp - filled));
+  function fmtStallProgress(
+    stall: number,
+    giveUp: number
+  ): { kind: 'pct'; pct: number; stall: number; giveUp: number } | { kind: 'open'; stall: number } {
+    const safeStall = Math.max(0, stall);
+    if (giveUp >= NEVER_GIVE_UP_SEARCHES || !Number.isFinite(giveUp) || giveUp <= 0) {
+      return { kind: 'open', stall: safeStall };
+    }
+    const safeGiveUp = Math.max(1, giveUp);
+    const cappedStall = Math.min(safeStall, safeGiveUp);
+    const pct = Math.min(99, Math.round((cappedStall / safeGiveUp) * 100));
+    return { kind: 'pct', pct, stall: cappedStall, giveUp: safeGiveUp };
   }
 </script>
 
@@ -63,7 +73,18 @@
             <td>{ev.moveChanged ? t('reports.moveChanged') : t('reports.moveSame')}</td>
             <td class="reports-level">L{ev.settleLevel}</td>
             <td class="reports-settle">
-              {ev.stallCount >= ev.giveUp ? t('reports.permanent') : dots(ev.stallCount, ev.giveUp)}
+              {#if ev.stallCount >= ev.giveUp}
+                {t('reports.permanent')}
+              {:else}
+                {@const stall = fmtStallProgress(ev.stallCount, ev.giveUp)}
+                {stall.kind === 'open'
+                  ? t('reports.stallOpen', { stall: stall.stall })
+                  : t('reports.stallPct', {
+                      stall: stall.stall,
+                      giveUp: stall.giveUp,
+                      pct: stall.pct,
+                    })}
+              {/if}
             </td>
           </tr>
         {/each}

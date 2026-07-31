@@ -1,5 +1,11 @@
 # Release notes
 
+## 1.2.5
+
+### Fixes
+
+- Reports panel: stall progress now shows `{stall}/{giveUp} · {pct}%` (or `{stall} · open` for never-give-up positions) instead of a dot row that grew unbounded once the give-up threshold was widened to 50 and unbounded in 1.2.4
+
 ## 1.2.4
 
 ### Engine
