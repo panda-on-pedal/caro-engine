@@ -97,6 +97,7 @@ export const vi: Messages = {
   "reports.moveSame": "giữ",
   "reports.permanent": "đông cứng",
   "reports.stallPct": "{stall}/{giveUp} · {pct}%",
+  "reports.stallInfinite": "{stall}/∞",
   "reports.stallOpen": "{stall} · mở",
   "reports.hintReset": "Bấm Ván mới để xóa báo cáo.",
   "reports.empty": "Chưa ghi nhận cải thiện nào — hãy luyện tập để xây dựng bộ nhớ.",

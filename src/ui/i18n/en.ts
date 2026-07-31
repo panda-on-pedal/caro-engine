@@ -95,6 +95,7 @@ export const en = {
   "reports.moveSame": "same",
   "reports.permanent": "frozen",
   "reports.stallPct": "{stall}/{giveUp} · {pct}%",
+  "reports.stallInfinite": "{stall}/∞",
   "reports.stallOpen": "{stall} · open",
   "reports.hintReset": "Click New Game to reset the report.",
   "reports.empty": "No improvements recorded yet — practice to build the cache.",

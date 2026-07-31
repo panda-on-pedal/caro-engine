@@ -1,3 +1,4 @@
+import { NEVER_GIVE_UP_SEARCHES } from "../engine/experience/experience.ts";
 import type { SearchProgressEvent } from "../engine/search/searchProgress.ts";
 import { formatReportLine, formatThought } from "./thoughts.ts";
 
@@ -62,7 +63,7 @@ describe("formatReportLine", () => {
         boardId: 1,
         at: 0,
       })
-    ).toBe("Improved — +120 · d4→d6 · L3 · move changed…");
+    ).toBe("Improved, +120 · d4→d6 · L3 · move changed…");
   });
 
   it("formats a stalled report line with the give-up counter", () => {
@@ -84,6 +85,28 @@ describe("formatReportLine", () => {
         boardId: 1,
         at: 0,
       })
-    ).toBe("No gain — d6 · give up 1/3…");
+    ).toBe("No gain, d6 · give up 1/3…");
+  });
+
+  it("omits give-up counter when never give up is enabled", () => {
+    expect(
+      formatReportLine({
+        kind: "stalled",
+        difficulty: "hard",
+        key: "k",
+        oldScore: 120,
+        newScore: 120,
+        oldDepth: 6,
+        newDepth: 6,
+        oldNodes: 48000,
+        newNodes: 49000,
+        moveChanged: false,
+        settleLevel: 3,
+        stallCount: 8,
+        giveUp: NEVER_GIVE_UP_SEARCHES,
+        boardId: 1,
+        at: 0,
+      })
+    ).toBe("No gain, d6…");
   });
 });

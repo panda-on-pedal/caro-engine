@@ -1,3 +1,4 @@
+import { NEVER_GIVE_UP_SEARCHES } from "../engine/experience/experience.ts";
 import type { SearchProgressEvent } from "../engine/search/searchProgress.ts";
 import type { PracticeReportEvent } from "../shared/practiceReport.ts";
 
@@ -44,6 +45,9 @@ export function formatReportLine(ev: PracticeReportEvent): string {
     case "improved":
       return `Improved, ${score} · ${depth} · L${ev.settleLevel}${moved}…`;
     case "stalled":
+      if (ev.giveUp >= NEVER_GIVE_UP_SEARCHES) {
+        return `No gain, ${depth}…`;
+      }
       return `No gain, ${depth} · give up ${ev.stallCount}/${ev.giveUp}…`;
     case "settled":
       return `Settled (frozen), ${score} · ${depth} · L${ev.settleLevel}…`;

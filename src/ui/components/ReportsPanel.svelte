@@ -19,10 +19,12 @@
   function fmtStallProgress(
     stall: number,
     giveUp: number
-  ): { kind: 'pct'; pct: number; stall: number; giveUp: number } | { kind: 'open'; stall: number } {
+  ):
+    | { kind: 'pct'; pct: number; stall: number; giveUp: number }
+    | { kind: 'infinite'; stall: number } {
     const safeStall = Math.max(0, stall);
     if (giveUp >= NEVER_GIVE_UP_SEARCHES || !Number.isFinite(giveUp) || giveUp <= 0) {
-      return { kind: 'open', stall: safeStall };
+      return { kind: 'infinite', stall: safeStall };
     }
     const safeGiveUp = Math.max(1, giveUp);
     const cappedStall = Math.min(safeStall, safeGiveUp);
@@ -77,8 +79,8 @@
                 {t('reports.permanent')}
               {:else}
                 {@const stall = fmtStallProgress(ev.stallCount, ev.giveUp)}
-                {stall.kind === 'open'
-                  ? t('reports.stallOpen', { stall: stall.stall })
+                {stall.kind === 'infinite'
+                  ? t('reports.stallInfinite', { stall: stall.stall })
                   : t('reports.stallPct', {
                       stall: stall.stall,
                       giveUp: stall.giveUp,
