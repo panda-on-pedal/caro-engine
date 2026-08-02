@@ -14,6 +14,9 @@ export default tseslint.config(
       "**/*.svelte.ts",
       "vite.config.ts",
       "svelte.config.js",
+      // Build/analysis scripts sit outside tsconfig's `include`, so the typed
+      // rules can only ever report a parsing error for them.
+      "scripts/**",
     ],
   },
   js.configs.recommended,

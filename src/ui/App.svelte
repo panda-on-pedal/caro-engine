@@ -1,3 +1,8 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+  SPDX-License-Identifier: AGPL-3.0-only
+-->
+
 <script lang="ts">
   import { onMount } from 'svelte';
   import { parseHash, setHashRoute, type AppRoute } from './lib/hashRoute.ts';

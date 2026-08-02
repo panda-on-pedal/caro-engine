@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // src/engine/rankMoves.spec.ts
 import { createEmptyBoard, placeMove } from "../board.ts";
 import { parseBoard } from "../test-helpers/parse-board.ts";

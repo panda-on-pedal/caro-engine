@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import type { Difficulty } from "../engine/engine.ts";
 import { PAIRINGS, TOURNAMENT_DIFFICULTIES } from "../ui/tournament.ts";
 

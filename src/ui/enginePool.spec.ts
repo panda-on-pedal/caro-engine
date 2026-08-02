@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { isLegalMove, type Board } from "../engine/board.ts";
 import { applyMove, newGame } from "../engine/state.ts";
 import {

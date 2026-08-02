@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // Playout for board-state-catalog.md scenario #4: force X's first move to
 // 9,9 (the offense move) and let the engine play BOTH sides from there,
 // each turn choosing its best move via search(). Logs every move and the

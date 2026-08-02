@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { applyMove, newGame } from "../engine/state.ts";
 import { prepareRootMoves } from "../engine/search/search.ts";
 import { resolveEngineSearchConfig } from "../engine/engine.ts";

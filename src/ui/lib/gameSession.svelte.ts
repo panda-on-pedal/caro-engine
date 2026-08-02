@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { BOARD_SIZE, type Board, type Player } from "../../engine/board.ts";
 import { parallelismFor, type Difficulty } from "../../engine/engine.ts";
 import { PatternStore } from "../../engine/patterns/patternStore.ts";

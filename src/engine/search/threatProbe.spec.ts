@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { parseBoard } from "../test-helpers/parse-board.ts";
 import { narrowCandidates, ALL_FORK_PATTERN_NAMES } from "./narrow.ts";
 import { DEFAULT_DECAY_CONFIG } from "./search.ts";

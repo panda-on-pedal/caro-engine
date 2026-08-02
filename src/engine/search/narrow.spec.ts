@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // src/engine/narrow.spec.ts
 import { findForkPoints, findPatterns } from "../patterns/patterns.ts";
 import {

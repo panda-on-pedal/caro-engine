@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { NEVER_GIVE_UP_SEARCHES } from "../engine/experience/experience.ts";
 import type { SearchProgressEvent } from "../engine/search/searchProgress.ts";
 import type { PracticeReportEvent } from "../shared/practiceReport.ts";

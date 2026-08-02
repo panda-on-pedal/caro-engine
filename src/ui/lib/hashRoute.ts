@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 export type AppRoute = "play" | "settings" | "instructions";
 
 /** Parse `location.hash` into an app route. Unknown hashes fall back to play. */

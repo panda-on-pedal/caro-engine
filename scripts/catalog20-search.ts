@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // Probe catalog #20: does search lookahead prefer 12,11 (static #1) or see
 // the punishment line X 12,11 → O 12,6 → X 12,12 → O 15,11?
 //

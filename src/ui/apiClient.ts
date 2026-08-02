@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 const DEFAULT_MAX_ATTEMPTS = 50;
 const DEFAULT_BASE_DELAY_MS = 1000;
 

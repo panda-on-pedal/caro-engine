@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 export const en = {
   title: "Caro",
   subtitle: "Five in a row",
@@ -67,6 +70,9 @@ export const en = {
   "status.loading": "Loading…",
   "version.updateAvailable": "Update available · v{version}",
   "version.upToDate": "Latest · v{version}",
+  "version.source": "Source code · AGPL-3.0",
+  "version.sourceTitle":
+    "Free software under the GNU AGPL v3.0. Get the complete corresponding source.",
   "status.yourTurn": "Your turn",
   "status.aiThinking": "Computer thinking…",
   "status.youWin": "You win!",

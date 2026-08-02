@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import type { Messages } from "./types.ts";
 
 export const vi: Messages = {
@@ -69,6 +72,9 @@ export const vi: Messages = {
   "status.loading": "Đang tải…",
   "version.updateAvailable": "Có bản mới · v{version}",
   "version.upToDate": "Mới nhất · v{version}",
+  "version.source": "Mã nguồn · AGPL-3.0",
+  "version.sourceTitle":
+    "Phần mềm tự do theo giấy phép GNU AGPL v3.0. Nhận toàn bộ mã nguồn tương ứng.",
   "status.yourTurn": "Lượt của bạn",
   "status.aiThinking": "Máy tính đang nghĩ…",
   "status.youWin": "Bạn thắng!",

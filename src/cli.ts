@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -9,6 +12,16 @@ interface CliOptions {
   openBrowser: boolean;
 }
 
+/**
+ * Appropriate Legal Notices, per AGPL-3.0 section 5(d): copyright, absence of
+ * warranty, redistribution terms, and where to find the license and source.
+ */
+const LEGAL_NOTICE = `caro-tournament  Copyright (C) 2026  Dang Nguyen
+This program comes with ABSOLUTELY NO WARRANTY. It is free software under the
+GNU Affero General Public License v3.0, and you are welcome to redistribute it
+under those terms; see <https://www.gnu.org/licenses/agpl-3.0.html>.
+Source: https://github.com/panda-on-pedal/caro-engine`;
+
 function printUsage(): void {
   console.log(`Usage: caro-tournament [options]
 
@@ -16,6 +29,8 @@ Options:
   --port <number>   Port to listen on (default: ${DEFAULT_PORT})
   --no-open         Do not open the browser
   -h, --help        Show this help
+
+${LEGAL_NOTICE}
 `);
 }
 
@@ -93,6 +108,8 @@ async function main(): Promise<void> {
     throw error;
   }
 
+  console.log(LEGAL_NOTICE);
+  console.log("");
   console.log(`Caro tournament listening on ${url}`);
   console.log(`Game data: ${dataDir()}`);
 

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { en } from "./en.ts";
 import type { Locale, MessageKey, Messages } from "./types.ts";
 import { vi } from "./vi.ts";

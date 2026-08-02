@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import {
   DEFAULT_TOURNAMENT_BOARD_COUNT,
   maxTournamentBoards,

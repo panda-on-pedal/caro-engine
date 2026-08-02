@@ -97,8 +97,22 @@ Useful scripts:
 
 Open the page, pick a mode (you first, computer first, or Tournament), choose difficulty or board count, and play - or watch the computers compete.
 
-## License
+## Copyright and license
 
-This project is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
+Copyright (C) 2026 Dang Nguyen \<haidang009@outlook.com\>
 
-You may use, modify, and share it, but if you distribute it or run a modified version as a network service, you must make the corresponding source available under the same license.
+This program is free software: you can redistribute it and/or modify it under the terms of the [GNU Affero General Public License, version 3](LICENSE) only, as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details. You should have received a copy of the license along with this program; if not, see <https://www.gnu.org/licenses/>.
+
+Every source file carries an [SPDX](https://spdx.dev/) header, and every built bundle in `dist/` carries the same notice as a preserved legal comment.
+
+### What that means in practice
+
+You may use, modify, and share this project. But if you distribute it, **or run a modified version as a network service**, AGPL-3.0 section 13 requires you to offer every user of that service the complete corresponding source of your version, under this same license, at no charge. Removing the copyright notices or the in-app source link does not lift that obligation — it is itself a violation of sections 4 and 5.
+
+If those terms do not suit your use, a separate commercial license may be available; contact the author.
+
+### Reporting a license violation
+
+If you believe a site or product is using this code without complying, please open an issue or email the address above with the URL and what you observed.

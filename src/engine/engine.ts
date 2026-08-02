@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { search, type SearchConfig, type SearchResult } from "./search/search.ts";
 import { DEFAULT_DECAY_CONFIG } from "./search/search.ts";
 import { ALL_FORK_PATTERN_NAMES, type ForkPatternName } from "./search/narrow.ts";

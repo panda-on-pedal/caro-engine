@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /** Structured search progress for UI narration. No user-facing copy. */
 
 export type InsightKind = "win" | "open-four" | "four" | "open-three" | "fork" | "block";

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { placeMove, type Board, type Player } from "../engine/board.ts";
 import type { Difficulty } from "../engine/engine.ts";
 import {

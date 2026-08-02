@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { search, type SearchConfig } from "./search.ts";
 import { TranspositionTable, type TTEntry } from "../transposition/transposition.ts";
 import { parseBoard } from "../test-helpers/parse-board.ts";

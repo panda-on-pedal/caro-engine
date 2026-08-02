@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import type { Difficulty } from "../engine/engine.ts";
 import { ExperienceStore, type StoredExperienceEntry } from "../engine/experience/experience.ts";
 import { logger } from "../utils/logger.ts";

@@ -1,3 +1,8 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+  SPDX-License-Identifier: AGPL-3.0-only
+-->
+
 <script lang="ts">
   import { setHashRoute } from '../lib/hashRoute.ts';
   import SettingsForm from '../components/SettingsForm.svelte';

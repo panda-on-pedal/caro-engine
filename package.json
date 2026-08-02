@@ -1,6 +1,6 @@
 {
   "name": "caro-tournament",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "Caro (Gomoku) five-in-a-row with a local engine and AI tournament mode",
   "type": "module",
   "bin": {
@@ -15,11 +15,11 @@
   ],
   "scripts": {
     "build": "npm run build:ui && npm run build:cli",
-    "build:ui": "vite build && esbuild src/ui/engineWorker.ts --bundle --outfile=dist/ui/engineWorker.js --define:__DEBUG__=false",
-    "build:cli": "esbuild src/cli.ts --bundle --platform=node --format=esm --outfile=dist/cli.js --banner:js=\"#!/usr/bin/env node\"",
+    "build:ui": "vite build && node scripts/build-bundles.mjs worker",
+    "build:cli": "node scripts/build-bundles.mjs cli",
     "dev": "npm run dev:ui:build && npm run build:cli && node dist/cli.js",
     "dev:ui": "vite",
-    "dev:ui:build": "vite build --mode development && esbuild src/ui/engineWorker.ts --bundle --outfile=dist/ui/engineWorker.js --define:__DEBUG__=true",
+    "dev:ui:build": "vite build --mode development && node scripts/build-bundles.mjs worker --debug",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -37,7 +37,7 @@
     "five-in-a-row",
     "tournament"
   ],
-  "author": "",
+  "author": "Dang Nguyen <haidang009@outlook.com> (https://github.com/panda-on-pedal)",
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",

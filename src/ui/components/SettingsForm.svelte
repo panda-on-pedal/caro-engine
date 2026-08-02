@@ -1,3 +1,8 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+  SPDX-License-Identifier: AGPL-3.0-only
+-->
+
 <script lang="ts">
   import { session } from '../lib/gameSession.svelte.ts';
   import { MAX_SETTLE_GIVE_UP_SEARCHES, MIN_SETTLE_GIVE_UP_SEARCHES } from '../prefs.ts';

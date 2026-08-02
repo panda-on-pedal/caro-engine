@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { createEmptyBoard, type Board, type Cell } from "../board.ts";
 
 const SYMBOLS: Record<string, Cell> = { ".": 0, X: 1, O: 2 };

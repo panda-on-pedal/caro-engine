@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { search, type SearchProgressEvent } from "./search.ts";
 import { parseBoard } from "../test-helpers/parse-board.ts";
 

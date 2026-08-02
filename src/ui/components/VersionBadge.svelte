@@ -1,7 +1,13 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+  SPDX-License-Identifier: AGPL-3.0-only
+-->
+
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
     APP_VERSION,
+    GITHUB_REPO_URL,
     isNewerVersion,
     releaseTagUrl,
     resolveLatestVersion,
@@ -65,6 +71,16 @@
       {session.localeTick >= 0 ? t('version.upToDate', { version: APP_VERSION }) : ''}
     </a>
   {/if}
+  <!-- AGPL-3.0 section 13: users interacting over a network are offered the source. -->
+  <a
+    class="version-source"
+    href={GITHUB_REPO_URL}
+    target="_blank"
+    rel="noopener noreferrer"
+    title={session.localeTick >= 0 ? t('version.sourceTitle') : ''}
+  >
+    {session.localeTick >= 0 ? t('version.source') : ''}
+  </a>
 </div>
 
 <style>
@@ -114,9 +130,22 @@
     color: var(--ink-blue);
   }
 
+  .version-source {
+    font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .version-source:hover {
+    color: var(--ink-blue);
+  }
+
   .version-label:focus-visible,
   .version-update:focus-visible,
-  .version-uptodate:focus-visible {
+  .version-uptodate:focus-visible,
+  .version-source:focus-visible {
     outline: 2px solid var(--ink-blue);
     outline-offset: 2px;
   }

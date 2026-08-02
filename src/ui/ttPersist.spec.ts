@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import "fake-indexeddb/auto";
 import { loadSlice, flushSlice, evictSlice } from "./ttPersist.ts";
 import { TTFlag, type TTEntry } from "../engine/transposition/transposition.ts";

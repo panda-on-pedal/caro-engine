@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // src/engine/search.ts
 import { type Board, type Player } from "../board.ts";
 import { checkCaroWin } from "../rules.ts";

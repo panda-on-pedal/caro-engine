@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Pure, game-agnostic weighted-random helpers. No dependency on this
  * codebase's Board/Player/Move types — reusable outside Caro entirely.

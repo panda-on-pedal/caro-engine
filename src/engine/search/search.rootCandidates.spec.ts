@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dang Nguyen <haidang009@outlook.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { search, prepareRootMoves } from "./search.ts";
 import { createEmptyBoard } from "../board.ts";
 import { resolveEngineSearchConfig } from "../engine.ts";
